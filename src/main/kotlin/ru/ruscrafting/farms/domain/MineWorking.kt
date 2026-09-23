@@ -29,7 +29,7 @@ data class MineWorkingPlacement(
         return entrance.copy(x = entrance.x + dx, y = entrance.y + up, z = entrance.z + dz)
     }
 
-    companion object { const val CURRENT_GEOMETRY_VERSION = 9 }
+    companion object { const val CURRENT_GEOMETRY_VERSION = 10 }
 }
 
 enum class MineWorkingStage {
@@ -68,8 +68,14 @@ data class MineDriveProgress(
     val rail: MineRailProgress? = null,
 ) {
     fun validate(geometryVersion: Int = MineWorkingPlacement.CURRENT_GEOMETRY_VERSION) {
-        val cells=if(geometryVersion>=7) 1485 else 765
-        rail?.validate(cells)
+        // Geometry 10 rail drives use the longer 51-slice journal; v9 and
+        // earlier saved drives retain their original bounded cell envelope.
+        val cells=when {
+            geometryVersion >= 10 -> 1683
+            geometryVersion >= 7 -> 1485
+            else -> 765
+        }
+        rail?.validate(cells, geometryVersion)
         require(prepared.size <= cells && prepared.all { it in 0 until cells })
         require(carved.size <= cells && carved.all { it in 0 until cells })
         require(lamps.size <= 256 && lamps.all { it in carved })

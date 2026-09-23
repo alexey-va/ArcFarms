@@ -26,8 +26,45 @@ internal data class MineLiftSettings(
     val floors: List<MineLiftFloor>,
 ) {
     fun contains(point: Location): Boolean = point.world.name == world &&
-        kotlin.math.abs(point.x - x) < width / 2 + 0.3 && kotlin.math.abs(point.z - z) < depth / 2 + 0.3 &&
+        kotlin.math.abs(point.x - x) < width / 2 + CABIN_SHAFT_MARGIN &&
+        kotlin.math.abs(point.z - z) < depth / 2 + CABIN_SHAFT_MARGIN &&
         point.y in (floors.minOf { it.y } - 2)..(floors.maxOf { it.y } + 4)
+
+    /** True only for an outside-to-cabin crossing through the configured landing doorway. */
+    fun entersCabin(from: Location, to: Location, floorIndex: Int): Boolean {
+        if (floorIndex !in floors.indices || from.world.name != world || to.world.name != world) return false
+        if (contains(from) || !contains(to)) return false
+        val floorY = floors[floorIndex].y
+        if (kotlin.math.abs(from.y - floorY) > CABIN_ENTRY_VERTICAL_RANGE ||
+            kotlin.math.abs(to.y - floorY) > CABIN_ENTRY_VERTICAL_RANGE) return false
+
+        val sideSpan = when (openingSide(floorIndex)) {
+            MineLiftDoorSide.WEST, MineLiftDoorSide.EAST -> depth / 2 - CABIN_ENTRY_CORNER_CLEARANCE
+            MineLiftDoorSide.NORTH, MineLiftDoorSide.SOUTH -> width / 2 - CABIN_ENTRY_CORNER_CLEARANCE
+        }
+        return when (openingSide(floorIndex)) {
+            MineLiftDoorSide.WEST -> from.x <= x - width / 2 - CABIN_SHAFT_MARGIN &&
+                to.x > x - width / 2 - CABIN_SHAFT_MARGIN &&
+                kotlin.math.abs(from.z - z) < sideSpan && kotlin.math.abs(to.z - z) < sideSpan
+            MineLiftDoorSide.EAST -> from.x >= x + width / 2 + CABIN_SHAFT_MARGIN &&
+                to.x < x + width / 2 + CABIN_SHAFT_MARGIN &&
+                kotlin.math.abs(from.z - z) < sideSpan && kotlin.math.abs(to.z - z) < sideSpan
+            MineLiftDoorSide.NORTH -> from.z <= z - depth / 2 - CABIN_SHAFT_MARGIN &&
+                to.z > z - depth / 2 - CABIN_SHAFT_MARGIN &&
+                kotlin.math.abs(from.x - x) < sideSpan && kotlin.math.abs(to.x - x) < sideSpan
+            MineLiftDoorSide.SOUTH -> from.z >= z + depth / 2 + CABIN_SHAFT_MARGIN &&
+                to.z < z + depth / 2 + CABIN_SHAFT_MARGIN &&
+                kotlin.math.abs(from.x - x) < sideSpan && kotlin.math.abs(to.x - x) < sideSpan
+        }
+    }
+
+    /** Ignores look-only motion; the walk-in menu latch resets after a real step away from the cabin. */
+    fun movedAwayFromCabin(from: Location, to: Location): Boolean {
+        if (from.world.name != world || to.world.name != world) return true
+        val fromDistanceSquared = (from.x - x) * (from.x - x) + (from.z - z) * (from.z - z)
+        val toDistanceSquared = (to.x - x) * (to.x - x) + (to.z - z) * (to.z - z)
+        return toDistanceSquared - fromDistanceSquared > CABIN_WALK_AWAY_DISTANCE_SQUARED
+    }
 
     // Floor stops describe cabin travel, not shaft bounds: the inaccessible pit continues below them.
     fun excludesEvent(point: Location): Boolean = point.world.name == world &&
@@ -74,6 +111,10 @@ internal data class MineLiftSettings(
         private val ID_PATTERN = Regex("[a-z][a-z0-9_]{0,31}")
         private const val CABIN_HEIGHT = 2.83
         private const val CABIN_CLICK_MARGIN = .2
+        private const val CABIN_SHAFT_MARGIN = .3
+        private const val CABIN_ENTRY_CORNER_CLEARANCE = .5
+        private const val CABIN_ENTRY_VERTICAL_RANGE = 1.25
+        private const val CABIN_WALK_AWAY_DISTANCE_SQUARED = .1
         // The rendered floor starts at -.22; leave a small clearance below it so
         // an eye ray aimed at the lower frame still enters the interaction hitbox.
         private const val CABIN_CLICK_BOTTOM_PADDING = .24

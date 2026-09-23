@@ -1,6 +1,7 @@
 package ru.ruscrafting.farms.paper
 
 import io.papermc.paper.event.entity.EntityLoadCrossbowEvent
+import io.papermc.paper.event.player.PrePlayerAttackEntityEvent
 import org.bukkit.event.EventHandler
 import org.bukkit.event.EventPriority
 import org.bukkit.event.Listener
@@ -178,6 +179,9 @@ class ArcFarmsListener(
 
     @EventHandler(priority = EventPriority.HIGHEST)
     fun onInteractEntity(event: PlayerInteractEntityEvent) = service.onInteractEntity(event)
+
+    @EventHandler(priority = EventPriority.HIGHEST)
+    fun onAttackEntity(event: PrePlayerAttackEntityEvent) = service.onAttackEntity(event)
 
     @EventHandler(priority = EventPriority.HIGHEST)
     fun onVehicleEnter(event: VehicleEnterEvent) = service.onVehicleEnter(event)

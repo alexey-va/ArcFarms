@@ -47,7 +47,7 @@ class MineFactoryExperimentLocaleTest : FunSpec({
             "crane-right",
             "crane-forward",
             "crane-back",
-            "crane-miss",
+            "crane-miss", "crane-brake",
             "busy",
         )
         val values = roots.mapValues { (_, root) ->

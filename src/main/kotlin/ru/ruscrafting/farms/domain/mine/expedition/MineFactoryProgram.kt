@@ -114,7 +114,7 @@ object MineFactoryProgram {
             2 -> listOf(
                 MineExpeditionObjective(
                     "generator_flywheel", station("generator_flywheel"),
-                    MineExpeditionInteraction.VALVE, "AIR", 2,
+                    MineExpeditionInteraction.OPERATE, "AIR", 2,
                 ),
             )
             else -> emptyList()

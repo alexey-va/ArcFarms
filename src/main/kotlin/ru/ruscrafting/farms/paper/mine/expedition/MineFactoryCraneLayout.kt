@@ -11,6 +11,8 @@ import org.bukkit.util.Vector
  * whole control panel without changing interaction code.
  */
 internal object MineFactoryCraneLayout {
+    // Keep the wide panel beside the operator's sightline to the roller deck.
+    const val YAW = 90
     data class Button(
         val id: String,
         val key: String,
@@ -21,10 +23,10 @@ internal object MineFactoryCraneLayout {
         fun fixture() = MineFactoryExperimentLayout.Fixture(
             id = id,
             anchor = "crane_control",
-            offset = offset.clone(),
+            offset = Vector(offset.z, offset.y, -offset.x),
             model = model,
             scale = 1f,
-            yaw = 0,
+            yaw = YAW,
             interactive = true,
         )
     }
@@ -36,6 +38,7 @@ internal object MineFactoryCraneLayout {
         offset = Vector(0.0, 0.0, 0.0),
         model = "factory_crane_panel",
         scale = 1f,
+        yaw = YAW,
         interactive = false,
     )
 

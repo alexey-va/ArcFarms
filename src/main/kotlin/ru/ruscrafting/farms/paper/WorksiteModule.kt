@@ -201,6 +201,9 @@ internal class WorksiteModuleRegistry(
     fun onInteractEntity(event: PlayerInteractEntityEvent): Boolean =
         modulesInOrder.filterIsInstance<WorksiteEntityInteractHandler>().any { it.onInteractEntity(event) }
 
+    fun onInteractEntity(kind: ActivityKind, event: PlayerInteractEntityEvent): Boolean =
+        (modulesByKind[kind] as? WorksiteEntityInteractHandler)?.onInteractEntity(event) == true
+
     fun onEntityDeath(event: EntityDeathEvent): Boolean =
         modulesInOrder.filterIsInstance<WorksiteEntityDeathHandler>().any { it.onEntityDeath(event) }
 

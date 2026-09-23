@@ -306,14 +306,12 @@ internal class MineExpeditionMarkers(
         val hitbox = target.location.world.spawn(clickAt, Interaction::class.java) {
             it.interactionWidth = when {
                 !target.interactive -> 0f
-                target.id == "generator_flywheel" -> 2.8f
                 portal(target) -> 2.7f
                 hitboxBounds != null -> hitboxBounds.width
                 else -> 1.8f
             }
             it.interactionHeight = when {
                 !target.interactive -> 0f
-                target.id == "generator_flywheel" -> 3.3f
                 portal(target) -> 3f
                 hitboxBounds != null -> hitboxBounds.height
                 else -> 2f
@@ -322,7 +320,6 @@ internal class MineExpeditionMarkers(
             it.persistentDataContainer.set(key, PersistentDataType.STRING, id)
         }
         val labelHeight = when {
-            target.id == "generator_flywheel" -> 3.7
             portal(target) -> 3.25
             target.model in setOf("finished_gear","return_miner", "factory_product_plate", "factory_product_rod") -> 2.1
             target.model in setOf("crane_console", "furnace_console", "furnace_air_console", "machine_console", "mounted_console") -> 2.3

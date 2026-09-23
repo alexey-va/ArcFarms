@@ -39,6 +39,7 @@ internal object MineExpeditionFurnishings {
         id=="crushed_output" -> "charge_hopper"
         id=="control_crusher_left" || id=="pour_console" -> "mounted_console"
         id=="crane_control" -> "mounted_console"
+        id=="generator_flywheel" -> "machine_console"
         id=="furnace_control" -> "furnace_air_console"
         id=="water_valve_1" -> "pipe_valve"
         id.startsWith("water_valve_") -> "pipe_valve"
@@ -64,11 +65,13 @@ internal object MineExpeditionFurnishings {
         // Old basket anchors remain in journals for compatibility, but the
         // connected conveyor now carries the charge straight into the furnace.
         val hiddenStations = if(modernFactory) setOf(
-            "water_valve_0", "water_valve_2", "crushed_output", "furnace_input", "generator_flywheel",
+            "water_valve_0", "water_valve_2", "crushed_output", "furnace_input",
         ) else if (modernDescent) setOf(
             "counterweight_0", "descent_pump", "descent_upper_winder", "decor_descent_winder", "core_start",
         ) else emptySet()
-        val stations=plan.stations.filterKeys { id ->
+        val authoredStations = if (modernFactory) plan.stations +
+            ("generator_flywheel" to MineFactoryLine.effectiveStation(plan, "generator_flywheel")) else plan.stations
+        val stations=authoredStations.filterKeys { id ->
             id !in setOf("entry","exit") && !id.startsWith("lift_") && !id.startsWith("ark_") &&
                 !id.startsWith("jam_") && !id.startsWith("branch_") && id !in hiddenStations &&
                 !(modernFactory && (id == "crusher_repair" || id.startsWith("repair_supply_")))

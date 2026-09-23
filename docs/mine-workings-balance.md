@@ -146,3 +146,20 @@ transition remain unchanged. Ideal local input plus ramp takes at least 7.75 s
 instead of 3 s, excluding travel; order throughput and player income per hour
 are unmeasured. Old already-commissioned journals resume without a new charge
 or reward. Production cannot credit checkpoints while the new ramp is pending.
+
+## Console start and rail maintenance (0.45.8)
+
+The diesel starts from one console press instead of eight flywheel clicks,
+retaining the six-second ramp and one commissioning credit. Ideal input plus
+ramp changes from at least 7.75 s to 6 s, excluding travel. Crane motors now
+require manual braking and precise placement. New rail routes grow from 44 to
+50 blocks with three mandatory stops instead of two optional seeded stops;
+existing geometry-9 progress retains its previous route and rules.
+
+Before/after direct issuance per control action, maintenance action or carved
+block: 0/0 Vault coins, 0/0 premium tokens, 0/0 XP and 0/0 ordinary items.
+Factory contribution remains ten credits; rail drive contribution remains
+93 credits once at completion. Order payouts and food rolls are unchanged.
+The changes have opposite effects on elapsed play time, so XP/items per hour
+remain unmeasured. No item sale value is assumed; existing SELL income and the
+planned SELL-to-contract transition remain separate and unchanged.

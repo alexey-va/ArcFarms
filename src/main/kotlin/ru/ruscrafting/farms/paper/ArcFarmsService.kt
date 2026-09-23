@@ -1,6 +1,7 @@
 package ru.ruscrafting.farms.paper
 
 import io.papermc.paper.event.entity.EntityLoadCrossbowEvent
+import io.papermc.paper.event.player.PrePlayerAttackEntityEvent
 import org.bukkit.Bukkit
 import org.bukkit.Location
 import org.bukkit.entity.Player
@@ -361,6 +362,7 @@ class ArcFarmsService(
     }
     fun onInteractEntityLowest(event: PlayerInteractEntityEvent) = farm.events.onInteractEntityLowest(event)
     fun onInteractEntity(event: PlayerInteractEntityEvent) = worksiteEvents.onInteractEntity(event) { farm.events.onInteractEntity(event) }
+    fun onAttackEntity(event: PrePlayerAttackEntityEvent) = worksiteEvents.onAttackEntity(event)
     fun onVehicleEnter(event: VehicleEnterEvent) = farm.events.onVehicleEnter(event)
     fun onDismount(event: EntityDismountEvent) = farm.events.onDismount(event)
     fun onEntityDamage(event: EntityDamageEvent) = worksiteEvents.onEntityDamage(event) { farm.events.onEntityDamage(event) }

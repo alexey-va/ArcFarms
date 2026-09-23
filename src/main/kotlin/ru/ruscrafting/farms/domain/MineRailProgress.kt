@@ -10,11 +10,12 @@ data class MineRailProgress(
     val service: MineRailService? = null,
     val finished: Boolean = false,
 ) {
-    fun validate(cells: Int) {
+    fun validate(cells: Int, geometryVersion: Int = 9) {
+        val maxServiceIndex = if (geometryVersion >= 10) 2 else 1
         require(route.size <= cells && route.distinct().size == route.size && route.all { it in 0 until cells })
         require(route.zipWithNext().all { (a,b) -> abs(a % 33-b % 33)+abs(a / 33-b / 33)==1 })
-        require(serviced.all { it in 0..1 })
-        service?.let { require(it.index in 0..1 && it.index !in serviced && it.step in 0..2) }
+        require(serviced.all { it in 0..maxServiceIndex })
+        service?.let { require(it.index in 0..maxServiceIndex && it.index !in serviced && it.step in 0..2) }
     }
 }
 
@@ -22,13 +23,23 @@ enum class MineRailServiceKind { JAM, CASSETTE }
 data class MineRailService(val index: Int, val kind: MineRailServiceKind, val step: Int = 0)
 
 object MineRailProgression {
-    /** Seeded optional pauses; no random state is consumed on ticks or reconstruction. */
-    fun due(progress: MineRailProgress, seed: Long, forward: Double): MineRailService? {
+    /** Legacy geometry keeps its two optional seeded pauses. */
+    fun due(progress: MineRailProgress, seed: Long, forward: Double, geometryVersion: Int = 9): MineRailService? {
         progress.service?.let { return it }
-        for (index in 0..1) {
-            if (index in progress.serviced || forward < 14 + index * 14) continue
-            val choice = Math.floorMod(WorksiteDeterministicSeed.derive(seed, 720L + index), 3L).toInt()
-            if (choice != 0) return MineRailService(index, if (choice == 1) MineRailServiceKind.JAM else MineRailServiceKind.CASSETTE)
+        val extended = geometryVersion >= 10
+        val lastIndex = if (extended) 2 else 1
+        val spacing = if (extended) 12 else 14
+        val first = if (extended) 12 else 14
+        for (index in 0..lastIndex) {
+            if (index in progress.serviced || forward < first + index * spacing) continue
+            val bound = if (extended) 2L else 3L
+            val choice = Math.floorMod(WorksiteDeterministicSeed.derive(seed, 720L + index), bound).toInt()
+            if (extended || choice != 0) {
+                val kind = if (extended) {
+                    if (choice == 0) MineRailServiceKind.JAM else MineRailServiceKind.CASSETTE
+                } else if (choice == 1) MineRailServiceKind.JAM else MineRailServiceKind.CASSETTE
+                return MineRailService(index, kind)
+            }
         }
         return null
     }

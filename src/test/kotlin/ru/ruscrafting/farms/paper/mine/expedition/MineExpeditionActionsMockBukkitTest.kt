@@ -324,13 +324,11 @@ class MineExpeditionActionsMockBukkitTest : FunSpec({
         val flywheel = MineExpeditionObjectives.targets(connected.plan, state, null).single()
         flywheel.id shouldBe "generator_flywheel"
         player.teleport(connected.at(flywheel.position))
-        repeat(8) { index ->
-            actions.interact("connected-factory", connected, state, player, flywheel, 5_000L + index * 250L, ::complete) {}
-        }
+        actions.interact("connected-factory", connected, state, player, flywheel, 5_000L, ::complete) {}
         state.stage shouldBe MineExpeditionStage.FACTORY_COAL
-        state.factoryGeneratorStartedAt shouldBe 6_750L
-        MineFactoryGeneratorCycle.ready(state, 12_749) shouldBe false
-        MineFactoryGeneratorCycle.ready(state, 12_750) shouldBe true
+        state.factoryGeneratorStartedAt shouldBe 5_000L
+        MineFactoryGeneratorCycle.ready(state, 10_999) shouldBe false
+        MineFactoryGeneratorCycle.ready(state, 11_000) shouldBe true
 
         var chargeTargets = MineExpeditionObjectives.targets(connected.plan, state, null)
         val rawPickup = chargeTargets.single { it.interaction == MineExpeditionInteraction.PICKUP }

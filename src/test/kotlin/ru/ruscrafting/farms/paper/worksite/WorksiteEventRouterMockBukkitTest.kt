@@ -1,13 +1,16 @@
 package ru.ruscrafting.farms.paper.worksite
 
+import io.papermc.paper.event.player.PrePlayerAttackEntityEvent
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.shouldBe
 import org.bukkit.block.BlockFace
+import org.bukkit.entity.Interaction
 import org.bukkit.entity.Player
 import org.bukkit.event.block.Action
 import org.bukkit.event.block.BlockBreakEvent
 import org.bukkit.event.player.PlayerInteractEvent
+import org.bukkit.event.player.PlayerInteractEntityEvent
 import org.bukkit.event.player.PlayerTeleportEvent
 import org.bukkit.inventory.EquipmentSlot
 import org.bukkit.inventory.ItemStack
@@ -16,6 +19,7 @@ import ru.arc.paper.testing.MockBukkitTestRuntime
 import ru.ruscrafting.farms.domain.ActivityKind
 import ru.ruscrafting.farms.paper.ActivityStatus
 import ru.ruscrafting.farms.paper.WorksiteBlockBreakHandler
+import ru.ruscrafting.farms.paper.WorksiteEntityInteractHandler
 import ru.ruscrafting.farms.paper.WorksiteModule
 import ru.ruscrafting.farms.paper.WorksiteModuleRegistry
 import ru.ruscrafting.farms.paper.WorksitePlayerInteractHandler
@@ -64,6 +68,43 @@ class WorksiteEventRouterMockBukkitTest : FunSpec({
         router.onInteract(event) shouldBe true
 
         farm.interactionCalls shouldBe 1
+    }
+
+    test("left attacks adapt to mine entity clicks while preserving native and plugin cancellation") {
+        val farm = RoutingModule(ActivityKind.FARM, handlesEntityInteraction = true)
+        val mine = RoutingModule(ActivityKind.MINE, handlesEntityInteraction = true)
+        val router = router(paper, WorksiteModuleRegistry(listOf(farm, mine)))
+        val world = paper.server.addSimpleWorld("world")
+        val player = paper.server.addPlayer("Miner")
+        val target = world.spawn(player.location, Interaction::class.java)
+
+        val nativeCancelled = PrePlayerAttackEntityEvent(player, target, false)
+        nativeCancelled.isCancelled shouldBe true
+        router.onAttackEntity(nativeCancelled) shouldBe true
+        nativeCancelled.isCancelled shouldBe true
+        mine.entityInteractionCalls shouldBe 1
+        mine.lastSyntheticInteractionCancelled shouldBe false
+        farm.entityInteractionCalls shouldBe 0
+
+        val normalAttack = PrePlayerAttackEntityEvent(player, target, true)
+        router.onAttackEntity(normalAttack) shouldBe true
+        normalAttack.isCancelled shouldBe true
+        mine.entityInteractionCalls shouldBe 2
+        farm.entityInteractionCalls shouldBe 0
+
+        val deniedAttack = PrePlayerAttackEntityEvent(player, target, true).also { it.isCancelled = true }
+        router.onAttackEntity(deniedAttack) shouldBe false
+        mine.entityInteractionCalls shouldBe 2
+        farm.entityInteractionCalls shouldBe 0
+
+        val unownedFarm = RoutingModule(ActivityKind.FARM, handlesEntityInteraction = true)
+        val unownedMine = RoutingModule(ActivityKind.MINE)
+        val unownedRouter = router(paper, WorksiteModuleRegistry(listOf(unownedFarm, unownedMine)))
+        val unownedTarget = PrePlayerAttackEntityEvent(player, target, false)
+        unownedRouter.onAttackEntity(unownedTarget) shouldBe false
+        unownedTarget.isCancelled shouldBe true
+        unownedMine.entityInteractionCalls shouldBe 1
+        unownedFarm.entityInteractionCalls shouldBe 0
     }
 
     test("quit teleport portal and death each release service items and module leases") {
@@ -160,14 +201,17 @@ private class RoutingModule(
     override val kind: ActivityKind,
     private val handlesBreak: Boolean = false,
     private val handlesInteraction: Boolean = false,
+    private val handlesEntityInteraction: Boolean = false,
     private val retainTeleport: Boolean = false,
     private val release: (WorksitePlayerReleaseReason) -> Unit = {},
     private val recover: (Player) -> Unit = {},
-) : WorksiteModule<Any>, WorksiteBlockBreakHandler, WorksitePlayerInteractHandler, WorksiteParticipantOwner,
+) : WorksiteModule<Any>, WorksiteBlockBreakHandler, WorksitePlayerInteractHandler, WorksiteEntityInteractHandler, WorksiteParticipantOwner,
     WorksiteTeleportRetention, WorksiteParticipantRecoveryOwner {
     override val zoneCount: Int = 1
     var breakCalls: Int = 0
     var interactionCalls: Int = 0
+    var entityInteractionCalls: Int = 0
+    var lastSyntheticInteractionCancelled: Boolean? = null
 
     override fun states(): Map<String, Any> = emptyMap()
     override fun statuses(): List<ActivityStatus> = emptyList()
@@ -182,6 +226,12 @@ private class RoutingModule(
     override fun onInteract(event: PlayerInteractEvent, player: Player): Boolean {
         interactionCalls++
         return handlesInteraction
+    }
+
+    override fun onInteractEntity(event: PlayerInteractEntityEvent): Boolean {
+        entityInteractionCalls++
+        lastSyntheticInteractionCancelled = event.isCancelled
+        return handlesEntityInteraction
     }
 
     override fun retainOnTeleport(player: Player, destination: org.bukkit.Location): Boolean = retainTeleport

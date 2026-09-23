@@ -38,7 +38,14 @@ internal class MineDriveController(
     private val servicing = mutableSetOf<String>()
 
     fun zone(entity: Entity) = rigs.zone(entity)
-    fun mount(runtime: MineRuntime, player: Player) = rigs.mount(runtime, player)
+    fun mount(runtime: MineRuntime, player: Player): Boolean {
+        val incident = runtime.state.incident ?: return false
+        val working = incident.working ?: return false
+        // A persisted maintenance stop owns the carrier until the repair is
+        // committed; do not let a boarding click steal the repair interaction.
+        if (MineDriveLayout.rail(incident.type, working.placement) && working.drive?.rail?.service != null) return false
+        return rigs.mount(runtime, player)
+    }
     fun release(player: Player) = rigs.release(player)
     fun cleanup(zone: String) {
         saving.remove(zone); durable.remove(zone); saved.remove(zone); saveAt.remove(zone)
@@ -68,6 +75,7 @@ internal class MineDriveController(
         val working = runtime.state.incident?.working ?: return
         if (!MineDriveLayout.machine(scene.plan.type,working.placement)) return
         val rail = MineDriveLayout.rail(scene.plan.type,working.placement)
+        val extendedRail = MineDriveLayout.extendedRail(scene.plan.type, working.placement)
         val zone = runtime.settings.id
         val rig = rigs.ensure(runtime)
         rig.maintenance = rail && working.drive?.rail?.service != null
@@ -77,13 +85,17 @@ internal class MineDriveController(
         val (side, forward) = MineDriveLayout.local(working.placement, at.x, at.z)
         durable.getOrPut(zone) { working.drive?.let { it.prepared + it.carved }.orEmpty() }
         if (driver != null && participant(driver) && driver.gameMode != GameMode.SPECTATOR &&
-            MineDriveLayout.reached(side,forward,working.placement.geometryVersion) && (!rail || MineRailProgression.due(working.drive?.rail ?: MineRailProgress(),working.placement.layoutSeed,forward) == null)) {
+            MineDriveLayout.reached(side,forward,working.placement.geometryVersion,rail) &&
+                (!rail || MineRailProgression.due(working.drive?.rail ?: MineRailProgress(),working.placement.layoutSeed,forward,working.placement.geometryVersion) == null)) {
             stop(rig)
             if (!busy(zone) && zone !in failed) {
                 if (rail && working.drive?.rail?.finished != true) {
                     val progress=working.drive ?: return
                     val rails=progress.rail ?: return
-                    if (rails.route.lastOrNull() != progress.checkpoint || rails.route.size < 30) return
+                    // The extended route must have actually reached the final
+                    // chamber; a short recovered route is not a valid finish.
+                    val minimumRouteSize = if (extendedRail) MineDriveLayout.RAIL_LENGTH - 9 else 30
+                    if (rails.route.lastOrNull() != progress.checkpoint || rails.route.size < minimumRouteSize) return
                     save(runtime,scene,working.copy(drive=progress.copy(rail=rails.copy(finished=true))))
                 } else { if(rail) world.project(runtime); rigs.release(driver); reached(driver, working) }
             }
@@ -96,7 +108,7 @@ internal class MineDriveController(
             val current=runtime.state.incident?.working ?: return
             val progress=current.drive
             val rails=progress?.rail ?: MineRailProgress()
-            val service=MineRailProgression.due(rails,current.placement.layoutSeed,forward)
+            val service=MineRailProgression.due(rails,current.placement.layoutSeed,forward,current.placement.geometryVersion)
             if(service != null) {
                 rig.maintenance = true
                 stop(rig)
@@ -132,15 +144,20 @@ internal class MineDriveController(
         val relative = heading - working.placement.direction * 90f
         val cells = MineDriveMotion.footprint(side, forward, relative) +
             MineDriveMotion.footprint(nextSide, nextForward, relative)
+        val cutterCells = if (rail && working.placement.geometryVersion >= 10)
+            MineDriveMotion.cutterFootprint(side, forward, relative, working.placement.geometryVersion, rail) +
+                MineDriveMotion.cutterFootprint(nextSide, nextForward, relative, working.placement.geometryVersion, rail)
+        else emptySet()
         var boundary = nextForward < 2.0
         var bedrock = false
         var waiting = false
         val columns = linkedSetOf<Int>()
         val solidColumns = linkedSetOf<Int>()
         val allowed = durable.getValue(zone)
-        // The whole chassis/cutter envelope stays inside owned space at all angles, including reverse.
-        for ((s, f) in cells) {
-            if (!MineDriveLayout.insideBoundary(s, f,working.placement.geometryVersion)) { boundary = true; continue }
+        // The chassis envelope keeps its original collision semantics. Rail v10
+        // inspects the additional cutter sweep separately for sleeper clearance.
+        fun inspect(s: Int, f: Int) {
+            if (!MineDriveLayout.insideBoundary(s, f,working.placement.geometryVersion,rail)) { boundary = true; return }
             val id = MineDriveLayout.id(s, f,working.placement.geometryVersion)
             var solid = false
             var protected = false
@@ -159,6 +176,8 @@ internal class MineDriveController(
                 if (id in allowed) columns += id else if (solid) waiting = true
             } else if (solid && !protected) boundary = true
         }
+        cells.forEach { (s, f) -> inspect(s, f) }
+        (cutterCells - cells).forEach { (s, f) -> inspect(s, f) }
         val current = runtime.state.incident?.working ?: return
         val old = current.drive ?: MineDriveProgress(checkpoint=MineDriveLayout.id(0,2,working.placement.geometryVersion),heading = rig.heading)
         val additions = columns - old.carved

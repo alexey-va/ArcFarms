@@ -36,6 +36,7 @@ internal class MineDriveRig(private val plugin: Plugin) {
         cleanup(runtime.settings.id)
         val working = requireNotNull(runtime.state.incident?.working)
         val progress = working.drive
+        val rail=MineDriveLayout.rail(requireNotNull(runtime.state.incident).type,working.placement)
         val at = if (progress != null) MineDriveLayout.position(working.placement, progress.checkpoint).location(runtime.region.world)
             else working.placement.position(0,1,2).location(runtime.region.world)
         val heading = progress?.heading ?: working.placement.direction * 90f
@@ -47,11 +48,15 @@ internal class MineDriveRig(private val plugin: Plugin) {
             it.persistentDataContainer.set(tag, PersistentDataType.STRING, runtime.settings.id)
         }
         val hitbox = at.world.spawn(at, Interaction::class.java) {
-            it.isPersistent = false; it.interactionWidth = 2.5f; it.interactionHeight = 2.1f
+            // Rail service points sit one block off either side. Keep the
+            // boarding target inside the chassis envelope so repair clicks
+            // reach their own markers instead of the carrier interaction.
+            it.isPersistent = false
+            it.interactionWidth = if (rail) 1.45f else 2.5f
+            it.interactionHeight = if (rail) 1.35f else 2.1f
             it.isResponsive = true
             it.persistentDataContainer.set(tag, PersistentDataType.STRING, runtime.settings.id)
         }
-        val rail=MineDriveLayout.rail(requireNotNull(runtime.state.incident).type,working.placement)
         val body = (if(rail) MineRailDriveModel.parts else MineDriveModel.parts).map { part -> renderer().spawnBlock(at, part.material.createBlockData()).apply {
             brightness = MineDisplayLighting.brightness(part.material)
             viewRange = 2f; teleportDuration = 1; interpolationDuration = 1
@@ -61,6 +66,9 @@ internal class MineDriveRig(private val plugin: Plugin) {
     }
 
     fun mount(runtime: MineRuntime, player: Player): Boolean {
+        val incident = runtime.state.incident ?: return false
+        val working = incident.working ?: return false
+        if (MineDriveLayout.rail(incident.type, working.placement) && working.drive?.rail?.service != null) return false
         val rig = ensure(runtime)
         if (rig.cart.passengers.isNotEmpty() || player.isInsideVehicle ||
             player.world !== rig.cart.world || player.location.distanceSquared(rig.cart.location) > 25) return false

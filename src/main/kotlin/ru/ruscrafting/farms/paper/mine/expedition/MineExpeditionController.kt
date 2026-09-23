@@ -257,10 +257,11 @@ internal class MineExpeditionController(
         val fixture = MineExpeditionFurnishings.fixtures(scene).firstOrNull { it.id == target.id }
         return MineExpeditionMarkers.Target(target.id, scene.at(target.position), material,
             markerLabel, target.interaction == MineExpeditionInteraction.BREAK,
-            model=if (target.interaction == MineExpeditionInteraction.BREAK || target.id in setOf("drive", "generator_flywheel")) null
+            model=if (target.interaction == MineExpeditionInteraction.BREAK || target.id == "drive") null
                 else fixture?.model ?: MineExpeditionFurnishings.model(target.id,scene.kind,modernDescent(scene)),
             modelScale=fixture?.scale ?: 1f,
-            yaw=editor?.yaw(scene,target.id) ?: fixture?.yaw ?: 0)
+            yaw=editor?.yaw(scene,target.id) ?: fixture?.yaw ?: 0,
+            interactive=target.interaction != MineExpeditionInteraction.BREAK)
     }
 
     private fun exitMarkers(scene: MineExpeditionScene): List<MineExpeditionMarkers.Target> =

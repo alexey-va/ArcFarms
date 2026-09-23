@@ -114,7 +114,9 @@ internal object MineDescentModels {
                 base(2.6f, 1.55f)
                 box(Material.POLISHED_DEEPSLATE, 0f, 1.12f, .35f, 2.2f, 1.95f, .5f)
                 box(Material.WEATHERED_CUT_COPPER, 0f, 1.65f, -.12f, 1.76f, 1.24f, .16f)
-                box(Material.POLISHED_BLACKSTONE, 0f, 1.36f, -.23f, .7f, .12f, .42f)
+                // Keep the mount behind the throw path: at 90 degrees the stem
+                // lies level at the pivot and must clear the plate's front edge.
+                box(Material.POLISHED_BLACKSTONE, 0f, 1.36f, 0f, .7f, .12f, .42f)
                 box(Material.IRON_BLOCK, 0f, 1.82f, -.24f, .12f, .86f, .12f,
                     moving = true, pivot = Vector3f(0f, 1.36f, -.24f), motion = "lever")
                 box(Material.RED_CONCRETE, 0f, 2.28f, -.24f, .42f, .22f, .3f,

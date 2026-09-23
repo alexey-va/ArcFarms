@@ -9,8 +9,11 @@ import ru.ruscrafting.farms.domain.worksite.WorksitePosition
 internal object MineDriveLayout {
     const val HALF_WIDTH = 16
     const val LENGTH = 44
+    /** Rail extension owns a longer straight run so maintenance events have room to breathe. */
+    const val RAIL_LENGTH = 50
     const val STRIDE = HALF_WIDTH * 2 + 1
     const val MAX_CELLS = STRIDE * (LENGTH + 1)
+    const val MAX_RAIL_CELLS = STRIDE * (RAIL_LENGTH + 1)
     const val CONTRIBUTION_BUDGET = 93 // Previous drive: 90 face blocks + 3 supports.
     private const val AIR = "minecraft:air"
     private const val BEDROCK = "minecraft:bedrock"
@@ -18,6 +21,10 @@ internal object MineDriveLayout {
 
     fun enabled(placement: MineWorkingPlacement) = placement.geometryVersion >= 5
     fun rail(type: MineIncidentType, placement: MineWorkingPlacement) = type == MineIncidentType.RAIL_EXTENSION && placement.geometryVersion >= 9
+    fun extendedRail(type: MineIncidentType, placement: MineWorkingPlacement) = rail(type, placement) && placement.geometryVersion >= 10
+    fun length(rail: Boolean, version: Int = MineWorkingPlacement.CURRENT_GEOMETRY_VERSION) =
+        if (rail && version >= 10) RAIL_LENGTH else LENGTH
+    fun length(type: MineIncidentType, placement: MineWorkingPlacement) = length(rail(type, placement), placement.geometryVersion)
     fun machine(type: MineIncidentType, placement: MineWorkingPlacement) =
         (type == MineIncidentType.TUNNEL_DRIVE && enabled(placement)) || rail(type, placement)
     fun width(version: Int) = if(version>=7) HALF_WIDTH else 8
@@ -37,12 +44,24 @@ internal object MineDriveLayout {
     fun bedrock(side: Int, forward: Int, version: Int = MineWorkingPlacement.CURRENT_GEOMETRY_VERSION): Boolean =
         if (version >= CENTRAL_MASS_GEOMETRY_VERSION) currentBedrock(side, forward)
         else legacyBedrock(side, forward)
-    fun radius(forward: Int, version: Int = MineWorkingPlacement.CURRENT_GEOMETRY_VERSION) = if (forward <= 1) 1 else if (forward == 2) 3 else width(version) - 1
-    fun insideBoundary(side: Int, forward: Int, version: Int = MineWorkingPlacement.CURRENT_GEOMETRY_VERSION) = forward in 0 until LENGTH && kotlin.math.abs(side) <= radius(forward,version)
-    fun driveable(side: Int, forward: Int, version: Int = MineWorkingPlacement.CURRENT_GEOMETRY_VERSION, rail: Boolean = false) = forward in 1 until LENGTH && kotlin.math.abs(side) <= radius(forward,version) && (rail || !bedrock(side, forward, version))
+    /** The rail machine gets a wider entry and cutter pocket for sleeper service clearances. */
+    fun radius(forward: Int, version: Int = MineWorkingPlacement.CURRENT_GEOMETRY_VERSION, rail: Boolean = false) = when {
+        rail && version >= 10 && forward <= 1 -> 2
+        rail && version >= 10 && forward == 2 -> 4
+        forward <= 1 -> 1
+        forward == 2 -> 3
+        else -> width(version) - 1
+    }
+    fun insideBoundary(side: Int, forward: Int, version: Int = MineWorkingPlacement.CURRENT_GEOMETRY_VERSION, rail: Boolean = false) =
+        forward in 0 until length(rail,version) && kotlin.math.abs(side) <= radius(forward,version,rail)
+    fun driveable(side: Int, forward: Int, version: Int = MineWorkingPlacement.CURRENT_GEOMETRY_VERSION, rail: Boolean = false) =
+        forward in 1 until length(rail,version) && kotlin.math.abs(side) <= radius(forward,version,rail) && (rail || !bedrock(side, forward, version))
     /** Broad arrival area inside the discovery cavern, including approaches around either bedrock rib. */
-    fun reached(side: Double, forward: Double, version: Int): Boolean =
-        forward>=35.0 && (side*side/(if(version>=7) 100.0 else 30.25)+(forward-39)*(forward-39)/25.0)<=1.0
+    fun reached(side: Double, forward: Double, version: Int, rail: Boolean = false): Boolean {
+        val center = length(rail,version) - 5.0
+        return forward >= center - 4.0 &&
+            (side*side/(if(version>=7) 100.0 else 30.25)+(forward-center)*(forward-center)/25.0)<=1.0
+    }
     fun returnPoint(placement: MineWorkingPlacement)=placement.position(0,1,41)
     fun local(placement: MineWorkingPlacement, x: Double, z: Double): Pair<Double, Double> {
         val dx = x - placement.entrance.x - .5
@@ -55,19 +74,24 @@ internal object MineDriveLayout {
     }.keys.filter { p -> listOf(p.copy(x=p.x-1),p.copy(x=p.x+1),p.copy(y=p.y-1),p.copy(y=p.y+1),p.copy(z=p.z-1),p.copy(z=p.z+1))
         .any { plan.blocks[it] == AIR } }.take(32)
 
-    private fun diamondChamber(placement: MineWorkingPlacement, blocks: MutableMap<WorksitePosition,String>, walkable: MutableSet<WorksitePosition>) {
+    private fun diamondChamber(placement: MineWorkingPlacement, blocks: MutableMap<WorksitePosition,String>, walkable: MutableSet<WorksitePosition>, rail: Boolean) {
         val air = linkedSetOf<WorksitePosition>()
         val halfWidth=width(placement.geometryVersion)
-        for (f in 34..LENGTH) for (s in -halfWidth..halfWidth) for (up in 0..9) {
+        val routeLength=length(rail, placement.geometryVersion)
+        val chamberCenter=routeLength-5
+        val extended = rail && placement.geometryVersion >= 10
+        val maxUp=if (extended) 8 else 9
+        for (f in 34..routeLength) for (s in -halfWidth..halfWidth) for (up in 0..maxUp) {
             val p = placement.position(s,up,f)
             val n = WorksiteCoherentNoise.sample(placement.layoutSeed,s*.29,up*.35,f*.27)
-            val shape = s*s/(if(placement.geometryVersion>=7) 128.0 else 32.0) + (f-39.0)*(f-39.0)/20.0 + (up-3.5)*(up-3.5)/19.0
-            val hollow = f < LENGTH && kotlin.math.abs(s) < halfWidth && up>=1 && (shape < 1.0+n*.65 || (kotlin.math.abs(s)<=2 && f in 37..40 && up in 1..4))
+            val shape = s*s/(if(placement.geometryVersion>=7) 128.0 else 32.0) + (f-chamberCenter)*(f-chamberCenter)/20.0 + (up-3.5)*(up-3.5)/19.0
+            val hollow = f < routeLength && kotlin.math.abs(s) < halfWidth && up>=1 &&
+                (shape < 1.0+n*.65 || (kotlin.math.abs(s)<=2 && f in chamberCenter-2..chamberCenter+1 && up in 1..4))
             blocks[p] = if(hollow) AIR else when { n>.24 -> "minecraft:tuff"; n<-.27 -> "minecraft:calcite"; else -> "minecraft:deepslate" }
             if(hollow) { air+=p;walkable+=p } else walkable.remove(p)
         }
         // Coherent veins on the cave shell. Ordinary mining remains protected: these are the discovery, not a new loot source.
-        for(f in 35..LENGTH) for(s in -halfWidth..halfWidth) for(up in 0..8) {
+        for(f in 35..routeLength) for(s in -halfWidth..halfWidth) for(up in 0 until maxUp) {
             val p=placement.position(s,up,f)
             if(p in air) continue
             val exposed=listOf(p.copy(x=p.x-1),p.copy(x=p.x+1),p.copy(y=p.y-1),p.copy(y=p.y+1),p.copy(z=p.z-1),p.copy(z=p.z+1)).any { it in air }
@@ -75,7 +99,9 @@ internal object MineDriveLayout {
                 blocks[p]="minecraft:deepslate_diamond_ore"
         }
         // A subdued ambient source exposes the chamber silhouette without a forest of lamps.
-        val lights=if(placement.geometryVersion>=7) listOf(-7 to 38,-3 to 40,3 to 40,7 to 38,0 to 36) else listOf(-3 to 40,3 to 41)
+        val lights=if(placement.geometryVersion>=7)
+            listOf(-7 to chamberCenter-1,-3 to chamberCenter+1,3 to chamberCenter+1,7 to chamberCenter-1,0 to chamberCenter-3)
+        else listOf(-3 to 40,3 to 41)
         lights.map { (s,f)->placement.position(s,3,f) }.filter { it in air }.forEach {
             blocks[it]=if(placement.geometryVersion>=7) "minecraft:light[level=13,waterlogged=false]" else "minecraft:light[level=10,waterlogged=false]"
         }
@@ -83,15 +109,26 @@ internal object MineDriveLayout {
 
     fun plan(placement: MineWorkingPlacement, type: MineIncidentType = MineIncidentType.TUNNEL_DRIVE): MineWorkingPlan {
         val rail = rail(type, placement)
+        val routeLength=length(rail, placement.geometryVersion)
         val blocks = linkedMapOf<WorksitePosition, String>()
         val walkable = linkedSetOf<WorksitePosition>()
         val halfWidth=width(placement.geometryVersion)
-        for (f in 0..LENGTH) {
-            val width = if (f <= 1) 2 else if (f == 2) 4 else halfWidth
-            for (s in -width..width) for (up in 0..6) {
+        // Keep the rail shell under the existing 12k preparation cap while
+        // the chamber itself still reaches the validated machine height.
+        val extended = rail && placement.geometryVersion >= 10
+        val maxUp=if (extended) 5 else 6
+        for (f in 0..routeLength) {
+            val width = when {
+                extended && f <= 1 -> 3
+                extended && f == 2 -> 5
+                f <= 1 -> 2
+                f == 2 -> 4
+                else -> halfWidth
+            }
+            for (s in -width..width) for (up in 0..maxUp) {
                 val p = placement.position(s, up, f)
-                val interior = kotlin.math.abs(s) < width && f < LENGTH && up in 1..(if (f <= 1) 3 else 4)
-                val opening = interior && (f <= 3 || f >= LENGTH - 4)
+                val interior = kotlin.math.abs(s) < width && f < routeLength && up in 1..(if (f <= 1) 3 else 4)
+                val opening = interior && (f <= 3 || f >= routeLength - 4)
                 val noise = WorksiteCoherentNoise.sample(placement.layoutSeed, s * .3, up * .3, f * .24)
                 blocks[p] = when {
                     interior && !rail && bedrock(s, f, placement.geometryVersion) -> BEDROCK
@@ -103,8 +140,8 @@ internal object MineDriveLayout {
                 if (interior) walkable += p
             }
         }
-        if (placement.geometryVersion >= 6) diamondChamber(placement, blocks, walkable)
-        val excavation = (4 until LENGTH - 4).map { placement.position(0, 1, it) }.filter { blocks[it] != AIR }
+        if (placement.geometryVersion >= 6) diamondChamber(placement, blocks, walkable, rail)
+        val excavation = (4 until routeLength - 4).map { placement.position(0, 1, it) }.filter { blocks[it] != AIR }
         return MineWorkingPlan(type, placement, blocks, blocks.keys,
             blocks.keys - walkable, walkable, excavation, emptyList(), emptyList(), emptyList(), emptyList(),
             emptyList(), emptyMap(), emptySet(), placement.entrance)

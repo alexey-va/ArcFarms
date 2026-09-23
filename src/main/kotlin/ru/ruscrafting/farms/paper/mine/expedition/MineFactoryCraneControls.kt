@@ -51,6 +51,9 @@ internal class MineFactoryCraneControls(
         var missedLanding: Boolean = false,
         var completionAttempted: Boolean = false,
         var lastSound: Long = Long.MIN_VALUE,
+        var driveX: Double = 0.0,
+        var driveZ: Double = 0.0,
+        var velocity: Vector = Vector(),
     )
 
     private val sessions = linkedMapOf<String, Session>()
@@ -62,7 +65,7 @@ internal class MineFactoryCraneControls(
             return emptyList()
         }
         val scope = scope(scene)
-        val session = session(scope, scene, now)
+        session(scope, scene, now)
         val body = targets.target(
             scene,
             MineFactoryCraneLayout.console,
@@ -78,7 +81,7 @@ internal class MineFactoryCraneControls(
             org.bukkit.Material.POLISHED_DEEPSLATE,
             "crane-landing",
             interactive = false,
-            glowing = true,
+            glowing = false,
             model = MineFactoryExperimentLayout.craneLanding.model,
         )
         val buttons = MineFactoryCraneLayout.buttons.mapNotNull { button ->
@@ -88,7 +91,7 @@ internal class MineFactoryCraneControls(
                 button.material,
                 button.key,
                 interactive = true,
-                glowing = button.id == activeButton(session),
+                glowing = false,
                 model = button.model,
             )?.let { if (button.id in setOf("crane_lift", "crane_lower")) it else it.copy(label = Component.empty()) }
         }
@@ -112,17 +115,16 @@ internal class MineFactoryCraneControls(
         if (!eligible(scene, state) || scope != scope(scene)) return false
         val button = MineFactoryCraneLayout.button(id) ?: return false
         val session = session(scope, scene, now)
-        if (session.owner != null && session.owner != player.uniqueId) return true
         if (!acceptInput(session, now)) return true
         session.owner = player.uniqueId
         when (button.id) {
             "crane_lift" -> lift(session)
             "crane_lower" -> lower(session)
-            "crane_left" -> horizontal(session, -STEP, 0.0)
-            "crane_right" -> horizontal(session, STEP, 0.0)
+            "crane_left" -> horizontal(session, -1.0, 0.0)
+            "crane_right" -> horizontal(session, 1.0, 0.0)
             // The operator faces +Z and looks toward -Z, so forward is -Z.
-            "crane_forward" -> horizontal(session, 0.0, -STEP)
-            "crane_back" -> horizontal(session, 0.0, STEP)
+            "crane_forward" -> horizontal(session, 0.0, -1.0)
+            "crane_back" -> horizontal(session, 0.0, 1.0)
         }
         click(session, button)
         // Completion is intentionally deferred to tick after descent. Keeping
@@ -150,9 +152,13 @@ internal class MineFactoryCraneControls(
         val delta = (now - session.lastTick).coerceIn(0L, MAX_TICK_MILLIS)
         session.lastTick = now
         if (session.owner == null || delta <= 0L) return
+        if (session.phase == Phase.RAISED || session.phase == Phase.MOVING) {
+            travel(session, delta / 1_000.0)
+            boundedSound(session, now, owner)
+            return
+        }
         val distance = when (session.phase) {
             Phase.RAISING, Phase.LOWERING -> VERTICAL_SPEED * delta / 1_000.0
-            Phase.RAISED, Phase.MOVING -> HORIZONTAL_SPEED * delta / 1_000.0
             else -> 0.0
         }
         val next = MineFactoryExperimentMotion.smooth(session.current.toVector(), session.target.toVector(), distance)
@@ -162,8 +168,6 @@ internal class MineFactoryCraneControls(
             z = next.z
         }
         if (session.phase == Phase.RAISING && reached(session.current, session.target, VERTICAL_TOLERANCE)) {
-            session.phase = Phase.RAISED
-        } else if (session.phase == Phase.MOVING && reachedHorizontal(session.current, session.target, HORIZONTAL_TOLERANCE)) {
             session.phase = Phase.RAISED
         } else if (session.phase == Phase.LOWERING && reached(session.current, session.target, VERTICAL_TOLERANCE)) {
             session.phase = Phase.LANDED
@@ -226,7 +230,7 @@ internal class MineFactoryCraneControls(
         ?: run {
             val source = source(scene)
             val destination = destination(scene)
-            Session(scene, source, destination, targets.location(scene, MineFactoryCraneLayout.console)?.yaw ?: 0f,
+            Session(scene, source, destination, (targets.location(scene, MineFactoryCraneLayout.console)?.yaw ?: 0f) + MineFactoryCraneLayout.YAW,
                 source.clone(), source.clone(), lastTick = now).also { sessions[scope] = it }
         }
 
@@ -249,7 +253,12 @@ internal class MineFactoryCraneControls(
     }
 
     private fun lower(session: Session) {
-        if (session.phase != Phase.RAISED) return
+        if (session.phase != Phase.RAISED) {
+            plugin.server.getPlayer(session.owner ?: return)?.let { player ->
+                player.sendActionBar(targets.text("crane-brake", player))
+            }
+            return
+        }
         session.missedLanding = false
         session.completionAttempted = false
         session.target = session.current.clone().apply { y = landingY(session) }
@@ -274,31 +283,53 @@ internal class MineFactoryCraneControls(
         return session.source.y - FLOOR_CENTER_OFFSET
     }
 
+    /** A second press on the same direction cuts its motor; the trolley coasts to rest. */
     private fun horizontal(session: Session, localDx: Double, localDz: Double) {
-        if (session.phase != Phase.RAISED) return
-        // The furnishing editor may rotate the complete assembly.  Apply that
-        // same yaw to button directions before clamping in world coordinates.
+        if (session.phase != Phase.RAISED && session.phase != Phase.MOVING) return
+        if (localDx != 0.0) session.driveX = if (session.driveX == localDx) 0.0 else localDx
+        if (localDz != 0.0) session.driveZ = if (session.driveZ == localDz) 0.0 else localDz
+        session.phase = Phase.MOVING
+        session.missedLanding = false
+        session.completionAttempted = false
+    }
+
+    private fun travel(session: Session, seconds: Double) {
         val radians = Math.toRadians(session.consoleYaw.toDouble())
-        val dx = localDx * kotlin.math.cos(radians) + localDz * kotlin.math.sin(radians)
-        val dz = -localDx * kotlin.math.sin(radians) + localDz * kotlin.math.cos(radians)
+        val desired = Vector(
+            session.driveX * kotlin.math.cos(radians) + session.driveZ * kotlin.math.sin(radians),
+            0.0,
+            -session.driveX * kotlin.math.sin(radians) + session.driveZ * kotlin.math.cos(radians),
+        )
+        if (desired.lengthSquared() > 1.0) desired.normalize()
+        desired.multiply(HORIZONTAL_SPEED)
+        val previous = session.velocity.clone()
+        session.velocity = MineFactoryExperimentMotion.smooth(previous, desired, ACCELERATION * seconds)
+        // Trapezoidal integration preserves a visible stopping distance at different tick rates.
+        val displacement = previous.add(session.velocity).multiply(seconds / 2.0)
         val minX = minOf(session.source.x, session.destination.x) - BOUNDARY_MARGIN
         val maxX = maxOf(session.source.x, session.destination.x) + BOUNDARY_MARGIN
         val minZ = minOf(session.source.z, session.destination.z) - BOUNDARY_MARGIN
         val maxZ = maxOf(session.source.z, session.destination.z) + BOUNDARY_MARGIN
-        session.target = session.current.clone().apply {
-            x = (x + dx).coerceIn(minX, maxX)
-            z = (z + dz).coerceIn(minZ, maxZ)
-            y = topY(session)
+        val x = session.current.x + displacement.x
+        val z = session.current.z + displacement.z
+        session.current.x = x.coerceIn(minX, maxX)
+        session.current.z = z.coerceIn(minZ, maxZ)
+        if (x != session.current.x || z != session.current.z) {
+            session.driveX = 0.0
+            session.driveZ = 0.0
+            session.velocity.zero()
         }
-        session.phase = Phase.MOVING
-        session.missedLanding = false
-        session.completionAttempted = false
+        session.phase = if (session.velocity.lengthSquared() < 1.0e-8 &&
+            session.driveX == 0.0 && session.driveZ == 0.0) Phase.RAISED else Phase.MOVING
     }
 
     private fun topY(session: Session): Double = maxOf(session.source.y, session.destination.y) + LIFT_HEIGHT
 
     private fun resetSafe(session: Session) {
         session.owner = null
+        session.driveX = 0.0
+        session.driveZ = 0.0
+        session.velocity.zero()
         session.current = session.source.clone()
         session.target = session.source.clone()
         session.phase = Phase.SOURCE
@@ -332,46 +363,23 @@ internal class MineFactoryCraneControls(
     private fun reached(current: Location, target: Location, tolerance: Double): Boolean =
         abs(current.y - target.y) <= tolerance
 
-    private fun reachedHorizontal(current: Location, target: Location, tolerance: Double): Boolean =
-        horizontalDistanceSquared(current, target) <= tolerance * tolerance
-
     private fun horizontalDistanceSquared(first: Location, second: Location): Double =
         (first.x - second.x) * (first.x - second.x) + (first.z - second.z) * (first.z - second.z)
-
-    private fun activeButton(session: Session): String? = when (session.phase) {
-        Phase.SOURCE, Phase.LANDED -> "crane_lift"
-        Phase.RAISED, Phase.MOVING -> {
-            if (horizontalDistanceSquared(session.current, session.destination) <= LANDING_RADIUS * LANDING_RADIUS) {
-                "crane_lower"
-            } else {
-                val radians = Math.toRadians(session.consoleYaw.toDouble())
-                val dx = session.destination.x - session.current.x
-                val dz = session.destination.z - session.current.z
-                val localX = dx * kotlin.math.cos(radians) - dz * kotlin.math.sin(radians)
-                val localZ = dx * kotlin.math.sin(radians) + dz * kotlin.math.cos(radians)
-                if (abs(localX) >= abs(localZ)) {
-                    if (localX < 0.0) "crane_left" else "crane_right"
-                } else if (localZ < 0.0) "crane_forward" else "crane_back"
-            }
-        }
-        Phase.LOWERING, Phase.RAISING -> null
-    }
 
     private fun scope(scene: MineExpeditionScene): String = "${scene.zoneId}:${scene.sequence}:${scene.objectiveNonce}"
 
     private companion object {
-        const val STEP = .8
         const val LIFT_HEIGHT = 3.0
         const val BOUNDARY_MARGIN = 2.0
-        const val LANDING_RADIUS = .7
+        const val LANDING_RADIUS = .35
         const val SOURCE_SUPPORT_X = 2.7
         const val SOURCE_SUPPORT_Z = 1.7
         const val DESTINATION_SUPPORT_X = 1.0
         const val DESTINATION_SUPPORT_Z = 1.25
         const val FLOOR_CENTER_OFFSET = 1.7
-        const val HORIZONTAL_SPEED = 2.5
+        const val HORIZONTAL_SPEED = 2.0
+        const val ACCELERATION = 2.0
         const val VERTICAL_SPEED = 3.0
-        const val HORIZONTAL_TOLERANCE = .08
         const val VERTICAL_TOLERANCE = .06
         const val INPUT_COOLDOWN = 120L
         const val SOUND_COOLDOWN = 220L

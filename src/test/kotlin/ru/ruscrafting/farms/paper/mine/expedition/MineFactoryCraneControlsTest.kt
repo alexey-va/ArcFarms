@@ -20,7 +20,6 @@ import ru.ruscrafting.farms.domain.mine.expedition.MineExpeditionStep
 import ru.ruscrafting.farms.domain.mine.expedition.MineFactoryExperiment
 import ru.ruscrafting.farms.domain.mine.expedition.MineFactoryExperimentPlan
 import kotlin.math.abs
-import kotlin.math.ceil
 
 class MineFactoryCraneControlsTest : FunSpec({
     lateinit var paper: MockBukkitTestRuntime
@@ -60,6 +59,7 @@ class MineFactoryCraneControlsTest : FunSpec({
         }
         MineFactoryCraneLayout.buttons.map { it.id }.distinct().size shouldBe 6
         MineFactoryCraneLayout.staticFixtures().map { it.id }.distinct().size shouldBe 7
+        targets.filter { it.id != "crane_load" && it.model?.startsWith("factory_crane_") == true }.all { it.yaw == 90 } shouldBe true
         val buttonBoxes = targets.filter { it.model?.startsWith("factory_crane_button_") == true }.map {
             it to requireNotNull(MineExpeditionMarkerGeometry.hitbox(MineDisplayBlueprints.model(it.model!!), it.yaw, it.modelScale))
         }
@@ -67,111 +67,100 @@ class MineFactoryCraneControlsTest : FunSpec({
             val (left, a) = buttonBoxes[i]; val (right, b) = buttonBoxes[j]
             val dx = abs(left.location.x + a.center.x - right.location.x - b.center.x)
             val dy = abs(left.location.y + a.center.y - right.location.y - b.center.y)
-            (dx >= (a.width + b.width) / 2 || dy >= (a.height + b.height) / 2) shouldBe true
+            val dz = abs(left.location.z + a.center.z - right.location.z - b.center.z)
+            (dx >= (a.width + b.width) / 2 || dz >= (a.width + b.width) / 2 || dy >= (a.height + b.height) / 2) shouldBe true
         }
     }
 
-    test("lift is required before bounded button movement and a wrong lowering stays repairable") {
+    test("direction powers continuous travel and repeated press brakes with inertia") {
         val state = craneState(scene)
-        val player = paper.server.addPlayer("CraneOperator")
+        val player = paper.server.addPlayer("Operator")
         val scope = scope(scene)
         controls.targets(scene, state, 0L)
-        val source = requireNotNull(controls.position(scope))
-
-        controls.interact(scope, scene, state, player, "crane_right", 0L) { it.accepted } shouldBe true
+        val source = controls.position(scope)!!
+        controls.interact(scope, scene, state, player, "crane_back", 0L) { it.accepted }
         controls.position(scope) shouldBe source
-
-        controls.interact(scope, scene, state, player, "crane_lift", 200L) { it.accepted } shouldBe true
-        (450L..1_200L step 250L).forEach { now ->
-            controls.tick(scope, scene, state, listOf(player), now) { _, step -> step.accepted }
-        }
-        val lifted = requireNotNull(controls.position(scope))
-        (lifted.y - source.y) shouldBe 3.0
-
-        controls.interact(scope, scene, state, player, "crane_right", 1_400L) { it.accepted } shouldBe true
-        controls.tick(scope, scene, state, listOf(player), 1_650L) { _, step -> step.accepted }
-        controls.tick(scope, scene, state, listOf(player), 1_900L) { _, step -> step.accepted }
-        val moved = requireNotNull(controls.position(scope))
-        (moved.x > source.x) shouldBe true
-        (moved.y - source.y) shouldBe 3.0
-
-        controls.interact(scope, scene, state, player, "crane_lower", 2_100L) { it.accepted } shouldBe true
-        (2_350L..3_850L step 250L).forEach { now ->
-            controls.tick(scope, scene, state, listOf(player), now) { _, step -> step.accepted }
-        }
-        controls.hint(scope, player)?.toString() shouldNotBe null
-        (controls.position(scope)!!.y < lifted.y) shouldBe true
-
-        // The failed landing is left on the floor. Lift resets the miss and
-        // gives the operator a safe, bounded correction path.
-        controls.interact(scope, scene, state, player, "crane_lift", 4_100L) { it.accepted } shouldBe true
-        (4_350L..5_100L step 250L).forEach { now ->
-            controls.tick(scope, scene, state, listOf(player), now) { _, step -> step.accepted }
-        }
-        controls.hint(scope, player)?.toString() shouldNotBe null
+        controls.interact(scope, scene, state, player, "crane_lift", 200L) { it.accepted }
+        (250L..1_250L step 50L).forEach { controls.tick(scope, scene, state, listOf(player), it) { _, _ -> false } }
+        controls.interact(scope, scene, state, player, "crane_back", 1_400L) { it.accepted }
+        (1_450L..2_450L step 50L).forEach { controls.tick(scope, scene, state, listOf(player), it) { _, _ -> false } }
+        val moving = controls.position(scope)!!
+        (moving.x > source.x + .8) shouldBe true
+        controls.interact(scope, scene, state, player, "crane_back", 2_500L) { it.accepted }
+        (2_550L..3_750L step 50L).forEach { controls.tick(scope, scene, state, listOf(player), it) { _, _ -> false } }
+        val stopped = controls.position(scope)!!
+        (stopped.x > moving.x + .5) shouldBe true
+        controls.tick(scope, scene, state, listOf(player), 4_000L) { _, _ -> false }
+        controls.position(scope) shouldBe stopped
+        controls.targets(scene, state, 4_000L).all { !it.glowing } shouldBe true
     }
 
-    test("only a successful callback releases a landed load, while release resets the operator to source") {
+    test("another authorized non-op operator can brake and correct the shared crane") {
         val state = craneState(scene)
-        val player = paper.server.addPlayer("CallbackOperator")
+        val first = paper.server.addPlayer("First").apply { isOp = false }
+        val second = paper.server.addPlayer("Second").apply { isOp = false }
         val scope = scope(scene)
         controls.targets(scene, state, 0L)
-        val source = requireNotNull(controls.position(scope))
-        val destination = requireNotNull(fixturePosition(scene, "crane_load", Vector(0.0, 2.0, 0.0)))
+        controls.interact(scope, scene, state, first, "crane_lift", 0L) { it.accepted }
+        (50L..1_000L step 50L).forEach { controls.tick(scope, scene, state, listOf(first, second), it) { _, _ -> false } }
+        controls.interact(scope, scene, state, second, "crane_back", 1_200L) { it.accepted }
+        val before = controls.position(scope)!!
+        controls.tick(scope, scene, state, listOf(first, second), 1_450L) { _, _ -> false }
+        (controls.position(scope)!!.x > before.x) shouldBe true
+        controls.release(second)
+        controls.position(scope)!!.x shouldBe before.x
+    }
 
-        controls.interact(scope, scene, state, player, "crane_lift", 0L) { it.accepted }
-        (250L..1_000L step 250L).forEach { now ->
-            controls.tick(scope, scene, state, listOf(player), now) { _, step -> step.accepted }
-        }
-        val direction = if (destination.x >= source.x) "crane_right" else "crane_left"
-        val moves = ceil(abs(destination.x - source.x) / .8).toInt()
-        var now = 1_200L
-        repeat(moves) {
-            controls.interact(scope, scene, state, player, direction, now) { it.accepted }
-            controls.tick(scope, scene, state, listOf(player), now + 250L) { _, step -> step.accepted }
-            controls.tick(scope, scene, state, listOf(player), now + 500L) { _, step -> step.accepted }
-            now += 700L
-        }
+    test("precise manually braked landing completes once and a rejected commit remains retryable") {
+        val state = craneState(scene)
+        val player = paper.server.addPlayer("Landing")
+        val scope = scope(scene)
+        controls.targets(scene, state, 0L)
+        val source = controls.position(scope)!!
+        val destination = fixturePosition(scene, "crane_load", Vector(0.0, 2.0, 0.0))!!
+        var now = 0L
+        var calls = 0
+        fun advance(millis: Long) { repeat((millis / 50L).toInt()) {
+            now += 50L
+            controls.tick(scope, scene, state, listOf(player), now) { _, _ -> calls++; false }
+        } }
+        controls.interact(scope, scene, state, player, "crane_lift", now) { it.accepted }
+        advance(1_000L)
+        controls.interact(scope, scene, state, player, "crane_back", now) { it.accepted }
+        advance(3_500L)
+        controls.interact(scope, scene, state, player, "crane_back", now) { it.accepted }
+        advance(1_000L)
+        (abs(controls.position(scope)!!.x - destination.x) < .1) shouldBe true
         controls.interact(scope, scene, state, player, "crane_lower", now) { it.accepted }
-        val rejected = mutableListOf<MineExpeditionStep>()
-        (now + 250L..now + 1_500L step 250L).forEach { tickNow ->
-            controls.tick(scope, scene, state, listOf(player), tickNow) { _, step -> rejected += step; false }
-        }
-        rejected.size shouldBe 1
+        advance(2_000L)
+        calls shouldBe 1
         controls.position(scope) shouldNotBe null
-
+        advance(1_000L)
+        calls shouldBe 1
         controls.release(player)
         controls.position(scope) shouldBe source
     }
 
-    test("a reversed edited route lowers a missed load to the floor and lets the operator retry") {
-        controls.cleanup()
-        controls = MineFactoryCraneControls(plugin, markers, MineFactoryExperimentTargets(null) { site, anchor, offset ->
-            fixturePosition(site, anchor, offset)?.apply { if (anchor == "crane_load") x -= 14.0 }
-        })
+    test("moving load cannot lower and travel stops safely at the yard boundary") {
         val state = craneState(scene)
-        val player = paper.server.addPlayer("ReverseOperator")
+        val player = paper.server.addPlayer("Boundary")
         val scope = scope(scene)
         controls.targets(scene, state, 0L)
-        val source = requireNotNull(controls.position(scope))
-        var now = 0L
-        fun waitMotion() { repeat(8) {
-            now += 250L
-            controls.tick(scope, scene, state, listOf(player), now) { _, _ -> error("wrong landing must not finish") }
-        } }
-        controls.interact(scope, scene, state, player, "crane_lift", now) { it.accepted }
-        waitMotion()
-        repeat(4) {
-            controls.interact(scope, scene, state, player, "crane_left", now + 150L) { it.accepted }
-            waitMotion()
-        }
-        controls.interact(scope, scene, state, player, "crane_lower", now + 150L) { it.accepted }
-        waitMotion()
-        controls.position(scope)!!.y shouldBe source.y - 1.7
-        controls.targets(scene, state, now).single { it.id == "crane_lift" }.glowing shouldBe true
-        controls.interact(scope, scene, state, player, "crane_lift", now + 150L) { it.accepted }
-        waitMotion()
-        controls.targets(scene, state, now).single { it.id == "crane_left" }.glowing shouldBe true
+        controls.interact(scope, scene, state, player, "crane_lift", 0L) { it.accepted }
+        (50L..1_000L step 50L).forEach { controls.tick(scope, scene, state, listOf(player), it) { _, _ -> false } }
+        val high = controls.position(scope)!!.y
+        controls.interact(scope, scene, state, player, "crane_back", 1_200L) { it.accepted }
+        controls.interact(scope, scene, state, player, "crane_lower", 1_400L) { it.accepted }
+        (1_450L..11_450L step 50L).forEach { controls.tick(scope, scene, state, listOf(player), it) { _, _ -> error("must not complete") } }
+        controls.position(scope)!!.y shouldBe high
+        val destination = fixturePosition(scene, "crane_load", Vector(0.0, 2.0, 0.0))!!
+        controls.position(scope)!!.x shouldBe destination.x + 2.0
+        controls.interact(scope, scene, state, player, "crane_lower", 12_000L) { it.accepted }
+        (12_050L..14_000L step 50L).forEach { controls.tick(scope, scene, state, listOf(player), it) { _, _ -> error("miss must remain retryable") } }
+        (controls.position(scope)!!.y < destination.y) shouldBe true
+        controls.interact(scope, scene, state, player, "crane_lift", 14_200L) { it.accepted }
+        (14_250L..16_250L step 50L).forEach { controls.tick(scope, scene, state, listOf(player), it) { _, _ -> false } }
+        controls.position(scope)!!.y shouldBe high
     }
 
     test("crane model set keeps buttons readable and separated from the console") {

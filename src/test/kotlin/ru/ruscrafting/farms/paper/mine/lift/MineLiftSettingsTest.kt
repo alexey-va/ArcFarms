@@ -85,6 +85,53 @@ class MineLiftSettingsTest : FreeSpec({
         }
     }
 
+    "walk-in entry crosses only the active landing doorway and can be retried after exit" {
+        val world = io.mockk.mockk<org.bukkit.World>()
+        io.mockk.every { world.name } returns "mine"
+        val settings = MineLiftSettings(
+            id = "main", world = world.name, x = 0.0, z = 0.0, width = 2.8, depth = 2.8, speed = 6.0,
+            floors = listOf(
+                MineLiftFloor("top", 100.0, LiftPoint(-8.0, 100.0, 0.0), LiftPoint(-8.0, 100.0, 2.0)),
+                MineLiftFloor("bottom", 90.0, LiftPoint(0.0, 90.0, -8.0), LiftPoint(2.0, 90.0, -8.0)),
+            ),
+        )
+        val outsideWest = org.bukkit.Location(world, -1.71, 100.0, 0.0)
+        val insideWest = org.bukkit.Location(world, -1.69, 100.0, 0.0)
+        val outsideNorth = org.bukkit.Location(world, 0.0, 90.0, -1.71)
+        val insideNorth = org.bukkit.Location(world, 0.0, 90.0, -1.69)
+
+        settings.entersCabin(outsideWest, insideWest, 0) shouldBe true
+        settings.entersCabin(insideWest, org.bukkit.Location(world, -1.5, 100.0, 0.0), 0) shouldBe false
+        settings.entersCabin(insideWest, outsideWest, 0) shouldBe false
+        settings.entersCabin(outsideWest, insideWest, 0) shouldBe true
+        settings.entersCabin(outsideNorth, insideNorth, 0) shouldBe false
+        settings.entersCabin(outsideWest, insideWest, 1) shouldBe false
+        settings.entersCabin(
+            org.bukkit.Location(world, -1.71, 90.0, 0.0),
+            org.bukkit.Location(world, -1.69, 90.0, 0.0),
+            0,
+        ) shouldBe false
+        settings.entersCabin(outsideNorth, insideNorth, 1) shouldBe true
+    }
+
+    "look-only movement does not reset a walk-in menu latch, but stepping away does" {
+        val world = io.mockk.mockk<org.bukkit.World>()
+        io.mockk.every { world.name } returns "mine"
+        val settings = MineLiftSettings(
+            id = "main", world = world.name, x = 0.0, z = 0.0, width = 2.8, depth = 2.8, speed = 6.0,
+            floors = listOf(
+                MineLiftFloor("top", 100.0, LiftPoint(-8.0, 100.0, 0.0), LiftPoint(-8.0, 100.0, 2.0)),
+                MineLiftFloor("bottom", 90.0, LiftPoint(0.0, 90.0, -8.0), LiftPoint(2.0, 90.0, -8.0)),
+            ),
+        )
+        val atDoor = org.bukkit.Location(world, -1.71, 100.0, 0.0)
+        val lookOnly = atDoor.clone().apply { yaw = 90f; pitch = 20f }
+
+        settings.movedAwayFromCabin(atDoor, lookOnly) shouldBe false
+        settings.movedAwayFromCabin(atDoor, org.bukkit.Location(world, -1.69, 100.0, 0.0)) shouldBe false
+        settings.movedAwayFromCabin(atDoor, org.bukkit.Location(world, -1.91, 100.0, 0.0)) shouldBe true
+    }
+
     "derives all five default floors from their configured landing sides" {
         val settings = MineLiftSettings(
             id = "main", world = "mine", x = 51.5, z = 78.5, width = 2.8, depth = 2.8, speed = 6.0,

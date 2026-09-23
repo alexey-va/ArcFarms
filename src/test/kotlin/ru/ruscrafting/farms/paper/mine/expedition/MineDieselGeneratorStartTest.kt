@@ -7,7 +7,6 @@ import org.mockbukkit.mockbukkit.world.WorldMock
 import ru.arc.paper.testing.MockBukkitTestRuntime
 import ru.ruscrafting.farms.domain.mine.expedition.*
 import ru.ruscrafting.farms.paper.worksite.scene.WorksitePreparedScene
-import kotlin.math.PI
 
 class MineDieselGeneratorStartTest : FunSpec({
     lateinit var paper: MockBukkitTestRuntime
@@ -44,89 +43,47 @@ class MineDieselGeneratorStartTest : FunSpec({
         }
     }
 
-    test("old plans link the flywheel to its fixture and shared clicks can be cleared and retried") {
+    test("old plans expose one physical start console and one press starts the persisted ramp") {
         plan.stations.containsKey("generator_flywheel") shouldBe false
-        var state = MineExpeditionState(
-            scene.placement, MineExpeditionStage.FACTORY_WATER, completed = setOf(0, 1),
-        )
+        var state = MineExpeditionState(scene.placement, MineExpeditionStage.FACTORY_WATER, completed = setOf(0, 1))
         val target = MineFactoryProgram.targets(plan, state).single()
-        target.id shouldBe "generator_flywheel"
+        target.interaction shouldBe MineExpeditionInteraction.OPERATE
         target.position shouldBe MineFactoryLine.stations.getValue("generator_flywheel")
-        MineFactoryLine.effectiveStation(plan, target.id) shouldBe target.position
-        MineExpeditionFurnishings.parent(plan.kind, target.id) shouldBe "decor_diesel_generator"
-        MineExpeditionFurnishings.childOf(plan.kind, target.id, "decor_diesel_generator") shouldBe true
-        val generatorFixture = MineExpeditionFurnishings.fixtures(plan).single { it.id == "decor_diesel_generator" }
-        generatorFixture.at shouldBe MineFactoryLine.machines.getValue("decor_diesel_generator")
-
-        val players = listOf(paper.server.addPlayer(), paper.server.addPlayer())
-        players.forEach { it.teleport(scene.at(target.position)) }
+        val fixture = MineExpeditionFurnishings.fixtures(plan).single { it.id == target.id }
+        fixture.model shouldBe "machine_console"
+        fixture.at shouldBe target.position
+        val oldPlan = plan.copy(stations = plan.stations + (target.id to ExpeditionPoint(24, 5, 6)))
+        MineFactoryProgram.targets(oldPlan, state).single().position shouldBe target.position
+        val player = paper.server.addPlayer().also { it.teleport(scene.at(target.position)) }
         var accepted = 0
         val complete: (MineExpeditionStep) -> Boolean = { step ->
             if (step.accepted) accepted++
             state = step.state
             step.accepted
         }
-
-        fun sharedClick(index: Int, now: Long) {
-            actions.interact(scope, scene, state, players[index % 2], target, now, complete) {}
-            actions.interact(scope, scene, state, players[1 - index % 2], target, now, complete) {}
-        }
-
-        fun animatedAngle(now: Long): Double? {
-            var angle: Double? = null
-            actions.tick(scope, scene, state, listOf(target), players, now,
-                { _, _ -> error("flywheel animation cannot complete a checkpoint") }) { id, radians ->
-                if (id == target.id) angle = radians
-            }
-            return angle
-        }
-
-        repeat(2) { index ->
-            val now = 1_000L + index * 250L
-            sharedClick(index, now)
-            if (index == 1) animatedAngle(now) shouldBe PI / 2
-        }
-        accepted shouldBe 0
-        actions.clear(scope)
-        actions.hint(scope, players.first(), 2_000L) shouldBe null
-
-        repeat(8) { index ->
-            val now = 5_000L + index * 250L
-            sharedClick(index, now)
-            if (index < 7 && index == 1) animatedAngle(now) shouldBe PI / 2
-            if (index < 7) accepted shouldBe 0
-        }
-
+        actions.interact(scope, scene, state, player, target, 1_000L, complete) {}
         accepted shouldBe 1
         state.stage shouldBe MineExpeditionStage.FACTORY_COAL
-        state.factoryGeneratorStartedAt shouldBe 6_750L
-        actions.interact(scope, scene, state, players.first(), target, 12_750L, complete) {}
+        state.factoryGeneratorStartedAt shouldBe 1_000L
+        MineFactoryGeneratorCycle.ready(state, 6_999L) shouldBe false
+        MineFactoryGeneratorCycle.ready(state, 7_000L) shouldBe true
+        actions.interact(scope, scene, state, player, target, 7_000L, complete) {}
         accepted shouldBe 1
-        state.factoryGeneratorStartedAt shouldBe 6_750L
+        state.factoryGeneratorStartedAt shouldBe 1_000L
     }
 
-    test("disabled cutaway is omitted while the lightweight flywheel checkpoint remains") {
+    test("disabling the cutaway keeps a visible working start console") {
         val enabled = MineExpeditionFurnishings.targets(scene, null, emptySet(), dieselGeneratorEnabled = true)
         enabled.single { it.id == "decor_diesel_generator" }.model shouldBe MineDieselGeneratorModel.kind
-
         val disabled = MineExpeditionFurnishings.targets(scene, null, emptySet(), dieselGeneratorEnabled = false)
         disabled.none { it.id == "decor_diesel_generator" } shouldBe true
-
+        disabled.single { it.id == "generator_flywheel" }.model shouldBe "machine_console"
         var state = MineExpeditionState(scene.placement, MineExpeditionStage.FACTORY_WATER, completed = setOf(0, 1))
-        val startTarget = MineFactoryProgram.targets(plan, state).single()
-        startTarget.id shouldBe "generator_flywheel"
-        val player = paper.server.addPlayer().also { it.teleport(scene.at(startTarget.position)) }
-        var accepted = false
-        repeat(8) { index ->
-            actions.interact(scope, scene, state, player, startTarget, 10_000L + index * 250L, { step ->
-                state = step.state
-                accepted = step.accepted || accepted
-                step.accepted
-            }) {}
-        }
-        accepted shouldBe true
+        val target = MineFactoryProgram.targets(plan, state).single()
+        val player = paper.server.addPlayer().also { it.teleport(scene.at(target.position)) }
+        actions.interact(scope, scene, state, player, target, 10_000L, { step -> state = step.state; step.accepted }) {}
         state.stage shouldBe MineExpeditionStage.FACTORY_COAL
-        state.factoryGeneratorStartedAt shouldBe 11_750L
+        state.factoryGeneratorStartedAt shouldBe 10_000L
     }
 
     test("connected production cargo cannot be picked up until the startup ramp ends") {

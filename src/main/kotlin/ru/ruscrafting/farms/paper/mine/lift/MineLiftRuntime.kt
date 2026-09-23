@@ -188,15 +188,15 @@ internal class MineLiftRuntime(
     private fun near(player: Player, index: Int, allowCabin: Boolean): Boolean =
         nearFloor(player) == index || (allowCabin && nearCabin(player, index))
 
-    private fun open(player: Player, index: Int, allowCabin: Boolean = false) {
+    private fun open(player: Player, index: Int, allowCabin: Boolean = false): Boolean {
         if (maintenance.ownsAny() || !player.hasPermission("arcfarms.mine") || !near(player, index, allowCabin) || hasRecovery(player.uniqueId)) {
-            player.sendMessage(text("unavailable", player)); return
+            player.sendMessage(text("unavailable", player)); return false
         }
-        val state = motion ?: run { player.sendMessage(text("unavailable", player)); return }
+        val state = motion ?: run { player.sendMessage(text("unavailable", player)); return false }
         if (state.floor != index || state.phase == MineLiftMotion.Phase.MOVING) {
             state.call(index)
             player.sendMessage(text("called", player, mapOf("floor" to floorName(index, player))))
-            return
+            return true
         }
         val config = settings
         dialogs.beginFlow(player)
@@ -218,6 +218,18 @@ internal class MineLiftRuntime(
             }, columns = 2,
             exitButton = PaperDialogButton(PaperDialogActionId.of("close"), FarmDialogScreens.nativeControl(text("close", player)), width = 200, onClick = {}),
         ))
+        return true
+    }
+
+    /** Shared cabin-click and walk-in path; choosing a floor still boards through the same menu action. */
+    private fun openCabinMenu(player: Player): Boolean {
+        val state = motion
+        val floor = state?.takeIf { it.phase == MineLiftMotion.Phase.DOCKED }?.floor
+        if (floor == null || !nearCabin(player, floor)) {
+            player.sendMessage(text("unavailable", player))
+            return false
+        }
+        return open(player, floor, allowCabin = true)
     }
 
     private fun board(player: Player, source: Int, destination: Int, allowCabin: Boolean = false) {
@@ -248,6 +260,7 @@ internal class MineLiftRuntime(
         }
         riders[player.uniqueId] = slot
         check(state.board(destination))
+        interactionGate.clearWalkIn(player.uniqueId)
         player.sendMessage(text("boarding", player, mapOf("floor" to floorName(destination, player))))
     }
 
@@ -332,10 +345,7 @@ internal class MineLiftRuntime(
         if (index == null && !isCabinInteraction) return false
         if (interactionGate.isDuplicate(player.uniqueId, Bukkit.getCurrentTick().toLong())) return true
         if (isCabinInteraction) {
-            val state = motion
-            val floor = state?.takeIf { it.phase == MineLiftMotion.Phase.DOCKED }?.floor
-            if (floor == null || !nearCabin(player, floor)) player.sendMessage(text("unavailable", player))
-            else open(player, floor, allowCabin = true)
+            openCabinMenu(player)
         } else {
             open(player, requireNotNull(index))
         }
@@ -352,13 +362,41 @@ internal class MineLiftRuntime(
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     fun teleport(event: PlayerTeleportEvent) {
+        interactionGate.clearWalkIn(event.player.uniqueId)
         if (event.player.uniqueId in riders && !teleports.isAuthorized(event.player.uniqueId, event.to)) event.isCancelled = true
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     fun move(event: PlayerMoveEvent) {
-        if (event is PlayerTeleportEvent || event.player.uniqueId in riders || event.player.uniqueId in exiting) return
-        if (settings.contains(event.to) && settings.contains(event.from).not()) event.isCancelled = true
+        val player = event.player
+        if (player.uniqueId in riders || player.uniqueId in exiting) return
+        if (event is PlayerTeleportEvent) return
+
+        val enteringShaft = settings.contains(event.to) && !settings.contains(event.from)
+        if (!enteringShaft) {
+            if (interactionGate.hasPendingWalkIn(player.uniqueId) && settings.movedAwayFromCabin(event.from, event.to)) {
+                interactionGate.clearWalkIn(player.uniqueId)
+            }
+            return
+        }
+
+        val state = motion
+        val floor = state?.takeIf { it.phase == MineLiftMotion.Phase.DOCKED }?.floor
+        val canEnter = floor != null && settings.entersCabin(event.from, event.to, floor) &&
+            scene?.isDoorOpenAt(floor) == true && !maintenance.ownsAny() &&
+            player.hasPermission("arcfarms.mine") && !player.isDead && !player.isInsideVehicle &&
+            !hasRecovery(player.uniqueId) && nearCabin(player, floor)
+        if (!canEnter) {
+            event.isCancelled = true
+            return
+        }
+
+        if (interactionGate.shouldOpenWalkInMenu(player.uniqueId, Bukkit.getCurrentTick().toLong())) {
+            openCabinMenu(player)
+        }
+        // The cabin deck is a visual BlockDisplay. Keep this crossing blocked until
+        // the existing destination action escrows, mounts, and boards the passenger.
+        event.isCancelled = true
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
@@ -370,7 +408,10 @@ internal class MineLiftRuntime(
         if (riders.remove(event.player.uniqueId) != null) releaseRider(event.player.uniqueId, settings.id)
     }
     @EventHandler fun join(event: PlayerJoinEvent) { tasks.runLater(1) { recover(event.player) } }
-    @EventHandler fun respawn(event: PlayerRespawnEvent) { tasks.runLater(1) { recover(event.player) } }
+    @EventHandler fun respawn(event: PlayerRespawnEvent) {
+        interactionGate.clearWalkIn(event.player.uniqueId)
+        tasks.runLater(1) { recover(event.player) }
+    }
     @EventHandler fun worldLoad(event: WorldLoadEvent) {
         Bukkit.getOnlinePlayers().filter { recovery.contains(it.uniqueId) }.forEach(::recover)
         if (event.world.name == settings.world) tryStart()

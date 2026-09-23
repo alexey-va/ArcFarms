@@ -99,7 +99,8 @@ internal class MineWorkingPresentation(
             }.let { if (one) it.take(1) else it.take(9) }
         fun station(id: String) = plan.stations[id]?.let { listOf(MineWorkingTarget(id, it, id)) }.orEmpty()
         if (MineDriveLayout.machine(scene.plan.type, working.placement)) {
-            return listOf(MineWorkingTarget("drive-goal", working.placement.position(0,1,MineDriveLayout.LENGTH - 3), if(MineDriveLayout.rail(scene.plan.type,working.placement)) "rail_goal" else "drive_goal"))
+            val rail = MineDriveLayout.rail(scene.plan.type, working.placement)
+            return listOf(MineWorkingTarget("drive-goal", working.placement.position(0,1,MineDriveLayout.length(scene.plan.type, working.placement) - 3), if(rail) "rail_goal" else "drive_goal"))
         }
         return when (working.stage) {
             MineWorkingStage.EXCAVATE -> blocks(plan.excavation, "excavate", one = true)

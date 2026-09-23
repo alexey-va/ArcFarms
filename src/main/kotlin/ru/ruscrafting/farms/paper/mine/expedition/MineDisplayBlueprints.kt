@@ -300,12 +300,28 @@ internal object MineDisplayBlueprints {
         !part.moving || part.motion in setOf("press","feed","processed") -> 0f
         part.motion=="counter_rotate" -> -phase
         part.motion=="diesel_cam" -> phase/2
-        part.motion=="lever" -> sin(phase/2)*.5f
         else -> phase
     }
+    /** Horizontal arms such as the route gate swing sideways; control handles throw toward their mounted front. */
+    private fun leverAxisIsHorizontal(part: Part): Boolean =
+        abs(part.center.x - part.pivot.x) > abs(part.center.y - part.pivot.y)
+
+    private fun leverSwing(part: Part, phase: Float): Quaternionf {
+        val angle = if (part.moving) (1f - cos(phase)) * (PI.toFloat() / 4f) else 0f
+        return if (leverAxisIsHorizontal(part)) Quaternionf().rotateY(angle)
+            else Quaternionf().rotateX(angle * if (part.pivot.z < 0f) -1f else 1f)
+    }
+
+    private fun leverRotation(part: Part, phase: Float): Quaternionf = leverSwing(part, phase).rotateZ(part.angle)
+
+    private fun leverCenter(part: Part, phase: Float): Vector3f {
+        return leverSwing(part, phase).transform(Vector3f(part.center).sub(part.pivot)).add(part.pivot)
+    }
+
     fun rotation(part: Part, phase: Float): Quaternionf = if (part.motion in MineDieselGeneratorMotion.motions) {
         MineDieselGeneratorMotion.rotation(part, phase)
     } else when(part.motion) {
+        "lever" -> leverRotation(part, phase)
         "axle" -> Quaternionf().rotateX(part.angle+phase)
         "belt" -> Quaternionf().rotateZ(beltPose(part,phase).second)
         "cargo" -> Quaternionf()
@@ -319,6 +335,7 @@ internal object MineDisplayBlueprints {
         part.motion=="feed" -> Vector3f(part.center).add(0f,-((phase/(PI.toFloat()*2)+part.angle).mod(1f))*2.8f,0f)
         part.motion=="processed" -> Vector3f(part.center)
         part.motion=="axle" -> Quaternionf().rotateX(phase).transform(Vector3f(part.center).sub(part.pivot)).add(part.pivot)
+        part.motion=="lever" -> leverCenter(part, phase)
         part.motion=="press" -> Vector3f(part.center).add(0f,-(1-cos(phase))*.5f,0f)
         else -> Quaternionf().rotateZ(angle(part,phase)).transform(Vector3f(part.center).sub(part.pivot)).add(part.pivot)
     }

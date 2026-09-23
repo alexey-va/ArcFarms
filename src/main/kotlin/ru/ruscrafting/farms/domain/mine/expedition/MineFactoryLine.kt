@@ -23,7 +23,8 @@ object MineFactoryLine {
 
     /** All authored station anchors, including compatibility valve aliases. */
     val stations: Map<String, ExpeditionPoint> = linkedMapOf(
-        "generator_flywheel" to ExpeditionPoint(24, 5, 6),
+        // Keep the historical checkpoint id; its control is now a console in the service aisle.
+        "generator_flywheel" to ExpeditionPoint(20, 5, 6),
         "entry" to ExpeditionPoint(0, 5, 24),
         "exit" to ExpeditionPoint(0, 5, 24),
         "water_valve_0" to ExpeditionPoint(-27, 5, -6),
@@ -60,6 +61,8 @@ object MineFactoryLine {
     fun effectiveStation(plan: MineExpeditionPlan, id: String): ExpeditionPoint {
         val point = plan.stations[id] ?: if (id == "generator_flywheel") stations.getValue(id) else error("Missing factory station: $id")
         return when {
+            id == "generator_flywheel" && point == ExpeditionPoint(24, 5, 6) ->
+                stations.getValue(id)
             id == "crusher_repair" && point == LEGACY_CRUSHER_REPAIR ->
                 point.offset(dx = 1, dz = 1)
             id == "crane_load" && point == LEGACY_CRANE_LOAD ->

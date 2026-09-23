@@ -20,11 +20,14 @@ internal object WorksiteCarryable {
         localZ: Double = 0.0,
         position: WorksiteCarryPosition = WorksiteCarryPosition.FRONT,
     ): Location {
-        val direction = player.location.direction.setY(0.0)
+        // Carried weight follows the body yaw, not head pitch. Looking straight
+        // up/down must not collapse the horizontal offset or tip the whole load.
+        val body = player.location.clone().apply { pitch = 0f }
+        val direction = body.direction.setY(0.0)
         if (direction.lengthSquared() > 0.001) {
             direction.normalize().multiply(forwardOffset * position.directionMultiplier)
         }
-        return player.location.clone().add(direction).add(localX, verticalOffset, localZ)
+        return body.add(direction).add(localX, verticalOffset, localZ)
     }
 
     fun <T> nearest(

@@ -307,7 +307,10 @@ internal class MineIncidentSet(
             ru.ruscrafting.farms.domain.MineIncidentType.TUNNEL_DRIVE,
             ru.ruscrafting.farms.domain.MineIncidentType.RAIL_EXTENSION,
             ru.ruscrafting.farms.domain.MineIncidentType.TRACK_DAMAGE ->
-                incident.working?.placement?.geometryVersion != ru.ruscrafting.farms.domain.MineWorkingPlacement.CURRENT_GEOMETRY_VERSION
+                incident.working?.placement?.geometryVersion !in setOf(
+                    9,
+                    ru.ruscrafting.farms.domain.MineWorkingPlacement.CURRENT_GEOMETRY_VERSION,
+                )
             ru.ruscrafting.farms.domain.MineIncidentType.FLOODING ->
                 incident.required != 1 || objective?.targets?.size != 1
             ru.ruscrafting.farms.domain.MineIncidentType.CRYSTAL_RESONANCE ->

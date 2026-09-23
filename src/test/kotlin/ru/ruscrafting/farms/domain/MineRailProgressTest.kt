@@ -28,7 +28,7 @@ class MineRailProgressTest : FunSpec({
         laid.all { val a=it%33-p.route.last()%33;val b=it/33-p.route.last()/33;a*a+b*b>9 } shouldBe true
         MineRailProgression.laid(p.copy(finished=true),p.route.last()) shouldBe p.route
     }
-    test("maintenance is optional seeded and survives retry without rerolling or repeating") {
+    test("maintenance is seeded and survives retry without rerolling or repeating") {
         val totals=mutableSetOf<Int>()
         val kinds=mutableSetOf<MineRailServiceKind>()
         for(seed in 1L..100L) {
@@ -50,5 +50,18 @@ class MineRailProgressTest : FunSpec({
         }
         totals shouldBe setOf(0,1,2)
         kinds shouldBe MineRailServiceKind.entries.toSet()
+    }
+    test("three maintenance windows are deterministic and spaced along the longer route") {
+        var p=MineRailProgress()
+        val seen=mutableListOf<Int>()
+        listOf(12.0,24.0,36.0).forEachIndexed { expected, forward ->
+            val service=requireNotNull(MineRailProgression.due(p,10L,forward,10))
+            service.index shouldBe expected
+            seen += service.index
+            p=MineRailProgression.finishService(p.copy(service=service))
+        }
+        seen shouldBe listOf(0,1,2)
+        p.validate(1683,10)
+        MineRailProgression.due(p,10L,49.0,10) shouldBe null
     }
 })

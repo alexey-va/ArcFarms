@@ -1,5 +1,6 @@
 package ru.ruscrafting.farms.paper.worksite
 
+import io.papermc.paper.event.player.PrePlayerAttackEntityEvent
 import org.bukkit.entity.Player
 import org.bukkit.event.block.BlockBreakEvent
 import org.bukkit.event.block.BlockDamageEvent
@@ -13,6 +14,8 @@ import org.bukkit.event.player.PlayerMoveEvent
 import org.bukkit.event.player.PlayerTeleportEvent
 import org.bukkit.event.entity.EntityDeathEvent
 import org.bukkit.event.entity.EntityDamageEvent
+import org.bukkit.inventory.EquipmentSlot
+import ru.ruscrafting.farms.domain.ActivityKind
 import ru.ruscrafting.farms.paper.WorksiteModuleRegistry
 
 /** Application-owned routing for cross-worksite events and participant safety. */
@@ -63,6 +66,16 @@ internal class WorksiteEventRouter(
     }
 
     fun onInteractEntity(event: PlayerInteractEntityEvent): Boolean = registry.onInteractEntity(event)
+
+    fun onAttackEntity(event: PrePlayerAttackEntityEvent): Boolean {
+        // Paper pre-cancels non-attackable Interaction hitboxes. Preserve cancellation
+        // from other plugins for entities that would otherwise receive an attack.
+        if (event.isCancelled && event.willAttack()) return false
+        val interact = PlayerInteractEntityEvent(event.player, event.attacked, EquipmentSlot.HAND)
+        if (!registry.onInteractEntity(ActivityKind.MINE, interact)) return false
+        event.isCancelled = true
+        return true
+    }
 
     fun onInteractEntity(event: PlayerInteractEntityEvent, fallback: () -> Unit) {
         if (!onInteractEntity(event)) fallback()

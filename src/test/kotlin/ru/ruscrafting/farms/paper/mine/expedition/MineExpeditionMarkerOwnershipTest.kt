@@ -3,21 +3,34 @@ package ru.ruscrafting.farms.paper.mine.expedition
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
 import io.mockk.mockk
+import net.kyori.adventure.text.Component
 import org.bukkit.Location
+import org.bukkit.Material
 import org.bukkit.NamespacedKey
 import org.bukkit.entity.Interaction
 import org.bukkit.event.player.PlayerInteractEntityEvent
 import org.bukkit.inventory.EquipmentSlot
 import org.bukkit.persistence.PersistentDataType
 import org.bukkit.plugin.Plugin
+import ru.arc.paper.display.PaperPacketDisplays
+import ru.arc.core.Tasks
+import ru.arc.core.TestTaskScheduler
+import ru.arc.paper.testing.failOnUnsupportedMockBukkitOperation
 import ru.arc.paper.testing.MockBukkitTestRuntime
 import ru.ruscrafting.farms.paper.mine.MineRuntimeRegistry
 
 class MineExpeditionMarkerOwnershipTest : FunSpec({
     lateinit var paper: MockBukkitTestRuntime
+    lateinit var scheduler: TestTaskScheduler
 
-    beforeEach { paper = MockBukkitTestRuntime.open() }
-    afterEach { paper.close() }
+    beforeEach {
+        paper = MockBukkitTestRuntime.open()
+        scheduler = TestTaskScheduler()
+        Tasks.install(scheduler)
+    }
+    afterEach {
+        try { paper.close() } finally { Tasks.reset() }
+    }
 
     test("expedition click routing ignores a same-key marker owned by another renderer") {
         val world = paper.server.addSimpleWorld("world")
@@ -39,6 +52,38 @@ class MineExpeditionMarkerOwnershipTest : FunSpec({
             event.isCancelled shouldBe false
         } finally {
             hitbox.remove()
+        }
+    }
+
+    test("noninteractive block objectives leave the block attack path open") {
+        val world = paper.server.addSimpleWorld("world")
+        val plugin = paper.createSimplePlugin("MineExpeditionBreakMarker")
+        // Packet-only visuals need no protocol transport in this physical-hitbox test.
+        val visuals = mockk<PaperPacketDisplays>(relaxed = true)
+        val markers = MineExpeditionMarkers(plugin)
+        MineExpeditionMarkers::class.java.getDeclaredField("renderer").apply {
+            isAccessible = true
+            set(markers, visuals)
+        }
+        try {
+            failOnUnsupportedMockBukkitOperation {
+                markers.reconcile("scene:1", listOf(
+                    MineExpeditionMarkers.Target(
+                        id = "ore_break",
+                        location = Location(world, 0.5, 64.0, 0.5),
+                        material = Material.STONE,
+                        label = Component.text("ore"),
+                        block = true,
+                        interactive = false,
+                    ),
+                ))
+
+                val hitbox = world.entities.filterIsInstance<Interaction>().single()
+                hitbox.interactionWidth shouldBe 0f
+                hitbox.interactionHeight shouldBe 0f
+            }
+        } finally {
+            markers.cleanup()
         }
     }
 

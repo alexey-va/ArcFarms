@@ -52,6 +52,9 @@ internal class MineLiftScene(private val plugin: Plugin, private val settings: M
 
     fun ownsCabinInteraction(entity: Entity): Boolean = ownsCabinHitbox(entity)
 
+    fun isDoorOpenAt(index: Int): Boolean = index in settings.floors.indices &&
+        doorOpening == 1.0 && openDoorSide == settings.openingSide(index)
+
     fun spawn(y: Double, floorText: (Int) -> Component) {
         val halfX = settings.width / 2
         val halfZ = settings.depth / 2

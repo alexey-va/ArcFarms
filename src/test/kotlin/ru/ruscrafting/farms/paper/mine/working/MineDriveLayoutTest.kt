@@ -20,11 +20,24 @@ class MineDriveLayoutTest : FunSpec({
             val p=MineWorkingPlacement(WorksitePosition("mine",50,80,50),direction,"top",72L)
             val plan=MineWorkingLayout.plan(MineIncidentType.RAIL_EXTENSION,p)
             MineWorkingLayout.validate(plan).shouldBeEmpty()
+            (plan.blocks.size <= 12_000) shouldBe true
             plan.type shouldBe MineIncidentType.RAIL_EXTENSION
             plan.blocks.values.none { it.contains("bedrock") } shouldBe true
             val prepared=MineDriveMotion.excavationCells(p,true)
             for(f in 3..40) (MineDriveLayout.id(0,f) in prepared) shouldBe true
+            (MineDriveLayout.id(0,49) in prepared) shouldBe true
+            MineDriveLayout.radius(2, p.geometryVersion, rail=true) shouldBe 4
+            MineDriveLayout.insideBoundary(4,2,p.geometryVersion,rail=true) shouldBe true
+            MineDriveLayout.insideBoundary(5,2,p.geometryVersion,rail=true) shouldBe false
             (MineDriveLayout.goalOres(plan).size>=12) shouldBe true
+            val legacy=p.copy(geometryVersion=9)
+            val legacyPlan=MineWorkingLayout.plan(MineIncidentType.RAIL_EXTENSION,legacy)
+            MineDriveLayout.length(MineIncidentType.RAIL_EXTENSION,legacy) shouldBe MineDriveLayout.LENGTH
+            MineWorkingLayout.validate(legacyPlan).shouldBeEmpty()
+            (MineDriveLayout.id(0,43) in MineDriveMotion.excavationCells(legacy,true)) shouldBe true
+            (MineDriveLayout.id(0,49) in MineDriveMotion.excavationCells(legacy,true)) shouldBe false
+            MineDriveLayout.radius(2,9,rail=true) shouldBe 3
+            MineDriveLayout.insideBoundary(4,2,9,rail=true) shouldBe false
             val old=MineWorkingLayout.plan(MineIncidentType.RAIL_EXTENSION,p.copy(geometryVersion=8))
             old.rails.isNotEmpty() shouldBe true
             old.cartRoute.isNotEmpty() shouldBe true
@@ -134,6 +147,23 @@ class MineDriveLayoutTest : FunSpec({
         }
         MineDriveMotion.heading(180f) shouldBe 180f
         MineDriveMotion.heading(270f) shouldBe 270f
+    }
+
+    test("geometry 10 rail cutter clears a side block around a repair point without widening the chassis") {
+        val chassis = MineDriveMotion.footprint(0.0, 24.0, 0f)
+        val cutter = MineDriveMotion.cutterFootprint(0.0, 24.0, 0f, version = 10, rail = true)
+        val legacyCutter = MineDriveMotion.cutterFootprint(0.0, 24.0, 0f, version = 9, rail = true)
+
+        // The cart envelope remains unchanged, while the v10 cutter gives the
+        // sleeper-service point one clear block on either side of the track.
+        (2 to 24 in chassis) shouldBe false
+        (2 to 24 in cutter) shouldBe true
+        (-2 to 24 in cutter) shouldBe true
+        (cutter - chassis).isNotEmpty() shouldBe true
+        legacyCutter shouldBe chassis
+        (cutter - chassis).all { (side, forward) ->
+            forward in 22..26 && MineDriveLayout.driveable(side, forward, 10, rail = true)
+        } shouldBe true
     }
 
     test("full chassis can turn sideways around both ribs and return through the same area") {

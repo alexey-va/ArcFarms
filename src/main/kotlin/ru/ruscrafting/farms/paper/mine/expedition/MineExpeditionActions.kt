@@ -164,6 +164,16 @@ internal class MineExpeditionActions(private val plugin: Plugin, private val loc
                 player.sendActionBar(text("turn", player))
             }
             MineExpeditionInteraction.OPERATE -> {
+                if (target.id == "generator_flywheel") {
+                    val center = scene.at(target.position)
+                    if (cargo.containsKey(player.uniqueId) || player.world !== center.world ||
+                        player.location.distanceSquared(center) > 25.0) return
+                    if (complete(MineFactoryGeneratorCycle.completeStart(state, now))) {
+                        if (sounds()) player.playSound(center, Sound.BLOCK_LEVER_CLICK, .7f, 1.0f)
+                        player.sendActionBar(text("generator-warming", player, mapOf("percent" to 0)))
+                    }
+                    return
+                }
                 if (state.stage == MineExpeditionStage.FACTORY_HEAT &&
                     MineFactoryProgram.usesConnectedCrusherLine(scene.plan)) {
                     operateFactoryHeat(scope, scene, state, player, target, now, complete)

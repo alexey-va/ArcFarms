@@ -5,7 +5,7 @@ plugins {
     jacoco
 }
 group = "ru.ruscrafting"
-version = "0.45.7"
+version = "0.45.8"
 description = "Shared farm, lumbermill, and mine activities for RusCrafting"
 
 val integrationTestSourceSet = sourceSets.create("integrationTest") {
@@ -58,6 +58,9 @@ dependencies {
     testImplementation("ru.ruscrafting.arc:arc-core-paper-testing:$arcCoreVersion")
     testImplementation("ru.ruscrafting.arc:arc-core-paper-api:$arcCoreVersion")
     testRuntimeOnly("me.clip:placeholderapi:2.12.3")
+    testRuntimeOnly("com.github.retrooper:packetevents-spigot:2.12.1") {
+        exclude(group = "io.netty")
+    }
     testImplementation("net.luckperms:api:5.5")
     testRuntimeOnly("com.github.MilkBowl:VaultAPI:1.7") {
         exclude(group = "org.bukkit", module = "bukkit")

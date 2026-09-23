@@ -99,8 +99,7 @@ internal object MinePermanentExpeditionLayout {
         // Every work point branches from the shared service aisle. The branches keep the
         // controls and repair supplies connected to the line instead of creating islands.
         MineFactoryLine.stations.filterKeys { it !in setOf("entry", "exit") }.forEach { (id, station) ->
-            // The flywheel is a click surface inside the display; feet stay in its service aisle.
-            val point = if (id == "generator_flywheel") station.offset(dx = -4) else station
+            val point = station
             val aisle = when {
                 point.z >= 6 -> ExpeditionPoint(0,5,14)
                 point.z <= -14 -> ExpeditionPoint(0,5,-15)

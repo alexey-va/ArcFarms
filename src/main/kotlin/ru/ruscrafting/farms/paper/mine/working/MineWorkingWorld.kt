@@ -355,7 +355,9 @@ internal class MineWorkingWorld(
 
     companion object {
         private const val BLOCK_BUDGET = 256
-        private const val RECOVERY_RADIUS = 32
+        // The rail route now reaches local forward 50; the scene surface is
+        // at -1, so a 56-block bounded probe covers the far chunk on restart.
+        private const val RECOVERY_RADIUS = 56
         private const val ROCK = "minecraft:stone"
         private const val AIR = "minecraft:air"
         private const val RUBBLE = "minecraft:cobblestone"
