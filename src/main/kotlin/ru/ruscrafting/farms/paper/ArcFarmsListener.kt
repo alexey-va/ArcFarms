@@ -181,7 +181,9 @@ class ArcFarmsListener(
     fun onInteractEntity(event: PlayerInteractEntityEvent) = service.onInteractEntity(event)
 
     @EventHandler(priority = EventPriority.HIGHEST)
-    fun onAttackEntity(event: PrePlayerAttackEntityEvent) = service.onAttackEntity(event)
+    fun onAttackEntity(event: PrePlayerAttackEntityEvent) {
+        service.onAttackEntity(event)
+    }
 
     @EventHandler(priority = EventPriority.HIGHEST)
     fun onVehicleEnter(event: VehicleEnterEvent) = service.onVehicleEnter(event)
