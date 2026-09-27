@@ -350,6 +350,42 @@ class FarmActionIncidentMockBukkitIntegrationTest : FunSpec({
         } }
     }
 
+    test("raid starts airborne and switches from fast transit to slow orbit before steering") {
+        requiredMockBukkitScenario { FarmIncidentScenarioFixture.open().use { fixture ->
+            val beds = plantedField(fixture, 31..53, 31..53)
+            val runtime = fixture.runtime(actionState(FarmIncidentType.RIVAL_RAID, 87))
+            val receiving = FarmPointPosition(fixture.world.name, 10.5, 65.0, 10.5)
+            val rival = FarmPointPosition(fixture.world.name, 42.5, 65.0, 42.5)
+            val clearFlight = object : ru.ruscrafting.farms.paper.platform.FarmRaidFlightSpace {
+                override fun isClearAt(world: org.bukkit.World, center: org.bukkit.Location,
+                    envelope: ru.ruscrafting.farms.paper.platform.FarmRaidFlightEnvelope) = true
+                override fun isClearSegment(world: org.bukkit.World, from: org.bukkit.Location,
+                    to: org.bukkit.Location, envelope: ru.ruscrafting.farms.paper.platform.FarmRaidFlightEnvelope) = true
+            }
+            val controller = fixture.actions(runtime, beds, receiving, rival, flightSpace = clearFlight)
+            val rider = fixture.paper.addPlayer("FastTransitGunner")
+            controller.initialize(runtime, FarmIncidentType.RIVAL_RAID) shouldBe FarmIncidentType.RIVAL_RAID
+            controller.ensure(runtime)
+            val ghast = fixture.world.entities.filterIsInstance<Ghast>().single(controller::owns)
+            ghast.location.y shouldBe receiving.y + fixture.zone.rivalRaid.travelHeight
+            controller.interact(PlayerInteractEntityEvent(rider, ghast, EquipmentSlot.HAND)) shouldBe true
+            controller.updateRaidMotion(runtime)
+            val transitSpeed = ghast.velocity.length()
+            (transitSpeed > fixture.zone.rivalRaid.flightSpeed * 2.0) shouldBe true
+            (ghast.velocity.y < 0.0) shouldBe true
+            ghast.teleport(fixture.location(rival.copy(
+                x = rival.x + fixture.zone.rivalRaid.orbitRadius,
+                y = rival.y + fixture.zone.rivalRaid.flightHeight,
+            )))
+            fixture.world.gameTime = 10L
+            controller.updateRaidMotion(runtime)
+            (ghast.velocity.length() <= fixture.zone.rivalRaid.flightSpeed + 1.0e-9) shouldBe true
+            (ghast.velocity.length() > 0.0) shouldBe true
+            rider.vehicle shouldBe fixture.world.entities.filterIsInstance<ArmorStand>().single(controller::owns)
+            controller.clear(runtime, "speed_mode_cleanup")
+        } }
+    }
+
     test("stuck raid recovery carries the existing rider seat and still cleans up on exit") {
         requiredMockBukkitScenario { FarmIncidentScenarioFixture.open().use { fixture ->
             val beds = plantedField(fixture, 31..53, 31..53)
@@ -470,6 +506,9 @@ class FarmActionIncidentMockBukkitIntegrationTest : FunSpec({
             }
             fixture.runDelayedTasks() shouldBe listOf(20L)
             (rider.vehicle is ArmorStand) shouldBe true
+            val airborneGhast = fixture.world.entities.filterIsInstance<Ghast>().single(controller::owns)
+            airborneGhast.location.y shouldBe receiving.y + fixture.zone.rivalRaid.travelHeight
+            requireNotNull(rider.vehicle).location.y shouldBe airborneGhast.location.y + fixture.zone.rivalRaid.seatYOffset
             controller.participantRuntime(rider) shouldBe runtime
 
             cancelled.teleport(portal.location)

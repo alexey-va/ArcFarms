@@ -569,8 +569,10 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().rivalRaid.grenadeDebrisBlocks shouldBe 36
         settings.farms.single().rivalRaid.maximumRiders shouldBe 4
         settings.farms.single().rivalRaid.workerRadius shouldBe 64.0
-        settings.farms.single().rivalRaid.flightHeight shouldBe 18.0
+        settings.farms.single().rivalRaid.flightHeight shouldBe 24.0
         settings.farms.single().rivalRaid.flightSpeed shouldBe 0.30
+        settings.farms.single().rivalRaid.travelSpeed shouldBe 1.20
+        settings.farms.single().rivalRaid.travelHeight shouldBe 40.0
         settings.farms.single().rivalRaid.flightSteering shouldBe 0.65
         settings.farms.single().rivalRaid.orbitRadius shouldBe 36.0
         settings.farms.single().rivalRaid.orbitLookAheadDegrees shouldBe 12.0

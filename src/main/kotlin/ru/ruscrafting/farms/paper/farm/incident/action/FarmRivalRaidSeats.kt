@@ -23,10 +23,14 @@ internal class FarmRivalRaidSeats(
     private val roleKey = NamespacedKey(plugin, "farm_raid_role")
     private val seats = mutableMapOf<String, MutableMap<UUID, UUID>>()
 
-    fun ensure(runtime: FarmRuntime, ghast: Ghast, player: Player): Boolean {
+    fun ensure(runtime: FarmRuntime, ghast: Ghast, player: Player, participantIds: List<UUID>): Boolean {
+        val offset = FarmRaidSeatPolicy.deck(
+            participantIds.size, runtime.settings.rivalRaid.seatSpacing, runtime.settings.rivalRaid.seatYOffset,
+        ).getOrNull(participantIds.indexOf(player.uniqueId)) ?: return false
+        val destination = ghast.location.clone().add(offset.x, offset.y, offset.z)
         val byPlayer = seats.getOrPut(runtime.settings.id) { linkedMapOf() }
         val seat = byPlayer[player.uniqueId]?.let { Bukkit.getEntity(it) as? ArmorStand }
-            ?: ghast.world.spawn(ghast.location, ArmorStand::class.java) { entity ->
+            ?: ghast.world.spawn(destination, ArmorStand::class.java) { entity ->
                 entity.isPersistent = false
                 entity.isVisible = false
                 entity.isMarker = true
@@ -40,6 +44,7 @@ internal class FarmRivalRaidSeats(
             }.also { byPlayer[player.uniqueId] = it.uniqueId }
         if (player.vehicle !== seat) {
             player.leaveVehicle()
+            if (!movement.move(seat, destination)) return false
             if (!seat.addPassenger(player)) return false
         }
         return true

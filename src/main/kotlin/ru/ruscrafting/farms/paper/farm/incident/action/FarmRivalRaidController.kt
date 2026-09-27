@@ -209,7 +209,7 @@ internal class FarmRivalRaidController(
         val departure = special.points.first().location() ?: return
         var ghast = session.ghastId?.let(Bukkit::getEntity) as? Ghast
         if (ghast?.isValid != true && departure.world.isChunkLoaded(departure.blockX shr 4, departure.blockZ shr 4)) {
-            ghast = departure.world.spawn(departure.clone().add(0.0, 2.0, 0.0), Ghast::class.java) { entity ->
+            ghast = departure.world.spawn(departure.clone().add(0.0, runtime.settings.rivalRaid.travelHeight, 0.0), Ghast::class.java) { entity ->
                 entity.isPersistent = false
                 mobDespawns.setRemoveWhenFarAway(entity, false)
                 entity.isAware = false
@@ -265,9 +265,7 @@ internal class FarmRivalRaidController(
         val ghast = session.ghastId?.let(Bukkit::getEntity) as? Ghast ?: return
         seats.sync(runtime, session.participantIds.toList(), ghast)
         session.launched = true
-        val departure = special.points.first()
         val rival = special.points.getOrNull(1) ?: return
-        val launch = departure.copy(y = departure.y + runtime.settings.rivalRaid.flightHeight)
         val initialOrbit = FarmRaidFlight.orbitPoint(
             rival,
             runtime.settings.rivalRaid.flightHeight,
@@ -275,9 +273,11 @@ internal class FarmRivalRaidController(
             session.orbitAngle,
         )
         val current = ghast.point()
-        val launching = current.horizontalDistanceSquared(departure) <= 0.25 && current.y < launch.y - 0.1
+        if (!session.orbiting && current.distanceSquared(initialOrbit) <= 4.0) {
+            session.orbiting = true
+            session.lastFlightTick = ghast.world.gameTime
+        }
         val target = when {
-            launching -> launch
             !session.orbiting -> initialOrbit
             else -> {
                 val now = ghast.world.gameTime
@@ -306,10 +306,10 @@ internal class FarmRivalRaidController(
             ghast.world,
             current,
             target,
-            if (launching) initialOrbit else target,
+            target,
             ghast.world.gameTime,
             envelope,
-            launching,
+            verticalGoal = false,
         )
         var recovered = false
         navigation.recoveryTarget?.let { safeTarget ->
@@ -332,7 +332,7 @@ internal class FarmRivalRaidController(
                 positionAfterRecovery,
                 it,
                 FarmMotionVector(ghast.velocity.x, ghast.velocity.y, ghast.velocity.z),
-                runtime.settings.rivalRaid.flightSpeed,
+                if (session.orbiting) runtime.settings.rivalRaid.flightSpeed else runtime.settings.rivalRaid.travelSpeed,
                 runtime.settings.rivalRaid.flightSteering,
             )
         } ?: FarmMotionVector(0.0, 0.0, 0.0)
@@ -806,7 +806,7 @@ internal class FarmRivalRaidController(
     }
 
     private fun ensurePassenger(runtime: FarmRuntime, session: RaidSession, ghast: Ghast, player: Player): Boolean {
-        if (!seats.ensure(runtime, ghast, player)) return false
+        if (!seats.ensure(runtime, ghast, player, session.participantIds.toList())) return false
         session.hiddenRiderIds += player.uniqueId
         riderVisibility.setHidden(player, ghast, true)
         return true

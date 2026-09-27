@@ -117,6 +117,8 @@ internal class ArcFarmsRuntimeValidator(
             val region = requireNotNull(regionGateway.resolve(zone.reference)) {
                 "Persisted farm region $id cannot be resolved"
             }
+            val specialIncident = state.specialIncident
+            val isRivalRaid = state.incidentType == FarmIncidentType.RIVAL_RAID
             val managedPlots = buildList {
                 addAll(state.preparationPatch)
                 addAll(state.droughtPlots)
@@ -124,17 +126,17 @@ internal class ArcFarmsRuntimeValidator(
                 state.pestNests.mapTo(this) { it.position }
                 state.pestDamagedCrops.mapTo(this) { it.position }
                 state.diseaseDamagedCrops.orEmpty().mapTo(this) { it.position }
-                addAll(state.specialIncident?.plots.orEmpty())
+                if (!isRivalRaid) addAll(specialIncident?.plots.orEmpty())
                 state.specialDamagedCrops.mapTo(this) { it.position }
             }
             require(managedPlots.all { position ->
                 position.world == region.world.name && position.location()?.let(region::contains) == true
             }) { "Persisted farm-managed block escaped region $id" }
-            state.specialIncident?.let { special ->
+            specialIncident?.let { special ->
                 require(special.crop == null || special.crop in zone.crops) {
                     "Persisted farm incident contains an unknown crop in $id"
                 }
-                if (state.incidentType == FarmIncidentType.RIVAL_RAID) {
+                if (isRivalRaid) {
                     require(special.points.size == 2) { "Persisted rival raid $id must contain departure and rival points" }
                     val departure = special.points[0]
                     val rival = special.points[1]
@@ -144,8 +146,17 @@ internal class ArcFarmsRuntimeValidator(
                     val dx = rival.x - departure.x
                     val dz = rival.z - departure.z
                     require(rival.world == region.world.name &&
+                        rival.y >= region.world.minHeight && rival.y < region.world.maxHeight &&
                         dx * dx + dz * dz <= zone.rivalRaid.maximumDistance * zone.rivalRaid.maximumDistance
                     ) { "Persisted rival farm point is invalid in $id" }
+                    val footprintRadiusSquared = zone.rivalRaid.workerRadius * zone.rivalRaid.workerRadius
+                    require(special.plots.all { position ->
+                        val plotDx = position.x + 0.5 - rival.x
+                        val plotDz = position.z + 0.5 - rival.z
+                        position.world == rival.world &&
+                            position.y in region.world.minHeight until region.world.maxHeight &&
+                            plotDx * plotDx + plotDz * plotDz <= footprintRadiusSquared
+                    }) { "Persisted rival farm plot escaped rival footprint in $id" }
                 } else {
                     require(special.points.all { point ->
                         point.world == region.world.name && region.contains(Location(region.world, point.x, point.y, point.z))

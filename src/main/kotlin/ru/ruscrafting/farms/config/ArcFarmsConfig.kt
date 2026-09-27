@@ -413,8 +413,10 @@ data class FarmRivalRaidSettings(
     val workerLightStride: Int = 10,
     val workerPatrolIntervalTicks: Int = 10,
     val workerPatrolSpeed: Double = 1.8,
-    val flightHeight: Double = 18.0,
+    val flightHeight: Double = 24.0,
     val flightSpeed: Double = 0.30,
+    val travelSpeed: Double = 1.20,
+    val travelHeight: Double = 40.0,
     val flightSteering: Double = 0.65,
     val orbitRadius: Double = 36.0,
     val orbitLookAheadDegrees: Double = 12.0,
@@ -471,6 +473,8 @@ data class FarmRivalRaidSettings(
         require(workerPatrolIntervalTicks in 10..200) { "rival worker patrol interval is invalid" }
         require(workerPatrolSpeed.isFinite() && workerPatrolSpeed in 0.5..2.0) { "rival worker patrol speed is invalid" }
         require(flightHeight.isFinite() && flightHeight in 3.0..48.0) { "rival raid flight height is invalid" }
+        require(travelHeight.isFinite() && travelHeight in 3.0..48.0) { "rival raid travel height is invalid" }
+        require(travelSpeed.isFinite() && travelSpeed in 0.1..2.0) { "rival raid travel speed is invalid" }
         require(flightSpeed.isFinite() && flightSpeed in 0.1..2.0) { "rival raid flight speed is invalid" }
         require(flightSteering.isFinite() && flightSteering in 0.01..1.0) { "rival raid flight steering is invalid" }
         require(orbitRadius.isFinite() && orbitRadius in 4.0..64.0) { "rival raid orbit radius is invalid" }
@@ -2307,10 +2311,16 @@ class ArcFarmsConfig private constructor(
                             "special-incidents.rival-raid.worker-patrol-speed", 1.8, 0.5, 2.0,
                         ),
                         flightHeight = section.finiteDouble(
-                            "special-incidents.rival-raid.flight-height", 18.0, 3.0, 48.0,
+                            "special-incidents.rival-raid.flight-height", 24.0, 3.0, 48.0,
                         ),
                         flightSpeed = section.finiteDouble(
                             "special-incidents.rival-raid.flight-speed", 0.30, 0.1, 2.0,
+                        ),
+                        travelHeight = section.finiteDouble(
+                            "special-incidents.rival-raid.travel-height", 40.0, 3.0, 48.0,
+                        ),
+                        travelSpeed = section.finiteDouble(
+                            "special-incidents.rival-raid.travel-speed", 1.20, 0.1, 2.0,
                         ),
                         flightSteering = section.finiteDouble(
                             "special-incidents.rival-raid.flight-steering", 0.65, 0.01, 1.0,

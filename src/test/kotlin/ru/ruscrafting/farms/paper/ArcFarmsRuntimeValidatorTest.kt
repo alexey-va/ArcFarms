@@ -92,6 +92,119 @@ class ArcFarmsRuntimeValidatorTest : FunSpec({
         }
     }
 
+    test("persisted rival raid plots may use the bounded same-world island footprint") {
+        MockBukkitTestRuntime.open().use { paper ->
+            val world = paper.server.addSimpleWorld("sp11")
+            val gateway = mockk<RegionGateway>()
+            every { gateway.resolve(any()) } returns CuboidActivityRegion(
+                world,
+                "farm",
+                CuboidBounds(160, 40, 400, 240, 80, 510),
+            )
+            val candidate = rivalRaidCandidate()
+            val persisted = rivalRaidState(
+                candidate,
+                plots = listOf(FarmPlotPosition(world.name, -18, 46, 735)),
+            )
+
+            validator(gateway).validatePersisted(candidate, persisted)
+        }
+    }
+
+    test("persisted rival raid plots reject a different world and plots outside the rival radius") {
+        MockBukkitTestRuntime.open().use { paper ->
+            val world = paper.server.addSimpleWorld("sp11")
+            val gateway = mockk<RegionGateway>()
+            every { gateway.resolve(any()) } returns CuboidActivityRegion(
+                world,
+                "farm",
+                CuboidBounds(160, 40, 400, 240, 80, 510),
+            )
+            val candidate = rivalRaidCandidate()
+
+            shouldThrow<IllegalArgumentException> {
+                validator(gateway).validatePersisted(
+                    candidate,
+                    rivalRaidState(candidate, plots = listOf(FarmPlotPosition("world", -18, 46, 735))),
+                )
+            }.message shouldContain "rival farm plot escaped rival footprint"
+
+            shouldThrow<IllegalArgumentException> {
+                validator(gateway).validatePersisted(
+                    candidate,
+                    rivalRaidState(candidate, plots = listOf(FarmPlotPosition(world.name, 200, 46, 735))),
+                )
+            }.message shouldContain "rival farm plot escaped rival footprint"
+        }
+    }
+
+    test("persisted rival raid point cannot escape its configured travel distance or world bounds") {
+        MockBukkitTestRuntime.open().use { paper ->
+            val world = paper.server.addSimpleWorld("sp11")
+            val gateway = mockk<RegionGateway>()
+            every { gateway.resolve(any()) } returns CuboidActivityRegion(
+                world,
+                "farm",
+                CuboidBounds(160, 40, 400, 240, 80, 510),
+            )
+            val candidate = rivalRaidCandidate()
+
+            shouldThrow<IllegalArgumentException> {
+                validator(gateway).validatePersisted(
+                    candidate,
+                    rivalRaidState(candidate, rival = FarmPointPosition("sp11", 1_000.0, 47.0, 735.5151402)),
+                )
+            }.message shouldContain "Persisted rival farm point is invalid"
+
+            shouldThrow<IllegalArgumentException> {
+                validator(gateway).validatePersisted(
+                    candidate,
+                    rivalRaidState(candidate, rival = FarmPointPosition("world", 55.4393975, 47.0, 735.5151402)),
+                )
+            }.message shouldContain "Persisted rival farm point is invalid"
+
+            shouldThrow<IllegalArgumentException> {
+                validator(gateway).validatePersisted(
+                    candidate,
+                    rivalRaidState(candidate, rival = FarmPointPosition("sp11", 55.4393975, -128.0, 735.5151402)),
+                )
+            }.message shouldContain "Persisted rival farm point is invalid"
+        }
+    }
+
+    test("ordinary persisted incident plots remain inside the configured farm region") {
+        MockBukkitTestRuntime.open().use { paper ->
+            val world = paper.server.addSimpleWorld("sp11")
+            val gateway = mockk<RegionGateway>()
+            every { gateway.resolve(any()) } returns CuboidActivityRegion(
+                world,
+                "farm",
+                CuboidBounds(160, 40, 400, 240, 80, 510),
+            )
+            val candidate = candidateWith("server-id: spawn", "server-id: spawn")
+            val order = candidate.farms.single().orders.first()
+            val persisted = ArcFarmsState(
+                farms = mapOf(
+                    "communal_farm" to FarmShiftState(
+                        phase = FarmPhase.INCIDENT,
+                        orderId = order.id,
+                        progress = order.required.keys.associateWith { 0 },
+                        incidentCrop = order.required.keys.first(),
+                        incidentType = FarmIncidentType.NIGHT_SHIFT,
+                        incidentRequired = 1,
+                        specialIncident = FarmSpecialIncidentState(
+                            plots = listOf(FarmPlotPosition(world.name, 300, 46, 455)),
+                        ),
+                    ),
+                ),
+            )
+
+            shouldThrow<IllegalArgumentException> {
+                validator(gateway).validatePersisted(candidate, persisted)
+            }.message shouldContain "farm-managed block escaped region communal_farm"
+        }
+    }
+
     test("persisted special crop recovery rejects crops removed from the farm catalog") {
         MockBukkitTestRuntime.open().use { paper ->
             val world = paper.server.addSimpleWorld("sp11")
@@ -183,6 +296,31 @@ private fun validator(regionGateway: RegionGateway = mockk(relaxed = true)): Arc
     mineJournal = mockk<MineRecoveryJournal>(relaxed = true),
 )
 
+private fun rivalRaidState(
+    candidate: ArcFarmsConfig,
+    departure: FarmPointPosition = FarmPointPosition("sp11", 200.133, 49.0, 454.533),
+    rival: FarmPointPosition = FarmPointPosition("sp11", 55.4393975, 47.0, 735.5151402),
+    plots: List<FarmPlotPosition> = listOf(FarmPlotPosition("sp11", -18, 46, 735)),
+): ArcFarmsState {
+    val order = candidate.farms.single().orders.first()
+    return ArcFarmsState(
+        farms = mapOf(
+            "communal_farm" to FarmShiftState(
+                phase = FarmPhase.INCIDENT,
+                orderId = order.id,
+                progress = order.required.keys.associateWith { 0 },
+                incidentCrop = order.required.keys.first(),
+                incidentType = FarmIncidentType.RIVAL_RAID,
+                incidentRequired = 1,
+                specialIncident = FarmSpecialIncidentState(
+                    points = listOf(departure, rival),
+                    plots = plots,
+                ),
+            ),
+        ),
+    )
+}
+
 private fun candidateWith(old: String, replacement: String): ArcFarmsConfig {
     val root = Files.createTempDirectory("arcfarms-menu-runtime-validator")
     val source = requireNotNull(ArcFarmsRuntimeValidatorTest::class.java.classLoader.getResourceAsStream("config.yml"))
@@ -191,3 +329,5 @@ private fun candidateWith(old: String, replacement: String): ArcFarmsConfig {
     Files.writeString(root.resolve("config.yml"), config.replace(old, replacement))
     return ArcFarmsConfig.inspect(root)
 }
+
+private fun rivalRaidCandidate(): ArcFarmsConfig = candidateWith("worker-radius: 64.0", "worker-radius: 100.0")
