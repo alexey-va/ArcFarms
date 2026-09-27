@@ -215,6 +215,8 @@ internal class FarmIncidentScenarioFixture private constructor(
         return controller
     }
 
+    val raidDebrisVisuals = RecordingFarmRaidDebrisVisuals()
+
     fun actions(
         runtime: FarmRuntime,
         beds: Set<ru.ruscrafting.farms.domain.FarmPlotPosition>,
@@ -283,6 +285,7 @@ internal class FarmIncidentScenarioFixture private constructor(
             flightSpace = flightSpace,
             textDisplays = MockBukkitFarmTextDisplays,
             nightShift = night,
+            debrisVisuals = raidDebrisVisuals,
             random = random,
         )
         return controller

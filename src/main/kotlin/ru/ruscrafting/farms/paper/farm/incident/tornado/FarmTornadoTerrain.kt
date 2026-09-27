@@ -13,9 +13,10 @@ import ru.ruscrafting.farms.paper.FarmBlockLedger
 import ru.ruscrafting.farms.paper.FarmRuntime
 import ru.ruscrafting.farms.paper.block
 import ru.ruscrafting.farms.paper.farm.FarmIncidentBedProvider
-import ru.ruscrafting.farms.paper.farm.incident.action.FarmRivalRaidBlastDebris
+import ru.ruscrafting.farms.paper.farm.presentation.FarmBlastDebris
+import ru.ruscrafting.farms.paper.platform.FarmBlastDebrisVisuals
+import ru.ruscrafting.farms.paper.platform.PacketFarmBlastDebrisVisuals
 import ru.ruscrafting.farms.paper.farm.placement.FarmSurfacePolicy
-import java.util.UUID
 import kotlin.math.abs
 
 /** Owns tornado terrain damage; chunk PDC remains authoritative across interrupted restoration. */
@@ -23,13 +24,14 @@ internal class FarmTornadoTerrain(
     plugin: Plugin,
     private val ledger: FarmBlockLedger,
     private val beds: FarmIncidentBedProvider,
+    debrisVisuals: FarmBlastDebrisVisuals = PacketFarmBlastDebrisVisuals(plugin),
 ) {
     private data class Damage(
         val plots: MutableMap<FarmPlotPosition, Long> = linkedMapOf(),
-        val debris: MutableMap<UUID, Int> = linkedMapOf(),
     )
 
     private val zones = mutableMapOf<String, Damage>()
+    private val debris = FarmBlastDebris(debrisVisuals)
     private val key = NamespacedKey(plugin, "farm_tornado_terrain_zone")
 
     fun update(runtime: FarmRuntime, center: Location, tick: Int, pursuing: Boolean) {
@@ -37,11 +39,7 @@ internal class FarmTornadoTerrain(
         val damage = zones.getOrPut(zone, ::Damage)
         val now = center.world.gameTime
         restore(zone, damage, damage.plots.filterValues { it <= now }.keys.toList())
-        damage.debris.entries.removeIf { (id, deadline) ->
-            val entity = Bukkit.getEntity(id)
-            if (entity == null || !entity.isValid) true
-            else if (tick >= deadline) { entity.remove(); true } else false
-        }
+        debris.tick(zone)
         if (!pursuing || tick % PULSE_TICKS != 0 || damage.plots.size >= MAX_DAMAGED_PLOTS) return
         val radius = minOf(4.0, runtime.settings.specialIncidents.tornado.radius / 2.0)
         val plots = beds.discover(runtime).asSequence().filter { plot ->
@@ -65,12 +63,8 @@ internal class FarmTornadoTerrain(
         // Capture crops and soil before either the authoritative mutation or its debris can occur.
         ledger.beginTemporaryRemoval(soils, zone, owner(zone), restoreAt)
         plots.forEach { damage.plots[it] = restoreAt }
-        val budget = (runtime.settings.specialIncidents.tornado.debrisCount - damage.debris.size).coerceAtLeast(0)
-        FarmRivalRaidBlastDebris.spawn(center, plots, minOf(plots.size * 2, budget)).forEach { debris ->
-            debris.isPersistent = false
-            debris.persistentDataContainer.set(key, PersistentDataType.STRING, zone)
-            damage.debris[debris.uniqueId] = tick + DEBRIS_TICKS
-        }
+        val budget = (runtime.settings.specialIncidents.tornado.debrisCount - debris.activeCount(zone)).coerceAtLeast(0)
+        debris.spawn(zone, center, plots, minOf(plots.size * 2, budget), DEBRIS_TICKS)
         soils.forEach { soil ->
             soil.getRelative(BlockFace.UP).setType(Material.AIR, false)
             soil.setType(Material.AIR, false)
@@ -81,14 +75,14 @@ internal class FarmTornadoTerrain(
 
     fun clear(zone: String) {
         val damage = zones[zone] ?: return
-        damage.debris.keys.forEach { Bukkit.getEntity(it)?.remove() }
-        damage.debris.clear()
+        debris.clear(zone)
         restore(zone, damage, damage.plots.keys.toList())
         if (damage.plots.isEmpty()) zones.remove(zone)
     }
 
     fun cleanup() {
         zones.keys.toList().forEach(::clear)
+        debris.cleanup()
         // Unloaded blocks retain their chunk journal for FarmBlockRegistry reconciliation.
         Bukkit.getWorlds().forEach { world -> world.entities.filter(::owns).forEach(Entity::remove) }
     }

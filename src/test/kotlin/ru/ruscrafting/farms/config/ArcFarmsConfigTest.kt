@@ -566,7 +566,7 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().rivalRaid.grenadePreviewBlocks shouldBe 96
         settings.farms.single().rivalRaid.grenadePreviewTicks shouldBe 1_200
         settings.farms.single().rivalRaid.grenadePreviewSoilMaterial shouldBe "COARSE_DIRT"
-        settings.farms.single().rivalRaid.grenadeDebrisBlocks shouldBe 36
+        settings.farms.single().rivalRaid.grenadeDebrisBlocks shouldBe 24
         settings.farms.single().rivalRaid.maximumRiders shouldBe 4
         settings.farms.single().rivalRaid.workerRadius shouldBe 64.0
         settings.farms.single().rivalRaid.flightHeight shouldBe 24.0

@@ -1,5 +1,7 @@
 package ru.ruscrafting.farms.paper.farm.incident.action
 
+import ru.ruscrafting.farms.paper.platform.FarmBlastDebrisVisuals
+import ru.ruscrafting.farms.paper.farm.presentation.FarmBlastDebris
 import org.bukkit.Bukkit
 import org.bukkit.Location
 import org.bukkit.Material
@@ -111,6 +113,7 @@ internal class FarmRivalRaidController(
     private val flightSpace: FarmRaidFlightSpace = PaperFarmRaidFlightSpace,
     private val textDisplays: FarmTextDisplayRenderer,
     private val nightShift: FarmNightShiftController,
+    debrisVisuals: FarmBlastDebrisVisuals,
 ) {
     private data class RaidSession(
         val sequence: Long,
@@ -121,7 +124,6 @@ internal class FarmRivalRaidController(
         var ghastId: UUID? = null,
         val hiddenRiderIds: MutableSet<UUID> = linkedSetOf(),
         val projectileIds: MutableSet<UUID> = linkedSetOf(),
-        val debrisIds: MutableSet<UUID> = linkedSetOf(),
         val participantIds: MutableSet<UUID> = linkedSetOf(),
         val gunShotAt: MutableMap<UUID, Long> = hashMapOf(),
         val grenadeShotAt: MutableMap<UUID, Long> = hashMapOf(),
@@ -144,6 +146,7 @@ internal class FarmRivalRaidController(
     private val workers = FarmRivalRaidWorkers(plugin, locale, beds, mobDespawns, mobNavigation, nightShift)
     private val loadout = FarmRivalRaidLoadout(locale, serviceItems)
     private val seats = FarmRivalRaidSeats(plugin, seatMovement)
+    private val blastDebris = FarmBlastDebris(debrisVisuals)
     fun plan(runtime: FarmRuntime): FarmActionIncidentPlanAttempt {
         val rival = points.configured(runtime, FarmPointKind.RIVAL_FARM)
             ?: return FarmActionIncidentPlanAttempt(null, 0, "rival_point_missing")
@@ -230,7 +233,8 @@ internal class FarmRivalRaidController(
         portals.update(settings().particles)
         val ghast = session.ghastId?.let(Bukkit::getEntity) as? Ghast ?: return
         val participants = session.participantIds.mapNotNull(Bukkit::getPlayer).filter(Player::isOnline)
-        val atmospherePlayers = audience.players(runtime.region).filterNot(access::isAdminEditing)
+        val atmospherePlayers = (audience.players(runtime.region) + participants)
+            .distinctBy(Player::getUniqueId).filterNot(access::isAdminEditing)
         nightShift.syncAmbientTime(
             atmosphereOwner(runtime.settings.id),
             atmospherePlayers,
@@ -257,6 +261,7 @@ internal class FarmRivalRaidController(
         if (now % runtime.settings.rivalRaid.workerPatrolIntervalTicks == 0L) workers.patrol(runtime)
     }
     fun updateMotion(runtime: FarmRuntime) {
+        blastDebris.tick(runtime.settings.id)
         if (runtime.state.phase != FarmPhase.INCIDENT || runtime.state.incidentType != FarmIncidentType.RIVAL_RAID) return
         val special = runtime.state.specialIncident ?: return
         val session = raids[runtime.settings.id] ?: return
@@ -535,7 +540,7 @@ internal class FarmRivalRaidController(
         nightShift.clearAmbientTime(atmosphereOwner(zoneId))
         workers.clear(zoneId)
         session?.projectileIds.orEmpty().forEach { Bukkit.getEntity(it)?.remove() }
-        session?.debrisIds.orEmpty().forEach { Bukkit.getEntity(it)?.remove() }
+        blastDebris.clear(zoneId)
         seats.clear(zoneId)
         session?.ghastId?.let(Bukkit::getEntity)?.remove()
         debug.event("farm_rival_raid_cleared", "zone" to zoneId, "reason" to reason)
@@ -543,6 +548,7 @@ internal class FarmRivalRaidController(
 
     fun cleanup(reason: String) {
         raids.keys.toSet().forEach { clear(it, reason) }
+        blastDebris.cleanup()
         Bukkit.getWorlds().asSequence().flatMap { it.entities.asSequence() }.filter(::owns).forEach(Entity::remove)
     }
 
@@ -699,7 +705,7 @@ internal class FarmRivalRaidController(
     private fun showBlastCrater(runtime: FarmRuntime, session: RaidSession, location: Location) {
         val config = runtime.settings.rivalRaid
         val plots = workers.blastPlots(runtime, location, config.grenadeRadius, config.grenadePreviewBlocks)
-        spawnBlastDebris(runtime, session, location, plots)
+        spawnBlastDebris(runtime, location, plots)
         if (plots.isEmpty()) return
         val generation = ++session.craterGeneration
         plots.forEach { session.craterGenerations[it] = generation }
@@ -742,26 +748,14 @@ internal class FarmRivalRaidController(
 
     private fun spawnBlastDebris(
         runtime: FarmRuntime,
-        session: RaidSession,
         center: Location,
         plots: List<FarmPlotPosition>,
     ) {
-        val spawned = FarmRivalRaidBlastDebris.spawn(
-            center,
-            plots,
+        blastDebris.spawn(
+            runtime.settings.id, center, plots,
             runtime.settings.rivalRaid.grenadeDebrisBlocks,
+            runtime.settings.rivalRaid.grenadeDebrisTicks,
         )
-        if (spawned.isEmpty()) return
-        spawned.forEach { debris ->
-            mark(debris, runtime, ROLE_DEBRIS, 0)
-            session.debrisIds += debris.uniqueId
-        }
-        tasks.runLater(runtime.settings.rivalRaid.grenadeDebrisTicks.toLong()) {
-            spawned.forEach { debris ->
-                session.debrisIds.remove(debris.uniqueId)
-                debris.remove()
-            }
-        }
     }
 
     private fun restoreCrater(zoneId: String, session: RaidSession, plots: Collection<FarmPlotPosition>) {

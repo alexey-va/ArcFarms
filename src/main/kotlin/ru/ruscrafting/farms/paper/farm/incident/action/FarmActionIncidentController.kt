@@ -1,5 +1,7 @@
 package ru.ruscrafting.farms.paper.farm.incident.action
 
+import ru.ruscrafting.farms.paper.platform.FarmBlastDebrisVisuals
+import ru.ruscrafting.farms.paper.platform.PacketFarmBlastDebrisVisuals
 import org.bukkit.Bukkit
 import org.bukkit.Location
 import org.bukkit.Material
@@ -108,6 +110,8 @@ internal class FarmActionIncidentController(
     private val textDisplays: FarmTextDisplayRenderer,
     private val nightShift: FarmNightShiftController,
     private val random: RandomGenerator,
+    debrisVisuals: FarmBlastDebrisVisuals =
+        PacketFarmBlastDebrisVisuals(plugin),
 ) {
     private val zoneKey = NamespacedKey(plugin, "farm_action_zone")
     private val sequenceKey = NamespacedKey(plugin, "farm_action_sequence")
@@ -137,6 +141,7 @@ internal class FarmActionIncidentController(
         flightSpace,
         textDisplays,
         nightShift,
+        debrisVisuals,
     )
 
     fun initialize(runtime: FarmRuntime, type: FarmIncidentType): FarmIncidentType? {

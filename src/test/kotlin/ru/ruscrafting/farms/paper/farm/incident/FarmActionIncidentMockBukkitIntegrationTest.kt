@@ -310,15 +310,13 @@ class FarmActionIncidentMockBukkitIntegrationTest : FunSpec({
             runtime.state.incidentRequired shouldBe fixture.zone.rivalRaid.requiredKills
             blastSoil.type shouldBe Material.AIR
             blastSoil.getRelative(BlockFace.UP).type shouldBe Material.AIR
-            val debris = fixture.world.entities.filterIsInstance<FallingBlock>()
+            fixture.world.entities.filterIsInstance<FallingBlock>() shouldHaveSize 0
+            val debris = fixture.raidDebrisVisuals.fragments
             debris shouldHaveSize fixture.zone.rivalRaid.grenadeDebrisBlocks
-            debris.all {
-                it.location.distanceSquared(blastLocation) < 2.0 && it.velocity.y >= 0.60 && it.velocity.y < 0.92
-            } shouldBe true
-            fixture.runDelayedTasks() shouldBe listOf(
-                fixture.zone.rivalRaid.grenadeDebrisTicks.toLong(),
-                fixture.zone.rivalRaid.grenadePreviewTicks.toLong(),
-            )
+            debris.all { it.positions.first().distanceSquared(blastLocation) < 2.0 } shouldBe true
+            repeat(fixture.zone.rivalRaid.grenadeDebrisTicks) { controller.updateRaidMotion(runtime) }
+            debris.all { it.removed } shouldBe true
+            fixture.runDelayedTasks() shouldBe listOf(fixture.zone.rivalRaid.grenadePreviewTicks.toLong())
             blastSoil.type shouldBe Material.FARMLAND
             blastSoil.getRelative(BlockFace.UP).type shouldBe Material.WHEAT
 

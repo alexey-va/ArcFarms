@@ -33,6 +33,7 @@ class FarmTornadoTerrainMockBukkitTest : FunSpec({
             ))
             val terrain = FarmTornadoTerrain(
                 fixture.plugin, ledger, FarmIncidentBedProvider { setOf(plot, FarmPlotPosition(fixture.world.name, 26, 64, 24)) },
+                fixture.raidDebrisVisuals,
             )
             terrain.update(runtime, Location(fixture.world, 24.5, 65.0, 24.5), tick = 10, pursuing = true)
 
@@ -41,13 +42,15 @@ class FarmTornadoTerrainMockBukkitTest : FunSpec({
             untouched.type shouldBe Material.FARMLAND
             untouched.getRelative(org.bukkit.block.BlockFace.UP).type shouldBe Material.AIR
             ledger.record(soil)?.temporaryMutation shouldBe "tornado:${fixture.zone.id}"
-            fixture.world.entities.filterIsInstance<FallingBlock>().size shouldBe 2
-            fixture.world.entities.filterIsInstance<FallingBlock>().all { !it.dropItem && it.cancelDrop } shouldBe true
+            fixture.world.entities.filterIsInstance<FallingBlock>().size shouldBe 0
+            fixture.raidDebrisVisuals.fragments.size shouldBe 2
+            fixture.raidDebrisVisuals.fragments.none { it.removed } shouldBe true
 
             terrain.clear(fixture.zone.id)
             soil.type shouldBe Material.FARMLAND
             soil.getRelative(org.bukkit.block.BlockFace.UP).type shouldBe Material.WHEAT
             fixture.world.entities.count(terrain::owns) shouldBe 0
+            fixture.raidDebrisVisuals.fragments.all { it.removed } shouldBe true
 
             terrain.update(runtime, Location(fixture.world, 24.5, 65.0, 24.5), tick = 20, pursuing = true)
             soil.type shouldBe Material.AIR

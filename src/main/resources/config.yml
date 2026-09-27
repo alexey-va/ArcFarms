@@ -550,7 +550,7 @@ farm-zones:
         # Keep the damaged field visible for one minute; incident cleanup restores it immediately.
         grenade-preview-ticks: 1200
         grenade-preview-soil-material: COARSE_DIRT
-        grenade-debris-blocks: 36
+        grenade-debris-blocks: 24
         grenade-debris-ticks: 34
       night-shift:
         placement-count: 90

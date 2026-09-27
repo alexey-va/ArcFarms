@@ -454,7 +454,7 @@ data class FarmRivalRaidSettings(
     val grenadePreviewBlocks: Int = 96,
     val grenadePreviewTicks: Int = 1_200,
     val grenadePreviewSoilMaterial: String = "COARSE_DIRT",
-    val grenadeDebrisBlocks: Int = 36,
+    val grenadeDebrisBlocks: Int = 24,
     val grenadeDebrisTicks: Int = 34,
 ) {
     init {
@@ -2437,7 +2437,7 @@ class ArcFarmsConfig private constructor(
                             section.string("special-incidents.rival-raid.grenade-preview-soil-material", "COARSE_DIRT"),
                         ),
                         grenadeDebrisBlocks = section.int(
-                            "special-incidents.rival-raid.grenade-debris-blocks", 36,
+                            "special-incidents.rival-raid.grenade-debris-blocks", 24,
                         ).checked("special-incidents.rival-raid.grenade-debris-blocks", 0, 64),
                         grenadeDebrisTicks = section.int(
                             "special-incidents.rival-raid.grenade-debris-ticks", 34,
