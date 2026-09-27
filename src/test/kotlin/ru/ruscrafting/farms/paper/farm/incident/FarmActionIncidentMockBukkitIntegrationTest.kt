@@ -312,7 +312,9 @@ class FarmActionIncidentMockBukkitIntegrationTest : FunSpec({
             blastSoil.getRelative(BlockFace.UP).type shouldBe Material.AIR
             val debris = fixture.world.entities.filterIsInstance<FallingBlock>()
             debris shouldHaveSize fixture.zone.rivalRaid.grenadeDebrisBlocks
-            debris.all { it.location.distanceSquared(blastLocation) < 2.0 && it.velocity.y >= 0.72 } shouldBe true
+            debris.all {
+                it.location.distanceSquared(blastLocation) < 2.0 && it.velocity.y >= 0.60 && it.velocity.y < 0.92
+            } shouldBe true
             fixture.runDelayedTasks() shouldBe listOf(
                 fixture.zone.rivalRaid.grenadeDebrisTicks.toLong(),
                 fixture.zone.rivalRaid.grenadePreviewTicks.toLong(),
@@ -344,6 +346,45 @@ class FarmActionIncidentMockBukkitIntegrationTest : FunSpec({
             controller.updateRaidMotion(runtime)
             (ghast.velocity.length() > 0.0) shouldBe true
             controller.clear(runtime, "seat_cleanup_test")
+            fixture.world.entities.filterIsInstance<ArmorStand>().filter(controller::owns) shouldHaveSize 0
+        } }
+    }
+
+    test("stuck raid recovery carries the existing rider seat and still cleans up on exit") {
+        requiredMockBukkitScenario { FarmIncidentScenarioFixture.open().use { fixture ->
+            val beds = plantedField(fixture, 31..53, 31..53)
+            val runtime = fixture.runtime(actionState(FarmIncidentType.RIVAL_RAID, 86))
+            val receiving = FarmPointPosition(fixture.world.name, 10.5, 65.0, 10.5)
+            val rival = FarmPointPosition(fixture.world.name, 42.5, 65.0, 42.5)
+            val blockedFlight = object : ru.ruscrafting.farms.paper.platform.FarmRaidFlightSpace {
+                override fun isClearAt(world: org.bukkit.World, center: org.bukkit.Location,
+                    envelope: ru.ruscrafting.farms.paper.platform.FarmRaidFlightEnvelope) = true
+                override fun isClearSegment(world: org.bukkit.World, from: org.bukkit.Location,
+                    to: org.bukkit.Location, envelope: ru.ruscrafting.farms.paper.platform.FarmRaidFlightEnvelope) = false
+            }
+            val controller = fixture.actions(runtime, beds, receiving, rival, flightSpace = blockedFlight)
+            val rider = fixture.paper.addPlayer("RecoveryGunner")
+            controller.initialize(runtime, FarmIncidentType.RIVAL_RAID) shouldBe FarmIncidentType.RIVAL_RAID
+            controller.ensure(runtime)
+            val ghast = fixture.world.entities.filterIsInstance<Ghast>().single(controller::owns)
+            controller.interact(PlayerInteractEntityEvent(rider, ghast, EquipmentSlot.HAND)) shouldBe true
+            fixture.world.gameTime = 0L
+            controller.updateRaidMotion(runtime)
+            val seat = requireNotNull(rider.vehicle)
+            val before = ghast.location
+            val seatBefore = seat.location
+
+            fixture.world.gameTime = 40L
+            controller.updateRaidMotion(runtime)
+
+            (ghast.location.distanceSquared(before) > 200.0) shouldBe true
+            rider.vehicle shouldBe seat
+            seat.passengers shouldBe listOf(rider)
+            val expectedSeat = seatBefore.add(ghast.location.toVector().subtract(before.toVector()))
+            (seat.location.distanceSquared(expectedSeat) < 1.0e-10) shouldBe true
+            controller.participants(runtime) shouldBe listOf(rider)
+            controller.clear(runtime, "recovery_cleanup_test")
+            rider.vehicle shouldBe null
             fixture.world.entities.filterIsInstance<ArmorStand>().filter(controller::owns) shouldHaveSize 0
         } }
     }

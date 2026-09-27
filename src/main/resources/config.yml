@@ -490,7 +490,7 @@ farm-zones:
         shield-knockback-vertical: 0.32
       rival-raid:
         required-kills: 256
-        worker-count: 120
+        worker-count: 100
         worker-spawn-batch-size: 12
         worker-patrol-batch-size: 32
         worker-entity: HUSK
@@ -503,7 +503,7 @@ farm-zones:
         worker-light-stride: 10
         worker-patrol-interval-ticks: 10
         worker-patrol-speed: 1.8
-        flight-height: 14.0
+        flight-height: 18.0
         flight-speed: 0.30
         flight-steering: 0.65
         orbit-radius: 36.0
@@ -548,7 +548,7 @@ farm-zones:
         # Keep the damaged field visible for one minute; incident cleanup restores it immediately.
         grenade-preview-ticks: 1200
         grenade-preview-soil-material: COARSE_DIRT
-        grenade-debris-blocks: 48
+        grenade-debris-blocks: 36
         grenade-debris-ticks: 34
       night-shift:
         placement-count: 90

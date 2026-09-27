@@ -14,10 +14,13 @@ class FarmRivalRaidBlastDebrisMockBukkitTest : FunSpec({
             world.getChunkAt(0, 0).load()
             val center = world.getBlockAt(8, 65, 8).location.toCenterLocation()
 
-            val debris = FarmRivalRaidBlastDebris.spawn(center, emptyList(), 48)
+            val debris = FarmRivalRaidBlastDebris.spawn(center, emptyList(), 36)
 
-            debris shouldHaveSize 48
-            debris.all { it.blockData.material == Material.DIRT && it.velocity.y >= 0.72 } shouldBe true
+            debris shouldHaveSize 36
+            debris.all {
+                it.blockData.material == Material.DIRT && it.velocity.y >= 0.60 && it.velocity.y < 0.92 &&
+                    !it.dropItem && it.cancelDrop && !it.canHurtEntities()
+            } shouldBe true
         } finally {
             paper.close()
         }

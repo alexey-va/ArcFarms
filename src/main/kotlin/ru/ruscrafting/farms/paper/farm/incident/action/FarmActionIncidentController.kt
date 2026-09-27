@@ -58,6 +58,8 @@ import ru.ruscrafting.farms.paper.platform.FarmMobNavigation
 import ru.ruscrafting.farms.paper.platform.FarmRaidRiderVisibility
 import ru.ruscrafting.farms.paper.platform.FarmRivalRaidSeatMovement
 import ru.ruscrafting.farms.paper.platform.PaperFarmRivalRaidSeatMovement
+import ru.ruscrafting.farms.paper.platform.FarmRaidFlightSpace
+import ru.ruscrafting.farms.paper.platform.PaperFarmRaidFlightSpace
 import ru.ruscrafting.farms.paper.platform.FarmTextDisplayRenderer
 import ru.ruscrafting.farms.paper.worksite.ServiceItemIdentity
 import ru.ruscrafting.farms.paper.worksite.WorksiteAccessPort
@@ -102,6 +104,7 @@ internal class FarmActionIncidentController(
     private val mobNavigation: FarmMobNavigation,
     private val riderVisibility: FarmRaidRiderVisibility,
     private val seatMovement: FarmRivalRaidSeatMovement = PaperFarmRivalRaidSeatMovement,
+    private val flightSpace: FarmRaidFlightSpace = PaperFarmRaidFlightSpace,
     private val textDisplays: FarmTextDisplayRenderer,
     private val nightShift: FarmNightShiftController,
     private val random: RandomGenerator,
@@ -131,6 +134,7 @@ internal class FarmActionIncidentController(
         mobNavigation,
         riderVisibility,
         seatMovement,
+        flightSpace,
         textDisplays,
         nightShift,
     )

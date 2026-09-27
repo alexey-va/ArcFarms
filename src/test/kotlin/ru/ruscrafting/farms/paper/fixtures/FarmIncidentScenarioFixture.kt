@@ -222,6 +222,8 @@ internal class FarmIncidentScenarioFixture private constructor(
         rival: FarmPointPosition,
         portal: FarmPointPosition = receiving,
         random: java.util.random.RandomGenerator = java.util.Random(1L),
+        flightSpace: ru.ruscrafting.farms.paper.platform.FarmRaidFlightSpace =
+            ru.ruscrafting.farms.paper.platform.PaperFarmRaidFlightSpace,
     ): FarmActionIncidentController {
         lateinit var controller: FarmActionIncidentController
         val serviceItems = WorksiteServiceItemController(plugin, object : WorksiteServiceItemOwner {
@@ -278,6 +280,7 @@ internal class FarmIncidentScenarioFixture private constructor(
                 raidRiderVisibilityEvents += Triple(player.uniqueId, ghast.uniqueId, hidden)
             },
             seatMovement = MockBukkitFarmRivalRaidSeatMovement,
+            flightSpace = flightSpace,
             textDisplays = MockBukkitFarmTextDisplays,
             nightShift = night,
             random = random,

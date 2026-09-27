@@ -748,6 +748,19 @@ and processing packages retains its pickup-and-deliver gameplay.
 
 Rival raid riders occupy separate seats that follow the ghast. A failed weapon
 issue keeps the participant eligible for retry instead of ending participation.
+`FarmRivalRaidFlightNavigator` owns session-local obstacle avoidance and stuck
+recovery. It checks the ghast and rider deck against loaded world blocks through
+`PaperFarmRaidFlightSpace`, tries short climb/side detours and, after two seconds
+without progress on a blocked route, seeks a clear endpoint 16–32 blocks ahead.
+Only recovery may skip a blocked segment such as a barrier wall. It immediately
+moves the existing rider seats with the ghast and has a five-second cooldown;
+ordinary movement does not teleport players or remove world blocks.
+Raid defaults use 100 replenished husks with a separate 256-kill objective,
+18 blocks of flight height and 36 grenade debris entities. Debris has a lower
+upward impulse and still produces no item drops or entity damage. Worker
+deaths yield no loot or XP; order rewards and their existing multipliers are
+unchanged. Restoring an obstructed flight may increase completion throughput;
+this release does not claim a measured income-per-hour change.
 Tornado visuals and its survival clock pause when the field has no eligible
 Survival/Adventure/Creative participants or an administrator is editing the farm.
 Clearing the storm restores loaded damaged beds and returns player weather and

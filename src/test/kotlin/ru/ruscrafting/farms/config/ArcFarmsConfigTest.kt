@@ -546,7 +546,7 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().boarBreakout.shieldMaterial shouldBe "SHIELD"
         settings.farms.single().rivalRaid.requiredKills shouldBe 256
         settings.farms.single().rivalRaid.workerEntity shouldBe "HUSK"
-        settings.farms.single().rivalRaid.workerCount shouldBe 120
+        settings.farms.single().rivalRaid.workerCount shouldBe 100
         settings.farms.single().rivalRaid.workerSpawnBatchSize shouldBe 12
         settings.farms.single().rivalRaid.workerPatrolBatchSize shouldBe 32
         settings.farms.single().rivalRaid.workerPatrolIntervalTicks shouldBe 10
@@ -566,10 +566,10 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().rivalRaid.grenadePreviewBlocks shouldBe 96
         settings.farms.single().rivalRaid.grenadePreviewTicks shouldBe 1_200
         settings.farms.single().rivalRaid.grenadePreviewSoilMaterial shouldBe "COARSE_DIRT"
-        settings.farms.single().rivalRaid.grenadeDebrisBlocks shouldBe 48
+        settings.farms.single().rivalRaid.grenadeDebrisBlocks shouldBe 36
         settings.farms.single().rivalRaid.maximumRiders shouldBe 4
         settings.farms.single().rivalRaid.workerRadius shouldBe 64.0
-        settings.farms.single().rivalRaid.flightHeight shouldBe 14.0
+        settings.farms.single().rivalRaid.flightHeight shouldBe 18.0
         settings.farms.single().rivalRaid.flightSpeed shouldBe 0.30
         settings.farms.single().rivalRaid.flightSteering shouldBe 0.65
         settings.farms.single().rivalRaid.orbitRadius shouldBe 36.0

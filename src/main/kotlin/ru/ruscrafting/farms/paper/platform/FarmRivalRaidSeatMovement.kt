@@ -10,6 +10,7 @@ internal fun interface FarmRivalRaidSeatMovement {
 }
 
 internal object PaperFarmRivalRaidSeatMovement : FarmRivalRaidSeatMovement {
+    // Paper 1.21.11 retains passengers by default; EntityState.RETAIN_PASSENGERS is deprecated since 1.21.10.
     override fun move(seat: ArmorStand, destination: Location): Boolean =
         seat.teleport(destination, PlayerTeleportEvent.TeleportCause.PLUGIN)
 }

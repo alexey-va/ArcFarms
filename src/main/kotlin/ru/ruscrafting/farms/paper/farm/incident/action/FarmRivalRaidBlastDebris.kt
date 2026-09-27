@@ -39,7 +39,7 @@ internal object FarmRivalRaidBlastDebris {
                 debris.setHurtEntities(false)
                 debris.velocity = Vector(
                     cos(angle) * horizontalSpeed,
-                    random.nextDouble(0.72, 1.12),
+                    random.nextDouble(0.60, 0.92),
                     sin(angle) * horizontalSpeed,
                 )
             }

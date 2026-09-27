@@ -24,6 +24,7 @@ import org.bukkit.event.entity.EntityDismountEvent
 import org.bukkit.event.entity.ProjectileHitEvent
 import org.bukkit.event.player.PlayerInteractEntityEvent
 import org.bukkit.event.player.PlayerInteractEvent
+import org.bukkit.event.player.PlayerTeleportEvent
 import org.bukkit.inventory.EquipmentSlot
 import org.bukkit.inventory.ItemStack
 import org.bukkit.persistence.PersistentDataType
@@ -64,6 +65,9 @@ import ru.ruscrafting.farms.paper.platform.FarmMobNavigation
 import ru.ruscrafting.farms.paper.platform.FarmRaidRiderVisibility
 import ru.ruscrafting.farms.paper.platform.FarmRivalRaidSeatMovement
 import ru.ruscrafting.farms.paper.platform.PaperFarmRivalRaidSeatMovement
+import ru.ruscrafting.farms.paper.platform.FarmRaidFlightEnvelope
+import ru.ruscrafting.farms.paper.platform.FarmRaidFlightSpace
+import ru.ruscrafting.farms.paper.platform.PaperFarmRaidFlightSpace
 import ru.ruscrafting.farms.paper.platform.FarmTextDisplayRenderer
 import ru.ruscrafting.farms.paper.platform.FarmTextDisplayStyle
 import ru.ruscrafting.farms.paper.worksite.ServiceItemIdentity
@@ -104,6 +108,7 @@ internal class FarmRivalRaidController(
     private val mobNavigation: FarmMobNavigation,
     private val riderVisibility: FarmRaidRiderVisibility,
     private val seatMovement: FarmRivalRaidSeatMovement = PaperFarmRivalRaidSeatMovement,
+    private val flightSpace: FarmRaidFlightSpace = PaperFarmRaidFlightSpace,
     private val textDisplays: FarmTextDisplayRenderer,
     private val nightShift: FarmNightShiftController,
 ) {
@@ -112,6 +117,7 @@ internal class FarmRivalRaidController(
         val objectiveNonce: Long,
         val returnPoint: FarmPointPosition,
         val fieldPlots: List<FarmPlotPosition>,
+        val flightNavigator: FarmRivalRaidFlightNavigator,
         var ghastId: UUID? = null,
         val hiddenRiderIds: MutableSet<UUID> = linkedSetOf(),
         val projectileIds: MutableSet<UUID> = linkedSetOf(),
@@ -168,6 +174,7 @@ internal class FarmRivalRaidController(
             runtime.state.placementSequence,
             plan.points.first(),
             plan.plots.ifEmpty { workers.fieldPlots(runtime, rival) },
+            FarmRivalRaidFlightNavigator(flightSpace),
         )
         workers.start(runtime, raids.getValue(runtime.settings.id).fieldPlots)
     }
@@ -182,6 +189,7 @@ internal class FarmRivalRaidController(
                 special.plots.ifEmpty {
                     special.points.getOrNull(1)?.let { workers.fieldPlots(runtime, it) }.orEmpty()
                 },
+                FarmRivalRaidFlightNavigator(flightSpace),
             )
         }
         if (session.sequence != runtime.state.sequence) {
@@ -267,8 +275,9 @@ internal class FarmRivalRaidController(
             session.orbitAngle,
         )
         val current = ghast.point()
+        val launching = current.horizontalDistanceSquared(departure) <= 0.25 && current.y < launch.y - 0.1
         val target = when {
-            current.horizontalDistanceSquared(departure) <= 0.25 && current.y < launch.y - 0.1 -> launch
+            launching -> launch
             !session.orbiting -> initialOrbit
             else -> {
                 val now = ghast.world.gameTime
@@ -288,15 +297,47 @@ internal class FarmRivalRaidController(
                 )
             }
         }
-        val velocity = FarmRaidFlight.steer(
+        val envelope = FarmRaidFlightEnvelope.forRaid(
+            runtime.settings.rivalRaid.maximumRiders,
+            runtime.settings.rivalRaid.seatSpacing,
+            runtime.settings.rivalRaid.seatYOffset,
+        )
+        val navigation = session.flightNavigator.plan(
+            ghast.world,
             current,
             target,
-            FarmMotionVector(ghast.velocity.x, ghast.velocity.y, ghast.velocity.z),
-            runtime.settings.rivalRaid.flightSpeed,
-            runtime.settings.rivalRaid.flightSteering,
+            if (launching) initialOrbit else target,
+            ghast.world.gameTime,
+            envelope,
+            launching,
         )
+        var recovered = false
+        navigation.recoveryTarget?.let { safeTarget ->
+            val destination = Location(ghast.world, safeTarget.x, safeTarget.y, safeTarget.z)
+            if (ghast.teleport(destination, PlayerTeleportEvent.TeleportCause.PLUGIN)) {
+                session.flightNavigator.recoverySucceeded(ghast.world.gameTime)
+                seats.sync(runtime, session.participantIds.toList(), ghast)
+                recovered = true
+            } else {
+                session.flightNavigator.recoveryFailed(ghast.world.gameTime)
+            }
+        }
+        val positionAfterRecovery = ghast.point()
+        val steeringTarget = if (recovered) target else navigation.steeringTarget
+        val velocity = if (recovered) {
+            // Reassess clearance from the new position next tick instead of steering toward a stale waypoint.
+            FarmMotionVector(0.0, 0.0, 0.0)
+        } else steeringTarget?.let {
+            FarmRaidFlight.steer(
+                positionAfterRecovery,
+                it,
+                FarmMotionVector(ghast.velocity.x, ghast.velocity.y, ghast.velocity.z),
+                runtime.settings.rivalRaid.flightSpeed,
+                runtime.settings.rivalRaid.flightSteering,
+            )
+        } ?: FarmMotionVector(0.0, 0.0, 0.0)
         ghast.velocity = Vector(velocity.x, velocity.y, velocity.z)
-        if (!session.orbiting && current.distanceSquared(initialOrbit) <= 4.0) {
+        if (!session.orbiting && positionAfterRecovery.distanceSquared(initialOrbit) <= 4.0) {
             session.orbiting = true
             session.lastFlightTick = ghast.world.gameTime
         }

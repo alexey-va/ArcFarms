@@ -400,7 +400,7 @@ data class FarmBoarBreakoutSettings(
 
 data class FarmRivalRaidSettings(
     val requiredKills: Int = 256,
-    val workerCount: Int = 120,
+    val workerCount: Int = 100,
     val workerSpawnBatchSize: Int = 12,
     val workerPatrolBatchSize: Int = 32,
     val workerEntity: String = "HUSK",
@@ -413,7 +413,7 @@ data class FarmRivalRaidSettings(
     val workerLightStride: Int = 10,
     val workerPatrolIntervalTicks: Int = 10,
     val workerPatrolSpeed: Double = 1.8,
-    val flightHeight: Double = 14.0,
+    val flightHeight: Double = 18.0,
     val flightSpeed: Double = 0.30,
     val flightSteering: Double = 0.65,
     val orbitRadius: Double = 36.0,
@@ -452,7 +452,7 @@ data class FarmRivalRaidSettings(
     val grenadePreviewBlocks: Int = 96,
     val grenadePreviewTicks: Int = 1_200,
     val grenadePreviewSoilMaterial: String = "COARSE_DIRT",
-    val grenadeDebrisBlocks: Int = 48,
+    val grenadeDebrisBlocks: Int = 36,
     val grenadeDebrisTicks: Int = 34,
 ) {
     init {
@@ -2270,7 +2270,7 @@ class ArcFarmsConfig private constructor(
                     rivalRaid = FarmRivalRaidSettings(
                         requiredKills = section.int("special-incidents.rival-raid.required-kills", 256)
                             .checked("special-incidents.rival-raid.required-kills", 1, 256),
-                        workerCount = section.int("special-incidents.rival-raid.worker-count", 120)
+                        workerCount = section.int("special-incidents.rival-raid.worker-count", 100)
                             .checked("special-incidents.rival-raid.worker-count", 1, 192),
                         workerSpawnBatchSize = section.int(
                             "special-incidents.rival-raid.worker-spawn-batch-size", 12,
@@ -2307,7 +2307,7 @@ class ArcFarmsConfig private constructor(
                             "special-incidents.rival-raid.worker-patrol-speed", 1.8, 0.5, 2.0,
                         ),
                         flightHeight = section.finiteDouble(
-                            "special-incidents.rival-raid.flight-height", 14.0, 3.0, 48.0,
+                            "special-incidents.rival-raid.flight-height", 18.0, 3.0, 48.0,
                         ),
                         flightSpeed = section.finiteDouble(
                             "special-incidents.rival-raid.flight-speed", 0.30, 0.1, 2.0,
@@ -2427,7 +2427,7 @@ class ArcFarmsConfig private constructor(
                             section.string("special-incidents.rival-raid.grenade-preview-soil-material", "COARSE_DIRT"),
                         ),
                         grenadeDebrisBlocks = section.int(
-                            "special-incidents.rival-raid.grenade-debris-blocks", 48,
+                            "special-incidents.rival-raid.grenade-debris-blocks", 36,
                         ).checked("special-incidents.rival-raid.grenade-debris-blocks", 0, 64),
                         grenadeDebrisTicks = section.int(
                             "special-incidents.rival-raid.grenade-debris-ticks", 34,
