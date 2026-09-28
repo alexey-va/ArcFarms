@@ -1631,13 +1631,13 @@ class ArcFarmsConfigTest : FunSpec({
         val plain = rows.map(PlainTextComponentSerializer.plainText()::serialize)
 
         rows.size shouldBe 14
-        plain[0] shouldBe "Заказ"
-        plain[1].startsWith("| ") shouldBe true
-        plain[2] shouldBe "Задача"
-        plain[3] shouldBe "| Сбор урожая"
-        plain[4] shouldBe "| 1250 / 3200"
-        plain[5].trimEnd() shouldBe "| Собирайте культуры"
-        plain[6] shouldBe "из списка"
+        plain[0].startsWith("| ") shouldBe true
+        plain[1] shouldBe ""
+        plain[2] shouldBe "Сбор урожая"
+        plain[3] shouldBe "| 1250 / 3200"
+        plain[4].trimEnd() shouldBe "| Собирайте культуры"
+        plain[5] shouldBe "| из списка"
+        plain[6] shouldBe ""
         plain[7] shouldBe "Урожай"
         plain.drop(8) shouldBe listOf(
             "| Пшеница 1000/1600",
@@ -1712,10 +1712,10 @@ class ArcFarmsConfigTest : FunSpec({
         scenarios.forEach { (view, expectedHint) ->
             val rows = renderer.rows(view, null)
             (rows.size in 8..10) shouldBe true
-            val hints = rows.drop(5).map(PlainTextComponentSerializer.plainText()::serialize)
-                .takeWhile { it != "Урожай" }.joinToString(" ") { it.trim() }
+            val hints = rows.drop(4).map(PlainTextComponentSerializer.plainText()::serialize)
+                .takeWhile { it != "Урожай" }.joinToString(" ") { it.removePrefix("| ").trim() }
                 .replace(Regex(" +"), " ")
-            hints shouldContain "| $expectedHint"
+            hints shouldContain expectedHint
         }
     }
 
@@ -1736,8 +1736,8 @@ class ArcFarmsConfigTest : FunSpec({
             val plain = renderer.rows(base.copy(incidentType = incident), null)
                 .map(PlainTextComponentSerializer.plainText()::serialize)
             withClue("incident=$incident rows=$plain") {
-                plain[3].removePrefix("| ").isNotBlank() shouldBe true
-                plain[5].removePrefix("| ").isNotBlank() shouldBe true
+                plain[2].isNotBlank() shouldBe true
+                plain[4].removePrefix("| ").isNotBlank() shouldBe true
             }
         }
     }
@@ -1755,15 +1755,15 @@ class ArcFarmsConfigTest : FunSpec({
             cropProgress = emptyMap(),
         )
         val preparation = renderer.rows(base, null).map(PlainTextComponentSerializer.plainText()::serialize)
-        preparation[5] shouldBe "| Поле под столбом"
-        preparation.subList(6, 8).joinToString(" ") { it.trim() } shouldBe "| Вспашите поле мотыгой"
+        preparation[4] shouldBe "| Поле под столбом"
+        preparation.subList(5, 7).joinToString(" ") { it.removePrefix("| ").trim() } shouldBe "Вспашите поле мотыгой"
 
         val channels = renderer.rows(
             base.copy(phase = FarmPhase.INCIDENT, incidentType = FarmIncidentType.CHANNELS, done = 1, total = 4),
             null,
         ).map(PlainTextComponentSerializer.plainText()::serialize)
-        channels[5] shouldBe "| Начните от полива"
-        channels.subList(6, 8).joinToString(" ") { it.trim() } shouldBe "| Копайте по меткам служебной лопатой"
+        channels[4] shouldBe "| Начните от полива"
+        channels.subList(5, 7).joinToString(" ") { it.removePrefix("| ").trim() } shouldBe "Копайте по меткам служебной лопатой"
         (channels.size <= FarmScoreboardRenderer.MAX_ROWS) shouldBe true
     }
 
@@ -1783,8 +1783,8 @@ class ArcFarmsConfigTest : FunSpec({
             null,
         ).map(PlainTextComponentSerializer.plainText()::serialize)
 
-        rows[5] shouldBe "| Войдите в портал"
-        rows[6] shouldBe "| Оружие: ЛКМ / ПКМ"
+        rows[4] shouldBe "| Войдите в портал"
+        rows[5] shouldBe "| Оружие: ЛКМ / ПКМ"
         (rows.size <= FarmScoreboardRenderer.MAX_ROWS) shouldBe true
     }
 
@@ -1811,8 +1811,8 @@ class ArcFarmsConfigTest : FunSpec({
         ).map(PlainTextComponentSerializer.plainText()::serialize)
 
         rows.size shouldBe 14
-        rows[5] shouldBe "| Ищите подсветку"
-        rows.subList(6, 8).joinToString(" ") { it.trim() } shouldBe "| Обходите дозор с факелами"
+        rows[4] shouldBe "| Ищите подсветку"
+        rows.subList(5, 7).joinToString(" ") { it.removePrefix("| ").trim() } shouldBe "Обходите дозор с факелами"
         rows[8] shouldBe "Урожай"
     }
 
@@ -1843,9 +1843,12 @@ class ArcFarmsConfigTest : FunSpec({
                     val cropStart = rows.indexOf(heading)
                     rows.drop(cropStart + 1).size shouldBe 6
                     rows.drop(cropStart + 1).map { it.substringAfterLast('/') } shouldBe crops.values.map(Int::toString)
-                    val hints = rows.subList(5, cropStart)
+                    rows[1] shouldBe ""
+                    rows[cropStart - 1] shouldBe ""
+                    rows.count { it.isBlank() } shouldBe 2
+                    val hints = rows.subList(4, cropStart - 1)
                     (hints.size in 1..3) shouldBe true
-                    hints.all { it.isNotBlank() && it.length <= 22 } shouldBe true
+                    hints.all { it.startsWith("| ") && it.length <= 22 } shouldBe true
                 }
             }
         }

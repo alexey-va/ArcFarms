@@ -32,18 +32,17 @@ internal class FarmScoreboardRenderer(
     fun title(audience: CommandSender?): Component = locale.renderPath("scoreboard.title", audience)
 
     fun rows(view: FarmScoreboardView, audience: CommandSender?): List<Component> {
-        val hints = (listOf(hint(view, audience)) + hintDetails(view, audience)).map { hint ->
-            locale.renderPath("scoreboard.hint-line", audience, mapOf("hint" to hint))
+        val hints = listOf(hint(view, audience)) + hintDetails(view, audience)
+        val hintRows = SidebarLineWrapper.wrap(hints, MAX_HINT_CONTENT_CHARACTERS).map { row ->
+            locale.renderPath("scoreboard.hint-line", audience, mapOf("hint" to row))
         }
-        val hintRows = SidebarLineWrapper.wrap(hints, MAX_HINT_CHARACTERS)
         val rows = buildList {
-            add(locale.renderPath("scoreboard.section.order", audience))
             add(locale.renderPath(
                 "scoreboard.order",
                 audience,
                 mapOf("order" to locale.renderPath("order.farm.${view.orderId}", audience)),
             ))
-            add(locale.renderPath("scoreboard.section.current", audience))
+            add(Component.empty())
             add(locale.renderPath("scoreboard.objective-line", audience, mapOf("objective" to objective(view, audience))))
             if (view.phase == FarmPhase.INCIDENT && view.incidentType == FarmIncidentType.MARKET && !view.marketAccepted) {
                 add(locale.renderPath("scoreboard.market-pending", audience))
@@ -58,6 +57,7 @@ internal class FarmScoreboardRenderer(
                 ))
             }
             addAll(hintRows)
+            add(Component.empty())
             add(locale.renderPath("scoreboard.section.crops", audience))
             view.required.entries.forEach { (cropName, required) ->
                 add(locale.renderPath(
@@ -188,6 +188,6 @@ internal class FarmScoreboardRenderer(
 
     companion object {
         const val MAX_ROWS = 15
-        const val MAX_HINT_CHARACTERS = 22
+        private const val MAX_HINT_CONTENT_CHARACTERS = 20
     }
 }
