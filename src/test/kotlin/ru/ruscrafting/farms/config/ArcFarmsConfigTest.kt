@@ -1690,12 +1690,12 @@ class ArcFarmsConfigTest : FunSpec({
                 phase = FarmPhase.CARE,
                 careType = FarmCareType.SEEDER,
                 seederStage = FarmSeederStage.TILLING,
-            ) to "Ведите свиней над грядками",
+            ) to "Сядьте на коня и езжайте по грядкам",
             base.copy(
                 phase = FarmPhase.CARE,
                 careType = FarmCareType.SEEDER,
                 seederStage = FarmSeederStage.PLANTING,
-            ) to "Ведите свиней над грядками",
+            ) to "Сядьте на коня и езжайте по грядкам",
         ) + mapOf(
             FarmCareType.WEEDS to "Ищите подсвеченные корни",
             FarmCareType.IRRIGATION to "Открывайте любые подсвеченные вентили",
@@ -1762,8 +1762,8 @@ class ArcFarmsConfigTest : FunSpec({
             base.copy(phase = FarmPhase.INCIDENT, incidentType = FarmIncidentType.CHANNELS, done = 1, total = 4),
             null,
         ).map(PlainTextComponentSerializer.plainText()::serialize)
-        channels[5] shouldBe "| Копайте по меткам"
-        channels.subList(6, 8).joinToString(" ") { it.trim() } shouldBe "| От полива, служебной лопатой"
+        channels[5] shouldBe "| Начните от полива"
+        channels.subList(6, 8).joinToString(" ") { it.trim() } shouldBe "| Копайте по меткам служебной лопатой"
         (channels.size <= FarmScoreboardRenderer.MAX_ROWS) shouldBe true
     }
 
