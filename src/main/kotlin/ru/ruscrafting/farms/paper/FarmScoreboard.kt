@@ -8,6 +8,7 @@ import ru.ruscrafting.farms.domain.FarmIncidentType
 import ru.ruscrafting.farms.domain.FarmPhase
 import ru.ruscrafting.farms.domain.FarmSeederStage
 import ru.ruscrafting.farms.domain.FarmProcessingStage
+import ru.ruscrafting.farms.paper.worksite.SidebarLineWrapper
 
 internal data class FarmScoreboardView(
     val orderId: String,
@@ -31,6 +32,10 @@ internal class FarmScoreboardRenderer(
     fun title(audience: CommandSender?): Component = locale.renderPath("scoreboard.title", audience)
 
     fun rows(view: FarmScoreboardView, audience: CommandSender?): List<Component> {
+        val hints = (listOf(hint(view, audience)) + hintDetails(view, audience)).map { hint ->
+            locale.renderPath("scoreboard.hint-line", audience, mapOf("hint" to hint))
+        }
+        val hintRows = SidebarLineWrapper.wrap(hints, MAX_HINT_CHARACTERS)
         val rows = buildList {
             add(locale.renderPath("scoreboard.section.order", audience))
             add(locale.renderPath(
@@ -38,7 +43,6 @@ internal class FarmScoreboardRenderer(
                 audience,
                 mapOf("order" to locale.renderPath("order.farm.${view.orderId}", audience)),
             ))
-            add(Component.empty())
             add(locale.renderPath("scoreboard.section.current", audience))
             add(locale.renderPath("scoreboard.objective-line", audience, mapOf("objective" to objective(view, audience))))
             if (view.phase == FarmPhase.INCIDENT && view.incidentType == FarmIncidentType.MARKET && !view.marketAccepted) {
@@ -53,14 +57,9 @@ internal class FarmScoreboardRenderer(
                     ),
                 ))
             }
-            add(locale.renderPath("scoreboard.hint-line", audience, mapOf("hint" to hint(view, audience))))
-            hintDetails(view, audience).forEach { detail ->
-                add(locale.renderPath("scoreboard.hint-line", audience, mapOf("hint" to detail)))
-            }
-            add(Component.empty())
+            addAll(hintRows)
             add(locale.renderPath("scoreboard.section.crops", audience))
-            val cropRows = (MAX_ROWS - size).coerceIn(0, MAX_CROP_ROWS)
-            view.required.entries.take(cropRows).forEach { (cropName, required) ->
+            view.required.entries.forEach { (cropName, required) ->
                 add(locale.renderPath(
                     "scoreboard.crop",
                     audience,
@@ -189,6 +188,6 @@ internal class FarmScoreboardRenderer(
 
     companion object {
         const val MAX_ROWS = 15
-        const val MAX_CROP_ROWS = 5
+        const val MAX_HINT_CHARACTERS = 22
     }
 }

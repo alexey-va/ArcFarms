@@ -400,7 +400,7 @@ data class FarmBoarBreakoutSettings(
 
 data class FarmRivalRaidSettings(
     val requiredKills: Int = 256,
-    val workerCount: Int = 100,
+    val workerCount: Int = 50,
     val workerSpawnBatchSize: Int = 12,
     val workerPatrolBatchSize: Int = 32,
     val workerEntity: String = "HUSK",
@@ -2274,7 +2274,7 @@ class ArcFarmsConfig private constructor(
                     rivalRaid = FarmRivalRaidSettings(
                         requiredKills = section.int("special-incidents.rival-raid.required-kills", 256)
                             .checked("special-incidents.rival-raid.required-kills", 1, 256),
-                        workerCount = section.int("special-incidents.rival-raid.worker-count", 100)
+                        workerCount = section.int("special-incidents.rival-raid.worker-count", 50)
                             .checked("special-incidents.rival-raid.worker-count", 1, 192),
                         workerSpawnBatchSize = section.int(
                             "special-incidents.rival-raid.worker-spawn-batch-size", 12,

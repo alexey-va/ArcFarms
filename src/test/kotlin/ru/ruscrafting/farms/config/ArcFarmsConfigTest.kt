@@ -546,7 +546,7 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().boarBreakout.shieldMaterial shouldBe "SHIELD"
         settings.farms.single().rivalRaid.requiredKills shouldBe 256
         settings.farms.single().rivalRaid.workerEntity shouldBe "HUSK"
-        settings.farms.single().rivalRaid.workerCount shouldBe 100
+        settings.farms.single().rivalRaid.workerCount shouldBe 50
         settings.farms.single().rivalRaid.workerSpawnBatchSize shouldBe 12
         settings.farms.single().rivalRaid.workerPatrolBatchSize shouldBe 32
         settings.farms.single().rivalRaid.workerPatrolIntervalTicks shouldBe 10
@@ -1622,6 +1622,7 @@ class ArcFarmsConfigTest : FunSpec({
                     "POTATOES" to 800,
                     "BEETROOTS" to 800,
                     "PUMPKIN" to 200,
+                    "MELON" to 200,
                 ),
                 cropProgress = mapOf("WHEAT" to 1_000, "CARROTS" to 250),
             ),
@@ -1632,19 +1633,19 @@ class ArcFarmsConfigTest : FunSpec({
         rows.size shouldBe 14
         plain[0] shouldBe "Заказ"
         plain[1].startsWith("| ") shouldBe true
-        plain[2] shouldBe ""
-        plain[3] shouldBe "Задача"
-        plain[4] shouldBe "| Сбор урожая"
-        plain[5] shouldBe "| 1250 / 3200"
-        plain[6] shouldBe "| Собирайте культуры из списка"
-        plain[7] shouldBe ""
-        plain[8] shouldBe "Урожай"
-        plain.drop(9) shouldBe listOf(
+        plain[2] shouldBe "Задача"
+        plain[3] shouldBe "| Сбор урожая"
+        plain[4] shouldBe "| 1250 / 3200"
+        plain[5].trimEnd() shouldBe "| Собирайте культуры"
+        plain[6] shouldBe "из списка"
+        plain[7] shouldBe "Урожай"
+        plain.drop(8) shouldBe listOf(
             "| Пшеница 1000/1600",
             "| Морковь 250/800",
             "| Картофель 0/800",
             "| Свёкла 0/800",
             "| Тыква 0/200",
+            "| Арбуз 0/200",
         )
         plain.none { "телег" in it.lowercase() || "cart" in it.lowercase() } shouldBe true
     }
@@ -1663,8 +1664,8 @@ class ArcFarmsConfigTest : FunSpec({
         )
         val scenarios = listOf(
             base.copy(phase = FarmPhase.IDLE) to "Заказ появится автоматически",
-            base to "Найдите поле под столбом",
-            base.copy(phase = FarmPhase.PLANTING) to "Найдите поле под столбом",
+            base to "Поле под столбом",
+            base.copy(phase = FarmPhase.PLANTING) to "Поле под столбом",
             base.copy(phase = FarmPhase.CARE, careType = null) to "Следуйте к ближайшей метке",
             base.copy(phase = FarmPhase.HARVESTING) to "Собирайте культуры из списка",
             base.copy(phase = FarmPhase.INCIDENT, incidentType = FarmIncidentType.PESTS) to
@@ -1710,8 +1711,11 @@ class ArcFarmsConfigTest : FunSpec({
 
         scenarios.forEach { (view, expectedHint) ->
             val rows = renderer.rows(view, null)
-            (rows.size in 10..11) shouldBe true
-            PlainTextComponentSerializer.plainText().serialize(rows[6]) shouldBe "| $expectedHint"
+            (rows.size in 8..10) shouldBe true
+            val hints = rows.drop(5).map(PlainTextComponentSerializer.plainText()::serialize)
+                .takeWhile { it != "Урожай" }.joinToString(" ") { it.trim() }
+                .replace(Regex(" +"), " ")
+            hints shouldContain "| $expectedHint"
         }
     }
 
@@ -1732,8 +1736,8 @@ class ArcFarmsConfigTest : FunSpec({
             val plain = renderer.rows(base.copy(incidentType = incident), null)
                 .map(PlainTextComponentSerializer.plainText()::serialize)
             withClue("incident=$incident rows=$plain") {
-                plain[4].removePrefix("| ").isNotBlank() shouldBe true
-                plain[6].removePrefix("| ").isNotBlank() shouldBe true
+                plain[3].removePrefix("| ").isNotBlank() shouldBe true
+                plain[5].removePrefix("| ").isNotBlank() shouldBe true
             }
         }
     }
@@ -1751,15 +1755,15 @@ class ArcFarmsConfigTest : FunSpec({
             cropProgress = emptyMap(),
         )
         val preparation = renderer.rows(base, null).map(PlainTextComponentSerializer.plainText()::serialize)
-        preparation[6] shouldBe "| Найдите поле под столбом"
-        preparation[7] shouldBe "| Вспашите большую часть поля мотыгой"
+        preparation[5] shouldBe "| Поле под столбом"
+        preparation.subList(6, 8).joinToString(" ") { it.trim() } shouldBe "| Вспашите поле мотыгой"
 
         val channels = renderer.rows(
             base.copy(phase = FarmPhase.INCIDENT, incidentType = FarmIncidentType.CHANNELS, done = 1, total = 4),
             null,
         ).map(PlainTextComponentSerializer.plainText()::serialize)
-        channels[6] shouldBe "| Копайте русло по меткам от точки полива"
-        channels[7] shouldBe "| Служебной лопатой разбейте каждый отмеченный блок земли"
+        channels[5] shouldBe "| Копайте по меткам"
+        channels.subList(6, 8).joinToString(" ") { it.trim() } shouldBe "| От полива, служебной лопатой"
         (channels.size <= FarmScoreboardRenderer.MAX_ROWS) shouldBe true
     }
 
@@ -1779,8 +1783,8 @@ class ArcFarmsConfigTest : FunSpec({
             null,
         ).map(PlainTextComponentSerializer.plainText()::serialize)
 
-        rows[6] shouldBe "| Встаньте в портал и выберите оружие"
-        rows[7] shouldBe "| Стреляйте ЛКМ или ПКМ"
+        rows[5] shouldBe "| Войдите в портал"
+        rows[6] shouldBe "| Оружие: ЛКМ / ПКМ"
         (rows.size <= FarmScoreboardRenderer.MAX_ROWS) shouldBe true
     }
 
@@ -1806,10 +1810,45 @@ class ArcFarmsConfigTest : FunSpec({
             null,
         ).map(PlainTextComponentSerializer.plainText()::serialize)
 
-        rows.size shouldBe 15
-        rows[6] shouldBe "| Ищите подсвеченные культуры"
-        rows[7] shouldBe "| Обходите дозор с факелами"
-        rows[8] shouldBe ""
+        rows.size shouldBe 14
+        rows[5] shouldBe "| Ищите подсветку"
+        rows.subList(6, 8).joinToString(" ") { it.trim() } shouldBe "| Обходите дозор с факелами"
+        rows[8] shouldBe "Урожай"
+    }
+
+    test("all localized farm flows keep compact hints and all six crop counters") {
+        listOf("ru", "en").forEach { language ->
+            val root = resourceTree()
+            Config(root, "config.yml").also { it.setString("locale.default", language); it.saveStrict() }
+            val settings = ArcFarmsConfig.inspect(root)
+            val renderer = FarmScoreboardRenderer(ArcFarmsLocale(root) { settings })
+            val crops = linkedMapOf("WHEAT" to 600, "CARROTS" to 400, "POTATOES" to 300,
+                "BEETROOTS" to 200, "PUMPKIN" to 64, "MELON" to 32)
+            val base = FarmScoreboardView("harvest_festival", FarmPhase.HARVESTING, 0, 1596, crops, emptyMap())
+            val views = FarmPhase.entries.map { base.copy(phase = it) } +
+                FarmIncidentType.entries.map { base.copy(phase = FarmPhase.INCIDENT, incidentType = it) } +
+                FarmCareType.entries.map { base.copy(phase = FarmPhase.CARE, careType = it) } +
+                FarmSeederStage.entries.map { base.copy(phase = FarmPhase.CARE, careType = FarmCareType.SEEDER, seederStage = it) } +
+                ru.ruscrafting.farms.domain.FarmProcessingStage.entries.map {
+                    base.copy(phase = FarmPhase.INCIDENT, incidentType = FarmIncidentType.PROCESSING, processingStage = it)
+                } + listOf(
+                    base.copy(phase = FarmPhase.INCIDENT, incidentType = FarmIncidentType.MARKET, marketAccepted = true, incidentCrop = "BEETROOTS"),
+                    base.copy(phase = FarmPhase.DELIVERY, carrying = true),
+                )
+            views.forEach { view ->
+                withClue("locale=$language phase=${view.phase} incident=${view.incidentType} care=${view.careType} seeder=${view.seederStage} processing=${view.processingStage}") {
+                    val rows = renderer.rows(view, null).map(PlainTextComponentSerializer.plainText()::serialize)
+                    (rows.size <= 15) shouldBe true
+                    val heading = if (language == "ru") "Урожай" else "Harvest"
+                    val cropStart = rows.indexOf(heading)
+                    rows.drop(cropStart + 1).size shouldBe 6
+                    rows.drop(cropStart + 1).map { it.substringAfterLast('/') } shouldBe crops.values.map(Int::toString)
+                    val hints = rows.subList(5, cropStart)
+                    (hints.size in 1..3) shouldBe true
+                    hints.all { it.isNotBlank() && it.length <= 22 } shouldBe true
+                }
+            }
+        }
     }
 
     test("money reward uses the dedicated coin glyph without a redundant noun") {
