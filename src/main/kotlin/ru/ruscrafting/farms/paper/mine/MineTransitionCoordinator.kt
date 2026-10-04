@@ -10,6 +10,7 @@ import ru.ruscrafting.farms.domain.MineShiftState
 import ru.ruscrafting.farms.paper.worksite.WorksiteStatePort
 import ru.ruscrafting.farms.paper.worksite.WorksiteStatsPort
 import ru.ruscrafting.farms.paper.worksite.WorksiteAudiencePort
+import ru.ruscrafting.farms.paper.ArcProductTelemetryBridge
 
 /** The only Paper-side writer for V2 mine domain transitions. */
 internal class MineTransitionCoordinator(
@@ -49,7 +50,32 @@ internal class MineTransitionCoordinator(
                 else -> Unit
             }
         }
-        state.persistAsync()
+        val persisted = state.persistAsync()
+        val started = result.accepted && MineShiftEvent.STARTED in result.events && actor != null
+        val completed = result.accepted && MineShiftEvent.COMPLETED in result.events
+        if (started || completed) {
+            val playerIds = if (completed) result.state.contributors.entries.map { it.key to it.value }
+                .ifEmpty { actor?.let { listOf(it.uniqueId to 0) }.orEmpty() }
+            else listOf(actor!!.uniqueId to (result.state.contributors[actor.uniqueId] ?: 0))
+            val kind = "mine"
+            val zoneId = runtime.settings.id
+            val sequence = result.state.sequence
+            val startedAt = result.state.startedAt
+            val completedAt = if (completed) System.currentTimeMillis() else 0L
+            val subject = result.state.orderId
+            persisted.whenComplete { _, failure ->
+                if (failure == null) {
+                    playerIds.forEach { (playerId, contribution) ->
+                        if (started) ArcProductTelemetryBridge.worksiteStarted(
+                            playerId, kind, zoneId, sequence, subject,
+                            mapOf("outcome" to "started"),
+                        ) else ArcProductTelemetryBridge.worksiteCompleted(
+                            playerId, kind, zoneId, sequence, startedAt, completedAt, contribution, subject,
+                        )
+                    }
+                }
+            }
+        }
     }
 
     private fun announceIncident(runtime: MineRuntime) {

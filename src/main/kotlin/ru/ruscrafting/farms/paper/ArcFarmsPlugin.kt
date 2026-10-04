@@ -59,6 +59,7 @@ open class ArcFarmsPlugin : JavaPlugin() {
         if (worldName == MineExpeditionWorldGenerator.WORLD_NAME) MineExpeditionWorldGenerator() else null
 
     override fun onEnable() {
+        ArcProductTelemetryBridge.install()
         saveDefaultConfig()
         saveResourceIfMissing("lang/ru.yml")
         saveResourceIfMissing("lang/en.yml")

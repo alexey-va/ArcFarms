@@ -12,6 +12,7 @@ import ru.ruscrafting.farms.domain.FarmShiftEngine
 import ru.ruscrafting.farms.domain.FarmShiftEvent
 import ru.ruscrafting.farms.domain.FarmShiftState
 import ru.ruscrafting.farms.paper.ArcFarmsDebug
+import ru.ruscrafting.farms.paper.ArcProductTelemetryBridge
 import ru.ruscrafting.farms.paper.FarmBlockRegistry
 import ru.ruscrafting.farms.paper.FarmRuntime
 import ru.ruscrafting.farms.paper.MaterialRules
@@ -50,6 +51,7 @@ internal class FarmShiftStartService(
     private data class PendingStart(
         val runtime: FarmRuntime,
         val player: Player,
+        val playerId: java.util.UUID,
         val result: EngineResult<FarmShiftState, FarmShiftEvent>,
         val order: FarmOrder,
         val patch: List<FarmPlotPosition>,
@@ -90,6 +92,9 @@ internal class FarmShiftStartService(
                     "indexed_beds=${registry.beds(runtime.settings.id).size}",
             )
             if (access.allowInteraction("farm-patch-empty:${runtime.settings.id}:${player.uniqueId}", 10_000)) {
+                ArcProductTelemetryBridge.worksiteStartRejected(
+                    player.uniqueId, "farm", runtime.settings.id, runtime.state.sequence + 1L, "patch_unavailable",
+                )
                 audience.sendActionBar(player, MessageKey.FARM_PATCH_UNAVAILABLE)
                 debug.event(
                     "farm_patch_unavailable", "zone" to runtime.settings.id, "player" to player.name,
@@ -114,6 +119,7 @@ internal class FarmShiftStartService(
         val pending = PendingStart(
             runtime = runtime,
             player = player,
+            playerId = player.uniqueId,
             result = started,
             order = order,
             patch = patch,
@@ -191,6 +197,14 @@ internal class FarmShiftStartService(
             "mechanized" to pending.seederShift,
         )
         transitions.apply(runtime, pending.result.copy(state = runtime.state), pending.player)
+        ArcProductTelemetryBridge.worksiteStarted(
+            playerId = pending.playerId,
+            kind = "farm",
+            zoneId = zoneId,
+            sequence = runtime.state.sequence,
+            subject = pending.order.id,
+            attributes = mapOf("order_rarity" to pending.order.rarity.name.lowercase()),
+        )
         if (pending.player.isOnline) {
             val premium = enterprise.orderPremium(zoneId, runtime.state.sequence)
             if (premium != null) audience.sendChat(pending.player,

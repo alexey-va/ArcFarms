@@ -27,6 +27,7 @@ import ru.ruscrafting.farms.domain.FarmShiftEvent
 import ru.ruscrafting.farms.domain.seederStage
 import ru.ruscrafting.farms.network.NetworkSignal
 import ru.ruscrafting.farms.paper.ArcFarmsDebug
+import ru.ruscrafting.farms.paper.ArcProductTelemetryBridge
 import ru.ruscrafting.farms.paper.FarmRuntime
 import ru.ruscrafting.farms.paper.preparationChunksLoaded
 import ru.ruscrafting.farms.paper.MaterialRules
@@ -675,6 +676,13 @@ internal class FarmShiftCoordinator(
         tornado.clear(runtime)
         greenhouse.clear(runtime)
         val contributors = runtime.state.contributors
+        val completedAt = System.currentTimeMillis()
+        val participants = contributors.ifEmpty { actor?.let { mapOf(it.uniqueId to 0) }.orEmpty() }
+        val participantSnapshot = participants.entries.map { it.key to it.value }
+        val worksiteId = runtime.settings.id
+        val worksiteSequence = runtime.state.sequence
+        val worksiteStartedAt = runtime.state.startedAt
+        val worksiteSubject = runtime.state.orderId
         if (commercialEligible && contributors.isNotEmpty()) {
             Bukkit.getPluginManager().callEvent(
                 WorkShiftCompletedEvent(
@@ -707,14 +715,28 @@ internal class FarmShiftCoordinator(
         }.toMap() else emptyMap()
         val token = tasks.lifecycleToken()
         state.persistAsync().whenComplete { _, failure ->
-            if (failure == null && personal.isNotEmpty()) tasks.runSync(token) {
-                personal.forEach { (id, view) ->
-                    Bukkit.getPlayer(id)?.let { player ->
-                        val weekSettings = settings().enterprises.getValue(ActivityKind.FARM).businessWeek
-                        val date = java.time.Instant.ofEpochMilli(view.nextSettlementMillis).atZone(weekSettings.zoneId)
-                            .format(java.time.format.DateTimeFormatter.ofPattern("dd.MM HH:mm z"))
-                        port.sendChat(player, if (view.simulated) MessageKey.COMPANY_PERSONAL_SHADOW else MessageKey.COMPANY_PERSONAL_RESULT,
-                            mapOf("amount" to locale.text(java.math.BigDecimal.valueOf(view.workerAccruedCents, 2).toPlainString()), "date" to locale.text(date)))
+            if (failure == null) {
+                participantSnapshot.forEach { (playerId, contribution) ->
+                    ArcProductTelemetryBridge.worksiteCompleted(
+                        playerId = playerId,
+                        kind = "farm",
+                        zoneId = worksiteId,
+                        sequence = worksiteSequence,
+                        startedAt = worksiteStartedAt,
+                        completedAt = completedAt,
+                        contribution = contribution,
+                        subject = worksiteSubject,
+                    )
+                }
+                if (personal.isNotEmpty()) tasks.runSync(token) {
+                    personal.forEach { (id, view) ->
+                        Bukkit.getPlayer(id)?.let { player ->
+                            val weekSettings = settings().enterprises.getValue(ActivityKind.FARM).businessWeek
+                            val date = java.time.Instant.ofEpochMilli(view.nextSettlementMillis).atZone(weekSettings.zoneId)
+                                .format(java.time.format.DateTimeFormatter.ofPattern("dd.MM HH:mm z"))
+                            port.sendChat(player, if (view.simulated) MessageKey.COMPANY_PERSONAL_SHADOW else MessageKey.COMPANY_PERSONAL_RESULT,
+                                mapOf("amount" to locale.text(java.math.BigDecimal.valueOf(view.workerAccruedCents, 2).toPlainString()), "date" to locale.text(date)))
+                        }
                     }
                 }
             }
