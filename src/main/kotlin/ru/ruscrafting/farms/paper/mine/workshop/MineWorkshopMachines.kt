@@ -273,9 +273,10 @@ internal class MineWorkshopMachines(private val plugin: Plugin) {
 
     private var renderer: PaperPacketDisplays? = null
 
-    private fun renderer() = renderer ?: PaperPacketDisplays(requireNotNull(plugin) {
-        "A plugin is required to spawn live workshop displays"
-    }).also { renderer = it }
+    private fun renderer() = renderer ?: PaperPacketDisplays(
+        requireNotNull(plugin) { "A plugin is required to spawn live workshop displays" },
+        "mine-workshop-machines",
+    ).also { renderer = it }
 
     fun close() {
         renderer?.close()

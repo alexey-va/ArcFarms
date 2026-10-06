@@ -240,7 +240,7 @@ internal class MineRailDriveService(
 
     private fun spawnCarried(zone: String, player: Player): Carried {
         val parts = MineDisplayBlueprints.model(CASSETTE_MODEL)
-        val owner = renderer ?: PaperPacketDisplays(plugin).also { renderer = it }
+        val owner = renderer ?: PaperPacketDisplays(plugin, "mine-rail-drive").also { renderer = it }
         val displays = mutableListOf<PacketBlockDisplay>()
         return try {
             parts.forEach { part ->

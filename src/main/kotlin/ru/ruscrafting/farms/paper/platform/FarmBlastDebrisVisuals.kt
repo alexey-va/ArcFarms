@@ -22,7 +22,7 @@ internal class PacketFarmBlastDebrisVisuals(private val plugin: Plugin) : FarmBl
     private var renderer: PaperPacketDisplays? = null
 
     override fun spawn(location: Location, block: BlockData): FarmBlastDebrisVisuals.Fragment {
-        val owner = renderer ?: PaperPacketDisplays(plugin).also { renderer = it }
+        val owner = renderer ?: PaperPacketDisplays(plugin, "farm-blast-debris").also { renderer = it }
         val display = owner.spawnBlock(location, block).apply {
             viewRange = 1.5f
             teleportDuration = 1

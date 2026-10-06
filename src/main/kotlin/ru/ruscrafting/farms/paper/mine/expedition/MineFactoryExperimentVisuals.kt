@@ -92,7 +92,7 @@ internal class PacketMineFactoryExperimentVisuals(private val plugin: Plugin) : 
     }
 
     private fun spawn(at: Location, model: String, parts: List<MineDisplayBlueprints.Part>): Entry {
-        val owner = renderer ?: PaperPacketDisplays(plugin).also { renderer = it }
+        val owner = renderer ?: PaperPacketDisplays(plugin, "mine-factory-experiment").also { renderer = it }
         val displays = mutableListOf<PacketBlockDisplay>()
         return try {
             parts.forEach { part ->

@@ -27,7 +27,7 @@ internal class MineDriveRig(private val plugin: Plugin) {
     private val tag = NamespacedKey(plugin, "mine_drive_carrier")
     private val rigs = mutableMapOf<String, Rig>()
     private var renderer: PaperPacketDisplays? = null
-    private fun renderer() = renderer ?: PaperPacketDisplays(plugin).also { renderer = it }
+    private fun renderer() = renderer ?: PaperPacketDisplays(plugin, "mine-drive-rig").also { renderer = it }
 
     fun zone(entity: Entity): String? = entity.persistentDataContainer.get(tag, PersistentDataType.STRING)
     fun get(zone: String) = rigs[zone]

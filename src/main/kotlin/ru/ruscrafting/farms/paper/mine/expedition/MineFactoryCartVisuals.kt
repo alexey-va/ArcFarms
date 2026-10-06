@@ -22,7 +22,7 @@ internal class PacketMineFactoryCartVisuals(private val plugin: Plugin) : MineFa
     override fun spawn(at: Location, parts: List<MineDisplayBlueprints.Part>): MineFactoryCartVisuals.Body {
         val displays=mutableListOf<PacketBlockDisplay>()
         try {
-            val renderer=renderer ?: PaperPacketDisplays(plugin).also { renderer=it }
+            val renderer=renderer ?: PaperPacketDisplays(plugin, "mine-factory-carts").also { renderer=it }
             parts.forEach { part -> displays += renderer.spawnBlock(at,part.material.createBlockData()).apply {
                 brightness=MineDisplayLighting.brightness(part.material)
                 viewRange=2f;interpolationDuration=2;teleportDuration=2

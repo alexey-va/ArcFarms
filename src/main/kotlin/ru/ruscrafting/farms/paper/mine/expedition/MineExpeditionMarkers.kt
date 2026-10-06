@@ -34,7 +34,7 @@ internal class MineExpeditionMarkers(
     private val key = NamespacedKey(plugin, keyName)
     private val markers = linkedMapOf<String, Marker>()
     private var renderer: PaperPacketDisplays? = null
-    private fun renderer() = renderer ?: PaperPacketDisplays(plugin).also { renderer = it }
+    private fun renderer() = renderer ?: PaperPacketDisplays(plugin, "mine-expedition-markers").also { renderer = it }
 
     fun identity(entity: Entity): String? = entity.persistentDataContainer.get(key, PersistentDataType.STRING)
     /** Returns an identity only when this marker owner still owns the live hitbox. */
