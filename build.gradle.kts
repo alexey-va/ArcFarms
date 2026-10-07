@@ -121,6 +121,8 @@ tasks {
         exclude("io/papermc/**")
         // ARC is the sole native sidebar host; consumers share only its API class identity.
         exclude("ru/arc/paper/sidebar/**")
+        exclude("ru/arc/paper/packet/PaperVisualPacketRuntime*.class")
+        exclude("ru/arc/paper/api/**")
         exclude("ru/arc/paper/inspection/**")
     }
     check { dependsOn(shadowJar, "integrationTest") }
