@@ -28,12 +28,15 @@ internal class MineEngineGuide(
 
     private fun resolve(player: Player): ArcInspectionFrame? {
         val hit = markers.inspectEngine(player) ?: return null
-        val id = hit.part.inspection ?: return ArcInspectionFrame(Component.empty())
-        val catalog = locale ?: return ArcInspectionFrame(Component.empty())
+        val id = hit.part.inspection ?: return emptyFrame()
+        val catalog = locale ?: return emptyFrame()
         val title = catalog.renderPath("mine.expedition.engine-guide.$id.title", player)
         val description = catalog.renderPath("mine.expedition.engine-guide.$id.description", player)
-        return ArcInspectionFrame(title.append(Component.newline()).append(description), title)
+        return ArcInspectionFrame(title.append(Component.newline()).append(description), title, null)
     }
+
+    // Avoid ARC's Kotlin default-argument constructor bridge across plugin classloaders.
+    private fun emptyFrame() = ArcInspectionFrame(Component.empty(), Component.empty(), null)
 
     override fun close() {
         registration?.close()
