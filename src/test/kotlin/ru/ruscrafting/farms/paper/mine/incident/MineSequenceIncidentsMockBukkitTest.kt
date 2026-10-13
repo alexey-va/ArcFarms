@@ -16,6 +16,7 @@ import ru.ruscrafting.farms.domain.worksite.WorksitePosition
 import ru.ruscrafting.farms.paper.CuboidRegionGateway
 import ru.ruscrafting.farms.paper.mine.ImmediateMineJournal
 import ru.ruscrafting.farms.paper.mine.testMineComponentGraph
+import ru.ruscrafting.farms.paper.mine.prewarmIncidentCandidates
 import ru.ruscrafting.farms.paper.mine.immediateMinePort
 import ru.ruscrafting.farms.paper.mine.index.MineAnchorRole
 import ru.ruscrafting.farms.paper.mine.index.MineIndexDefinition
@@ -48,6 +49,7 @@ class MineSequenceIncidentsMockBukkitTest : FunSpec({
             supports.map { MineIndexedTarget(it.position(), setOf(MineAnchorRole.SUPPORT)) } +
                 crystals.map { MineIndexedTarget(it.position(), setOf(MineAnchorRole.CRYSTAL)) },
         )
+        graph.prewarmIncidentCandidates(runtime)
 
         graph.gasLeak.start(runtime, required = 2, now = 1_000L) shouldBe true
         val gasTargets = runtime.state.objective!!.targets

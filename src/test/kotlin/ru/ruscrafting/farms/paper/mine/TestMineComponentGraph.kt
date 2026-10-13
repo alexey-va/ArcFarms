@@ -58,3 +58,7 @@ internal fun testMineComponentGraph(
     },
     blockDataDecoder = ru.ruscrafting.farms.paper.fixtures.MockBukkitFarmBlockDataDecoder,
 )
+
+internal fun MineComponentGraph.prewarmIncidentCandidates(runtime: MineRuntime, now: Long = 1_000L) {
+    repeat(100) { candidateStock.prewarm(runtime, now) }
+}

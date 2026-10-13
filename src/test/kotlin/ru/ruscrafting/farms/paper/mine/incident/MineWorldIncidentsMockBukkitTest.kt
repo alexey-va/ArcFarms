@@ -27,6 +27,7 @@ import ru.ruscrafting.farms.paper.CuboidRegionGateway
 import ru.ruscrafting.farms.paper.mine.ImmediateMineJournal
 import ru.ruscrafting.farms.paper.mine.MineComponentGraph
 import ru.ruscrafting.farms.paper.mine.testMineComponentGraph
+import ru.ruscrafting.farms.paper.mine.prewarmIncidentCandidates
 import ru.ruscrafting.farms.paper.mine.immediateMinePort
 import ru.ruscrafting.farms.paper.mine.incident.entity.MineIncidentEntityKind
 import ru.ruscrafting.farms.paper.mine.index.MineAnchorRole
@@ -52,6 +53,7 @@ class MineWorldIncidentsMockBukkitTest : FunSpec({
         val graph = worldGraph(paper, journal, items, "FloodA")
         val runtime = graph.registry.byId("old_shafts")!!
         index(graph, runtime, floors.map { MineIndexedTarget(it.position(), setOf(MineAnchorRole.NEST)) })
+        graph.prewarmIncidentCandidates(runtime)
         graph.flooding.start(runtime, required = 2, now = 1_000L) shouldBe true
         val initial = graph.flooding.waterPositions(runtime)
         (initial.size in 20..30) shouldBe true

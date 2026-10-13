@@ -33,6 +33,7 @@ import ru.ruscrafting.farms.paper.CuboidRegionGateway
 import ru.ruscrafting.farms.paper.mine.ImmediateMineJournal
 import ru.ruscrafting.farms.paper.mine.MineComponentGraph
 import ru.ruscrafting.farms.paper.mine.testMineComponentGraph
+import ru.ruscrafting.farms.paper.mine.prewarmIncidentCandidates
 import ru.ruscrafting.farms.paper.mine.MineRuntime
 import ru.ruscrafting.farms.paper.mine.immediateMinePort
 import ru.ruscrafting.farms.paper.mine.incident.entity.MineIncidentEntityEffects
@@ -334,6 +335,7 @@ class MineEntityIncidentsMockBukkitTest : FunSpec({
             supports.map { it.chunk }.distinctBy { it.x to it.z },
             supports.map { MineIndexedTarget(it.position(), setOf(MineAnchorRole.SUPPORT)) },
         )
+        graph.prewarmIncidentCandidates(runtime)
 
         graph.gasLeak.start(runtime, required = 2, now = 1_000L) shouldBe true
         graph.incidentSet.tick(runtime, 1_001L, emptyList())
@@ -576,6 +578,7 @@ private fun replaceEntityIndex(
             )
         },
     )
+    graph.prewarmIncidentCandidates(runtime)
 }
 
 private class RecordingIncidentEntities : MineIncidentEntityEffects {

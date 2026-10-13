@@ -308,6 +308,7 @@ class MineBasicCycleMockBukkitTest : FunSpec({
             mineable.map { MineIndexedTarget(it.position(), setOf(MineAnchorRole.MINEABLE)) } +
                 nests.map { MineIndexedTarget(it.position(), setOf(MineAnchorRole.NEST)) },
         )
+        graph.prewarmIncidentCandidates(runtime)
 
         graph.module.tick(1_000L)
         runtime.state.phase shouldBe MinePhase.MINING

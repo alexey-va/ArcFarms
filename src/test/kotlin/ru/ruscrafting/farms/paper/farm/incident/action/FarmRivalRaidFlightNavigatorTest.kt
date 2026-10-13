@@ -193,7 +193,7 @@ private fun mockWorld(
     loadChunks: Boolean = true,
     materialAt: (Int, Int, Int) -> Material,
 ): World {
-    val blocks = mutableMapOf<Triple<Int, Int, Int>, Block>()
+    val blocks = mutableMapOf<Material, Block>()
     val world = mockk<World>()
     every { world.name } returns "world"
     every { world.minHeight } returns -64
@@ -203,8 +203,8 @@ private fun mockWorld(
         val x = firstArg<Int>()
         val y = secondArg<Int>()
         val z = thirdArg<Int>()
-        blocks.getOrPut(Triple(x, y, z)) {
-            val material = materialAt(x, y, z)
+        val material = materialAt(x, y, z)
+        blocks.getOrPut(material) {
             mockk {
                 every { type } returns material
                 every { isPassable } returns material.isAir
