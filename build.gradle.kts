@@ -95,6 +95,9 @@ tasks {
         // Keep the heap above the JVM default and recycle the worker before
         // retained server fixtures accumulate across the whole 200+ class suite.
         maxHeapSize = "1g"
+        // An exhausted worker cannot continue reliably; fail instead of hanging
+        // until the CI timeout while unrelated tests cascade with OOM errors.
+        jvmArgs("-XX:+ExitOnOutOfMemoryError")
         forkEvery = 64
         systemProperty("arcfarms.projectDir", projectDir.absolutePath)
         providers.gradleProperty("ruscraftingOpsRoot")

@@ -104,20 +104,23 @@ private fun startRaid(fixture: FarmIncidentScenarioFixture, sequence: Long): Rai
         val region = firstArg<ActivityRegion>()
         fixture.paper.server.onlinePlayers.filter { region.contains(it.location) }
     }
-    val beds = plantedField(fixture, 76..87, 76..87)
+    // Keep this lifecycle-only scenario's rival patch small and just outside
+    // the home region. The raid still has real eligible plots, without making
+    // MockBukkit materialize thousands of scanned blocks per test.
+    val beds = plantedField(fixture, 62..66, 8..12)
     val runtime = fixture.runtime(actionState(sequence))
     runtime.settings = runtime.settings.copy(
         rivalRaid = runtime.settings.rivalRaid.copy(
             workerCount = 1,
             workerSpawnBatchSize = 1,
             workerPatrolBatchSize = 1,
-            workerRadius = 16.0,
+            workerRadius = 2.0,
             workerFocusRadius = 16.0,
             workerRetireRadius = 16.0,
         ),
     )
-    val receiving = FarmPointPosition(fixture.world.name, 10.5, 65.0, 10.5)
-    val rival = FarmPointPosition(fixture.world.name, 80.5, 65.0, 80.5)
+    val receiving = FarmPointPosition(fixture.world.name, 60.5, 65.0, 10.5)
+    val rival = FarmPointPosition(fixture.world.name, 64.5, 65.0, 10.5)
     val alwaysClear = object : FarmRaidFlightSpace {
         override fun isClearAt(
             world: org.bukkit.World,
