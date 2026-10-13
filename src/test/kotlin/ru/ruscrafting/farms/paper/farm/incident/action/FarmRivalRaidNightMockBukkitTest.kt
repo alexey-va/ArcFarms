@@ -115,7 +115,7 @@ private fun startRaid(fixture: FarmIncidentScenarioFixture, sequence: Long): Rai
             workerSpawnBatchSize = 1,
             workerPatrolBatchSize = 1,
             workerRadius = 2.0,
-            workerFocusRadius = 16.0,
+            workerFocusRadius = 2.0,
             workerRetireRadius = 16.0,
         ),
     )

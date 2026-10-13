@@ -491,10 +491,9 @@ class MineEntityIncidentsMockBukkitTest : FunSpec({
         graph.incidentSet.onInteractEntity(foundEvent) shouldBe true
         foundEvent.isCancelled shouldBe true
         runtime.state.phase shouldBe MinePhase.MINING
-        // Completion keeps the authored maze open until its grace policy expires;
-        // the rescuer can use the native internal exit marker instead of being
-        // teleported out by the objective transition.
-        runtime.region.contains(player.location) shouldBe false
+        // Completion returns the rescuer to the saved surface, while the authored
+        // maze remains retained until its grace policy expires.
+        runtime.region.contains(player.location) shouldBe true
         effects.count(MineIncidentEntityKind.MINER) shouldBe 0
         effects.count(MineIncidentEntityKind.MINER_MAZE_ENTRANCE) shouldBe 1
         effects.count(MineIncidentEntityKind.MINER_MAZE_ENTRANCE_HITBOX) shouldBe 1
@@ -502,18 +501,10 @@ class MineEntityIncidentsMockBukkitTest : FunSpec({
         effects.count(MineIncidentEntityKind.MINER_CAMP_SUPPLIES) shouldBe 0
         effects.count(MineIncidentEntityKind.RESCUE_CREATURE) shouldBe 0
 
-        val retainedExit = PlayerInteractEntityEvent(
-            player,
-            requireNotNull(effects.entity(effects.id(MineIncidentEntityKind.MINER_MAZE_ENTRANCE_HITBOX, "exit:${target.id}"))),
-            EquipmentSlot.HAND,
-        )
-        graph.incidentSet.onInteractEntity(retainedExit) shouldBe true
-        retainedExit.isCancelled shouldBe true
-        runtime.region.contains(player.location) shouldBe true
-
-        // Once everyone has left, the minimum 60-second grace expires without
-        // waiting five minutes for the hard deadline.
-        graph.lostMiner.tick(runtime, System.currentTimeMillis() + 60_001L)
+        // The fixed test clock starts at 1,000 ms; move away from the scene and
+        // advance exactly through the 60-second grace, not the hard deadline.
+        player.teleport(Location(world, 30.5, 64.0, 30.5))
+        graph.lostMiner.tick(runtime, 61_001L)
         effects.count(MineIncidentEntityKind.MINER_MAZE_ENTRANCE) shouldBe 0
         effects.count(MineIncidentEntityKind.MINER_MAZE_ENTRANCE_HITBOX) shouldBe 0
         }
