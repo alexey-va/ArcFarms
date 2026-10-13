@@ -5,7 +5,7 @@ plugins {
     jacoco
 }
 group = "ru.ruscrafting"
-version = "0.45.19"
+version = "0.45.20"
 description = "Shared farm, lumbermill, and mine activities for RusCrafting"
 
 val integrationTestSourceSet = sourceSets.create("integrationTest") {
@@ -27,7 +27,7 @@ repositories {
 java { toolchain { languageVersion.set(JavaLanguageVersion.of(25)) } }
 kotlin { jvmToolchain(25) }
 
-val arcCoreVersion = "2.7.21"
+val arcCoreVersion = "2.7.22"
 
 dependencies {
     implementation(kotlin("stdlib"))
@@ -123,6 +123,11 @@ tasks {
         exclude("ru/arc/paper/sidebar/**")
         exclude("ru/arc/paper/packet/PaperVisualPacketRuntime*.class")
         exclude("ru/arc/paper/api/**")
+        exclude("ru/arc/paper/sql/PaperSqlServiceProvider*.class")
+        exclude("ru/arc/paper/sql/SharedPaperSqlService*.class")
+        exclude("ru/arc/paper/redis/PaperRedisServiceProvider*.class")
+        exclude("ru/arc/paper/redis/SharedPaperRedisService*.class")
+        exclude("ru/arc/paper/metrics/PaperArcMetricsProvider*.class")
         exclude("ru/arc/paper/inspection/**")
     }
     check { dependsOn(shadowJar, "integrationTest") }
@@ -142,6 +147,7 @@ plugwright {
     nodeVersion.set("22.14.0")
     acceptEula.set(true)
     downloadPlugins {
+        url("https://github.com/retrooper/packetevents/releases/download/v2.12.1/packetevents-spigot-2.12.1.jar")
         url("https://github.com/MilkBowl/Vault/releases/download/1.7.3/Vault.jar")
     }
     jvmArgs.set(listOf("-Xms512M", "-Xmx2G", "-XX:ActiveProcessorCount=2"))

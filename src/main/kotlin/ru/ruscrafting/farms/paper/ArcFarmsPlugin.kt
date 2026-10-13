@@ -4,7 +4,6 @@ import com.google.gson.Gson
 import net.milkbowl.vault.economy.Economy
 import org.bukkit.generator.ChunkGenerator
 import org.bukkit.plugin.java.JavaPlugin
-import org.slf4j.LoggerFactory
 import ru.arc.core.PaperArcRuntime
 import ru.arc.core.Tasks
 import ru.arc.observability.RuntimeHealthContribution
@@ -12,9 +11,8 @@ import ru.arc.observability.RuntimeHealthState
 import ru.arc.paper.runtime.PaperPluginRuntime
 import ru.arc.paper.api.ArcSidebarPriorities
 import ru.arc.paper.api.ArcSidebarService
-import ru.arc.redis.RedisManager
+import ru.arc.paper.redis.PaperRedisClient
 import ru.arc.redis.RedisModuleConfig
-import ru.arc.redis.ServerIdentity
 import ru.ruscrafting.farms.config.ArcFarmsConfig
 import ru.ruscrafting.farms.config.ArcFarmsLocale
 import ru.ruscrafting.farms.config.ArcFarmsRedisBootstrap
@@ -47,7 +45,7 @@ open class ArcFarmsPlugin : JavaPlugin() {
     private var fixedCropJournal: FixedFarmCropJournal? = null
     private var farmLocationRepository: FarmLocationRepository? = null
     private var farmRouteRepository: FarmRouteRepository? = null
-    private var redis: RedisManager? = null
+    private var redis: PaperRedisClient? = null
     private var redisRuntimeSettings: RedisRuntimeSettings? = null
     private var network: ArcFarmsNetworkService? = null
     private var transfer: BungeeBackendTransfer? = null
@@ -81,11 +79,7 @@ open class ArcFarmsPlugin : JavaPlugin() {
             val networkGateway = if (settings.network.enabled) {
                 val redisConfig = ArcFarmsRedisBootstrap.load(dataRoot, settings)
                 redisRuntimeSettings = RedisRuntimeSettings.from(redisConfig)
-                val manager = RedisManager(
-                    redisConfig.connection(),
-                    ServerIdentity { settings.serverId },
-                    LoggerFactory.getLogger("ArcFarms.Redis"),
-                )
+                val manager = PaperRedisClient.open(this, redisConfig.connection(), settings.serverId)
                 lifecycle.own(manager)
                 redis = manager
                 val networkService = ArcFarmsNetworkService(

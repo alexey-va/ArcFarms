@@ -11,7 +11,7 @@ import org.bukkit.entity.Player
 import org.bukkit.plugin.Plugin
 import ru.arc.core.ScheduledTask
 import ru.arc.core.Tasks
-import ru.arc.redis.RedisManager
+import ru.arc.paper.redis.PaperRedisClient
 import ru.arc.redis.network.RedisRequestReplyChannel
 import ru.arc.redis.network.RedisRequestResult
 import ru.ruscrafting.farms.config.ArcFarmsConfig
@@ -34,7 +34,7 @@ class ArcFarmsNetworkService(
     private val settings: () -> ArcFarmsConfig,
     private val locale: ArcFarmsLocale,
     private val repository: ArcFarmsNetworkRepository,
-    private val redis: RedisManager,
+    private val redis: PaperRedisClient,
     private val debug: ArcFarmsDebug = ArcFarmsDebug({ false }) {},
     private val clock: () -> Long = System::currentTimeMillis,
 ) : ActivityNetworkGateway, AutoCloseable {

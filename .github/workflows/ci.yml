@@ -28,6 +28,15 @@ jobs:
           java-version: "25"
       - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
       - run: ./gradlew --no-daemon test shadowJar --build-cache
+      - name: Preserve tested production JAR
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ArcFarms-${{ github.sha }}
+          retention-days: 7
+          path: |
+            build/libs/ArcFarms-*.jar
+            !build/libs/*-plain.jar
+          if-no-files-found: error
 
   integration:
     name: Storage integration
