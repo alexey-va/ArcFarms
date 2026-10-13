@@ -90,6 +90,8 @@ class MineWorldIncidentsMockBukkitTest : FunSpec({
         val feedback = mockk<Player>(relaxed = true)
         every { feedback.uniqueId } returns player.uniqueId
         every { feedback.location } returns player.location
+        every { feedback.gameMode } returns org.bukkit.GameMode.SURVIVAL
+        every { feedback.rayTraceBlocks(6.0, org.bukkit.FluidCollisionMode.ALWAYS) } returns null
         val beforeScoops = restarted.flooding.waterPositions(restartedRuntime).toSet()
         val first = beforeScoops.first()
         val guest = paper.server.addPlayer("FloodUnauthorized")
@@ -159,7 +161,13 @@ class MineWorldIncidentsMockBukkitTest : FunSpec({
             val graph = testMineComponentGraph(
                 plugin, CuboidRegionGateway(), immediateMinePort(),
                 clock = { 1_000L }, journal = ImmediateMineJournal(),
-            ).also { it.module.rebuild(listOf(settings), emptyMap(), 5_000L) }
+            ).also { it.module.rebuild(
+                listOf(settings),
+                mapOf("old_shafts" to MineShiftState(
+                    engineVersion = 2, phase = MinePhase.MINING, sequence = 1, orderId = "ore_run",
+                )),
+                5_000L,
+            ) }
             val runtime = graph.registry.byId("old_shafts")!!
             val placement = MineWorkingPlacement(
                 WorksitePosition(world.name, 5, 63, 5), 0, "legacy-floor", geometryVersion = geometryVersion,

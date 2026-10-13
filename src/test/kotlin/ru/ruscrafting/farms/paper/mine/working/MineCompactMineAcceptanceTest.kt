@@ -202,7 +202,9 @@ class MineCompactMineAcceptanceTest : FunSpec({
                 require(raw.mapPointsRevision == HISTORICAL_MAP_POINTS_REVISION)
                 require(raw.fixtureRevision == HISTORICAL_FIXTURE_REVISION)
                 require(raw.sourceSha256 == HISTORICAL_SOURCE_SHA256)
-                raw
+                // Gson bypasses Kotlin constructors; reconstruct regions so
+                // their lazy material palette and decoded cells are initialized.
+                raw.copy(regions = raw.regions.map { it.copy() })
             }
         }
 

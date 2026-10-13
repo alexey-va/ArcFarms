@@ -375,7 +375,7 @@ class MineEntityIncidentsMockBukkitTest : FunSpec({
     test("lost miner uses one maze entrance and completes when the miner is found") {
         requiredMockBukkitScenario {
         val world = paper.server.addSimpleWorld("world")
-        for (chunkX in -3..3) for (chunkZ in -3..3) world.getChunkAt(chunkX, chunkZ).load()
+        for (chunkX in -8..8) for (chunkZ in -8..8) world.getChunkAt(chunkX, chunkZ).load()
         val player = paper.server.addPlayer("Rescuer")
         val floors = (1..6).map { x -> world.getBlockAt(x, 63, 5).also { it.type = Material.STONE } }
         val effects = RecordingIncidentEntities()
@@ -522,7 +522,7 @@ class MineEntityIncidentsMockBukkitTest : FunSpec({
     test("repeated admin lost-miner waits until the previous maze is restored") {
         requiredMockBukkitScenario {
         val world = paper.server.addSimpleWorld("world")
-        for (chunkX in -3..3) for (chunkZ in -3..3) world.getChunkAt(chunkX, chunkZ).load()
+        for (chunkX in -8..8) for (chunkZ in -8..8) world.getChunkAt(chunkX, chunkZ).load()
         val floors = (1..6).map { x -> world.getBlockAt(x, 63, 5).also { it.type = Material.STONE } }
         val effects = RecordingIncidentEntities()
         val graph = entityGraph(paper, effects, "RescueRepeat")
@@ -538,8 +538,13 @@ class MineEntityIncidentsMockBukkitTest : FunSpec({
         graph.admin.forceIncident("old_shafts", MineIncidentType.LOST_MINER, 2_000L) shouldBe false
         runtime.state.phase shouldBe MinePhase.EXTRACTION
 
-        repeat(64) { graph.lostMiner.process() }
+        var restoreTicks = 0
+        while (graph.lostMiner.isRestoring(runtime) && restoreTicks < 256) {
+            graph.lostMiner.process()
+            restoreTicks++
+        }
         graph.lostMiner.isRestoring(runtime) shouldBe false
+        prewarmLostMinerScene(graph, runtime, now = 3_000L)
         io.kotest.assertions.withClue(graph.admin.incidentDiagnostics("old_shafts", MineIncidentType.LOST_MINER)) {
             graph.admin.forceIncident("old_shafts", MineIncidentType.LOST_MINER, 3_000L) shouldBe true
         }
@@ -560,8 +565,8 @@ private fun entityGraph(paper: MockBukkitTestRuntime, effects: RecordingIncident
         )
     }
 
-private fun prewarmLostMinerScene(graph: MineComponentGraph, runtime: MineRuntime) {
-    graph.lostMiner.prewarm(runtime, now = 1_000L)
+private fun prewarmLostMinerScene(graph: MineComponentGraph, runtime: MineRuntime, now: Long = 1_000L) {
+    graph.lostMiner.prewarm(runtime, now)
     repeat(256) { graph.lostMiner.process() }
 }
 
