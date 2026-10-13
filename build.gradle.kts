@@ -154,6 +154,8 @@ plugwright {
     writeFiles {
         e2eArcJar.orNull?.let { file("plugins/ARC.jar", it) }
         file("server.properties", projectDir.resolve("src/test/e2e/fixtures/server.properties"))
+        file("plugins/ARC/modules/runtime.yml", projectDir.resolve("src/test/e2e/fixtures/arc-runtime.yml"))
+        file("plugins/ARC/modules/redis.yml", projectDir.resolve("src/test/e2e/fixtures/arc-redis.yml"))
         file("plugins/ArcFarms/data/farm-routes.json", projectDir.resolve("src/test/e2e/fixtures/farm-routes.json"))
         file("plugins/ArcFarms/data/farm-locations.json", projectDir.resolve("src/test/e2e/fixtures/farm-locations.json"))
         file(
