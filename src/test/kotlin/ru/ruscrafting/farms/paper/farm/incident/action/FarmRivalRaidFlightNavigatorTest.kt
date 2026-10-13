@@ -2,9 +2,6 @@ package ru.ruscrafting.farms.paper.farm.incident.action
 
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
-import io.mockk.every
-import io.mockk.mockk
-import io.mockk.verify
 import org.bukkit.Location
 import org.bukkit.Material
 import org.bukkit.World
@@ -13,6 +10,7 @@ import ru.ruscrafting.farms.domain.FarmPointPosition
 import ru.ruscrafting.farms.paper.platform.FarmRaidFlightEnvelope
 import ru.ruscrafting.farms.paper.platform.FarmRaidFlightSpace
 import ru.ruscrafting.farms.paper.platform.PaperFarmRaidFlightSpace
+import java.lang.reflect.Proxy
 import kotlin.math.hypot
 
 class FarmRivalRaidFlightNavigatorTest : FunSpec({
@@ -32,35 +30,44 @@ class FarmRivalRaidFlightNavigatorTest : FunSpec({
     }
 
     test("Paper collision space selects a climb over a nearby low wall") {
-        val paperWorld = mockWorld { x, y, z ->
+        val paperWorld = collisionWorld { x, y, z ->
             if (x in -3..3 && z in 6..8 && y in 58..60) Material.BARRIER else Material.AIR
         }
+        val world = paperWorld.world
         val navigator = FarmRivalRaidFlightNavigator(PaperFarmRaidFlightSpace)
         val current = position(0.0, 64.0, 0.0)
         val target = position(0.0, 64.0, 64.0)
 
-        val plan = navigator.plan(paperWorld, current, target, target, 0, envelope, verticalGoal = false)
+        val plan = navigator.plan(world, current, target, target, 0, envelope, verticalGoal = false)
 
         plan.blocked shouldBe true
         plan.recoveryTarget shouldBe null
         (requireNotNull(plan.steeringTarget).y > current.y) shouldBe true
         PaperFarmRaidFlightSpace.isClearSegment(
-            paperWorld,
-            Location(paperWorld, current.x, current.y, current.z),
-            Location(paperWorld, plan.steeringTarget!!.x, plan.steeringTarget!!.y, plan.steeringTarget!!.z),
+            world,
+            Location(world, current.x, current.y, current.z),
+            Location(world, plan.steeringTarget!!.x, plan.steeringTarget!!.y, plan.steeringTarget!!.z),
             envelope,
         ) shouldBe true
     }
 
     test("unloaded and colliding recovery endpoints are rejected") {
-        val unloadedWorld = mockWorld(loadChunks = false) { _, _, _ -> Material.AIR }
-        PaperFarmRaidFlightSpace.isClearAt(unloadedWorld, Location(unloadedWorld, 0.0, 64.0, 0.0), envelope) shouldBe false
-        verify(exactly = 0) { unloadedWorld.getBlockAt(any<Int>(), any<Int>(), any<Int>()) }
+        val unloadedWorld = collisionWorld(loadChunks = false) { _, _, _ -> Material.AIR }
+        PaperFarmRaidFlightSpace.isClearAt(
+            unloadedWorld.world,
+            Location(unloadedWorld.world, 0.0, 64.0, 0.0),
+            envelope,
+        ) shouldBe false
+        unloadedWorld.blockQueries shouldBe 0
 
-        val lavaWorld = mockWorld { x, y, z ->
+        val lavaWorld = collisionWorld { x, y, z ->
             if (x == 0 && y == 64 && z == 16) Material.LAVA else Material.AIR
         }
-        PaperFarmRaidFlightSpace.isClearAt(lavaWorld, Location(lavaWorld, 0.0, 64.0, 16.0), envelope) shouldBe false
+        PaperFarmRaidFlightSpace.isClearAt(
+            lavaWorld.world,
+            Location(lavaWorld.world, 0.0, 64.0, 16.0),
+            envelope,
+        ) shouldBe false
 
         val space = ScriptedFlightSpace(segmentClear = { _, _ -> false }, endpointClear = { false })
         val navigator = FarmRivalRaidFlightNavigator(space)
@@ -94,9 +101,10 @@ class FarmRivalRaidFlightNavigatorTest : FunSpec({
     }
 
     test("Paper collision space jumps the measured three-block barrier to its first clear endpoint") {
-        val paperWorld = mockWorld { x, y, z ->
+        val paperWorld = collisionWorld { x, y, z ->
             if (x in 85..212 && z in 586..588 && y in 39..134) Material.BARRIER else Material.AIR
         }
+        val world = paperWorld.world
         val navigator = FarmRivalRaidFlightNavigator(PaperFarmRaidFlightSpace)
         val current = position(180.0, 63.0, 583.8)
         val orbitTarget = position(91.44, 81.0, 735.52)
@@ -104,9 +112,9 @@ class FarmRivalRaidFlightNavigatorTest : FunSpec({
         val directionZ = orbitTarget.z - current.z
         val horizontalDistance = hypot(directionX, directionZ)
 
-        navigator.plan(paperWorld, current, orbitTarget, orbitTarget, 0, envelope, verticalGoal = false)
+        navigator.plan(world, current, orbitTarget, orbitTarget, 0, envelope, verticalGoal = false)
             .recoveryTarget shouldBe null
-        val recovery = navigator.plan(paperWorld, current, orbitTarget, orbitTarget, 40, envelope,
+        val recovery = navigator.plan(world, current, orbitTarget, orbitTarget, 40, envelope,
             verticalGoal = false).recoveryTarget
 
         recovery shouldBe position(180.0 + directionX / horizontalDistance * 16.0,
@@ -157,9 +165,7 @@ class FarmRivalRaidFlightNavigatorTest : FunSpec({
     }
 }) {
     companion object {
-        private val world = mockk<World> {
-            every { name } returns "world"
-        }
+        private val world = collisionWorld().world
         private val envelope = FarmRaidFlightEnvelope.forRaid(4, 1.6, -4.5)
     }
 }
@@ -189,29 +195,49 @@ private class ScriptedFlightSpace(
     }
 }
 
-private fun mockWorld(
+private class CollisionWorldFixture(val world: World) {
+    var blockQueries = 0
+}
+
+private fun collisionWorld(
     loadChunks: Boolean = true,
-    materialAt: (Int, Int, Int) -> Material,
-): World {
+    materialAt: (Int, Int, Int) -> Material = { _, _, _ -> Material.AIR },
+): CollisionWorldFixture {
     val blocks = mutableMapOf<Material, Block>()
-    val world = mockk<World>()
-    every { world.name } returns "world"
-    every { world.minHeight } returns -64
-    every { world.maxHeight } returns 320
-    every { world.isChunkLoaded(any(), any()) } returns loadChunks
-    every { world.getBlockAt(any<Int>(), any<Int>(), any<Int>()) } answers {
-        val x = firstArg<Int>()
-        val y = secondArg<Int>()
-        val z = thirdArg<Int>()
-        val material = materialAt(x, y, z)
-        blocks.getOrPut(material) {
-            mockk {
-                every { type } returns material
-                every { isPassable } returns material.isAir
+    lateinit var fixture: CollisionWorldFixture
+    val world = Proxy.newProxyInstance(World::class.java.classLoader, arrayOf(World::class.java)) { proxy, method, args ->
+        when (method.name) {
+            "getName" -> "world"
+            "getMinHeight" -> -64
+            "getMaxHeight" -> 320
+            "isChunkLoaded" -> loadChunks
+            "getBlockAt" -> {
+                fixture.blockQueries++
+                val material = materialAt(args!![0] as Int, args[1] as Int, args[2] as Int)
+                blocks.getOrPut(material) {
+                    Proxy.newProxyInstance(
+                        Block::class.java.classLoader,
+                        arrayOf(Block::class.java),
+                    ) { blockProxy, blockMethod, blockArgs ->
+                        when (blockMethod.name) {
+                            "getType" -> material
+                            "isPassable" -> material.isAir
+                            "toString" -> "TestBlock($material)"
+                            "hashCode" -> System.identityHashCode(blockProxy)
+                            "equals" -> blockProxy === blockArgs?.firstOrNull()
+                            else -> error("Unexpected Block method in collision test: ${blockMethod.name}")
+                        }
+                    } as Block
+                }
             }
+            "toString" -> "TestWorld"
+            "hashCode" -> System.identityHashCode(proxy)
+            "equals" -> proxy === args?.firstOrNull()
+            else -> error("Unexpected World method in collision test: ${method.name}")
         }
-    }
-    return world
+    } as World
+    fixture = CollisionWorldFixture(world)
+    return fixture
 }
 
 private fun position(x: Double, y: Double, z: Double) = FarmPointPosition("world", x, y, z)

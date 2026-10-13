@@ -19,7 +19,10 @@ internal object MineWorkingLayout {
     ): MineWorkingPlan {
         require(type in SUPPORTED_TYPES) { "Mine incident $type is not a lateral working" }
         if (MineDriveLayout.machine(type, placement)) return MineDriveLayout.plan(placement, type)
-        val path = naturalPath().toMutableList()
+        val path = when (placement.geometryVersion) {
+            3 -> naturalPath(expanded = false)
+            else -> naturalPath()
+        }.toMutableList()
         val localBlocks = linkedMapOf<LocalPoint, String>()
         val localWalkable = linkedSetOf<LocalPoint>()
         val localFixtures = linkedSetOf<LocalPoint>()
@@ -279,15 +282,16 @@ internal object MineWorkingLayout {
         return if (index < 0) railState(plan.placement) else railData(plan.cartRoute, index)
     }
 
-    private fun naturalPath(): List<LocalPoint> {
+    private fun naturalPath(expanded: Boolean = true): List<LocalPoint> {
         val points = mutableListOf<LocalPoint>()
-        // The authored three-block entrance opens into two bends and a long rear gallery.
-        // Every rotation is validated against a captured world snapshot before placement.
+        // V3 stops at forward 14; V4 adds the rear gallery through forward 38.
         for (nextForward in 1..7) points += LocalPoint(0, 1, nextForward)
         for (nextSide in 1..3) points += LocalPoint(nextSide, 1, 7)
         for (nextForward in 8..10) points += LocalPoint(3, 1, nextForward)
         for (nextSide in 2 downTo -3) points += LocalPoint(nextSide, 1, 10)
-        for (nextForward in 11..23) points += LocalPoint(-3, 1, nextForward)
+        val lastForward = if (expanded) 23 else 14
+        for (nextForward in 11..lastForward) points += LocalPoint(-3, 1, nextForward)
+        if (!expanded) return points
         for (nextSide in -2..4) points += LocalPoint(nextSide, 1, 23)
         for (nextForward in 24..38) points += LocalPoint(4, 1, nextForward)
         return points

@@ -8,27 +8,24 @@ import io.kotest.matchers.shouldBe
 import com.google.gson.Gson
 import org.bukkit.Material
 import ru.ruscrafting.farms.domain.MineIncidentType
+import ru.ruscrafting.farms.domain.MineWorkingPlacement
+import ru.ruscrafting.farms.domain.MineLocationPosition
 import ru.ruscrafting.farms.domain.worksite.WorksitePosition
-import ru.ruscrafting.farms.paper.mine.point.MinePointDefaults
 import kotlin.math.abs
 
 /**
- * Acceptance checks against the verified NE working volume in
- * compact-mine-live.atelier.json (live-source-20260914), including the
- * extended cave envelope through Y=117 and the surveyed side shoulders.
- * The full schematic stays an ops fixture; this test records only the bounded
- * facts consumed by the placement planner. Workshop clearance is an
- * additional bounded extract from the same live source around the relocated
- * crusher point.
+ * Acceptance checks against the 2026-09-14 compact-mine capture, pinned to
+ * geometry v3 and map-points revision 042da9e (as recorded when the fixture
+ * was expanded in b167f5a). These checks deliberately do not claim that the
+ * current map points or current geometry fit this historical capture.
  */
 class MineCompactMineAcceptanceTest : FunSpec({
-    test("natural working fits all three captured NE floors for replayed seeds") {
-        NE_FLOORS.forEach { (workingId, floorId) ->
+    test("historical geometry v3 fits all captured NE floors for replayed seeds") {
+        HISTORICAL_NE_FLOORS.forEach { floor ->
             SEEDS.forEach { seed ->
-                val placement = DEFAULT_ZONE.workings.getValue(workingId)
-                    .workingPlacement(floorId, layoutSeed = seed)
+                val placement = historicalPlacement(floor, seed)
                 ACCEPTED_TYPES.forEach { type ->
-                    withClue("seed=$seed floor=$floorId type=$type") {
+                    withClue("seed=$seed floor=${floor.floorId} type=$type") {
                         val plan = MineWorkingLayout.plan(type, placement)
 
                         plan.blocks.keys.all { it.x in 0..87 && it.y in 64..139 && it.z in 0..87 } shouldBe true
@@ -40,13 +37,12 @@ class MineCompactMineAcceptanceTest : FunSpec({
         }
     }
 
-    test("finite seed grid keeps all real-map placements and rail headroom") {
-        NE_FLOORS.forEach { (workingId, floorId) ->
+    test("historical geometry v3 finite seed grid fits the captured map and rail headroom") {
+        HISTORICAL_NE_FLOORS.forEach { floor ->
             FINITE_SEEDS.forEach { seed ->
-                val placement = DEFAULT_ZONE.workings.getValue(workingId)
-                    .workingPlacement(floorId, layoutSeed = seed)
+                val placement = historicalPlacement(floor, seed)
                 ACCEPTED_TYPES.forEach { type ->
-                    withClue("seed=$seed floor=$floorId type=$type") {
+                    withClue("seed=$seed floor=${floor.floorId} type=$type") {
                         val plan = MineWorkingLayout.plan(type, placement)
                         MineWorkingLayout.validate(plan).shouldBeEmpty()
                         MineWorkingPlanner.rejection(plan, ::capturedCompactMaterial) shouldBe null
@@ -62,7 +58,25 @@ class MineCompactMineAcceptanceTest : FunSpec({
         }
     }
 
-    test("captured workshop markers have a solid floor and clear feet/head space") {
+    test("geometry v3 keeps its capture route and v4 keeps its extended route") {
+        val floor = HISTORICAL_NE_FLOORS.single { it.workingId == "working_2" }
+        val historical = historicalPlacement(floor, 42L)
+        fun plan(version: Int, seed: Long) = MineWorkingLayout.plan(
+            MineIncidentType.RAIL_EXTENSION,
+            historical.copy(geometryVersion = version, layoutSeed = seed),
+        )
+        val v3Seed42 = plan(3, 42L)
+        val v3Seed17 = plan(3, 17L)
+        val v4 = plan(4, 42L)
+
+        v3Seed42.cartRoute.size shouldBe 12
+        v3Seed42.cartRoute shouldBe v3Seed17.cartRoute
+        v3Seed42.blocks.keys.maxOf { it.x - historical.entrance.x } shouldBe 14
+        v4.cartRoute shouldBe v3Seed42.cartRoute
+        v4.blocks.keys.maxOf { it.x - historical.entrance.x } shouldBe 38
+    }
+
+    test("historical workshop markers have a solid floor and clear feet/head space") {
         WORKSHOP_MARKERS.forEach { marker ->
             (capturedCompactMaterial(marker.position.copy(y = marker.position.y - 1)) in GEOLOGICAL) shouldBe true
             capturedCompactMaterial(marker.position) shouldBe Material.AIR
@@ -70,7 +84,7 @@ class MineCompactMineAcceptanceTest : FunSpec({
         }
     }
 
-    test("relocated crusher has a complete real-map radius-two walking ring") {
+    test("historical crusher point has a complete captured radius-two walking ring") {
         val center = CRUSHER
         RADIUS_TWO_OFFSETS.forEach { (dx, dz) ->
             val point = center.copy(x = center.x + dx, z = center.z + dz)
@@ -83,8 +97,7 @@ class MineCompactMineAcceptanceTest : FunSpec({
     test("rail route is connected and corner block shapes follow the route") {
         val plan = MineWorkingLayout.plan(
             MineIncidentType.RAIL_EXTENSION,
-            DEFAULT_ZONE.workings.getValue("working_2")
-                .workingPlacement("middle", layoutSeed = 42L),
+            historicalPlacement(HISTORICAL_NE_FLOORS.single { it.workingId == "working_2" }, 42L),
         )
         plan.cartRoute.zipWithNext().all { (from, to) -> manhattan(from, to) == 1 } shouldBe true
         reachable(plan.cartRoute) shouldBe plan.cartRoute.toSet()
@@ -115,23 +128,60 @@ class MineCompactMineAcceptanceTest : FunSpec({
 }) {
     private companion object {
         const val WORLD = "rc_atelier_compact_mine"
-        val DEFAULT_ZONE = requireNotNull(MinePointDefaults().zone("old_shafts", WORLD))
-        val NE_FLOORS = listOf("working_3" to "bottom", "working_2" to "middle", "working_1" to "top")
+        const val CAPTURED_GEOMETRY_VERSION = 3
+        const val HISTORICAL_FIXTURE_ID = "compact-mine-live-2026-09-14-ne-geometry-v3-points-042da9e"
+        const val HISTORICAL_MAP_POINTS_REVISION = "042da9e"
+        const val HISTORICAL_FIXTURE_REVISION = "b167f5a"
+        const val HISTORICAL_SOURCE_SHA256 = "055370ec8473a9cb1012a588930748d38c01f91e6c76dac78e9d66046233954f"
+        private val mapPoints: HistoricalMapPointsFixture by lazy {
+            val stream = requireNotNull(MineCompactMineAcceptanceTest::class.java
+                .getResourceAsStream("/mine/compact-mine-map-points-v3.fixture.json"))
+            stream.use {
+                val raw = Gson().fromJson(it.reader(), HistoricalMapPointsFixture::class.java)
+                require(raw.fixtureId == "compact-mine-map-points-v3-042da9e")
+                require(raw.geometryVersion == CAPTURED_GEOMETRY_VERSION)
+                require(raw.mapPointsRevision == HISTORICAL_MAP_POINTS_REVISION)
+                require(raw.world == WORLD)
+                raw
+            }
+        }
+        val HISTORICAL_NE_FLOORS by lazy {
+            mapPoints.workings.map { point ->
+                HistoricalFloor(
+                    point.workingId,
+                    point.floorId,
+                    MineLocationPosition(WORLD, point.x, point.y, point.z, point.yaw),
+                )
+            }
+        }
         val SEEDS = listOf(0L, 17L, 42L)
         val FINITE_SEEDS = 0L until 64L
         val GEOLOGICAL = setOf(
             Material.STONE, Material.STONE_BRICKS, Material.ANDESITE, Material.DEEPSLATE,
             Material.DEEPSLATE_BRICKS, Material.MOSSY_STONE_BRICKS,
         )
-        val CRUSHER = DEFAULT_ZONE.workshop.getValue("ore_crusher").blockPosition()
+        val CRUSHER by lazy {
+            mapPoints.workshop.single { it.role == "ore_crusher" }
+                .let { WorksitePosition(WORLD, it.x.toInt(), it.y.toInt(), it.z.toInt()) }
+        }
         val RADIUS_TWO_OFFSETS = buildList {
             for (dx in -2..2) for (dz in -2..2) {
                 if (dx * dx + dz * dz <= 4) add(dx to dz)
             }
         }
-        val WORKSHOP_MARKERS = DEFAULT_ZONE.workshop.entries
-            .sortedBy { it.key }
-            .map { (role, position) -> Marker(position.blockPosition(), role) }
+        val WORKSHOP_MARKERS by lazy {
+            mapPoints.workshop.sortedBy { it.role }.map { point ->
+                Marker(WorksitePosition(WORLD, point.x.toInt(), point.y.toInt(), point.z.toInt()), point.role)
+            }
+        }
+
+        fun historicalPlacement(floor: HistoricalFloor, seed: Long) = MineWorkingPlacement(
+            entrance = floor.point.workingPlacement(floor.floorId, layoutSeed = seed).entrance,
+            direction = floor.point.workingDirection(),
+            floorId = floor.floorId,
+            layoutSeed = seed,
+            geometryVersion = CAPTURED_GEOMETRY_VERSION,
+        )
 
         fun capturedCompactMaterial(position: WorksitePosition): Material {
             // This resolver only reads the bounded RLE regions extracted from
@@ -147,11 +197,55 @@ class MineCompactMineAcceptanceTest : FunSpec({
                 .getResourceAsStream("/mine/compact-mine-live-ne.fixture.json"))
             stream.use {
                 val raw = Gson().fromJson(it.reader(), CaptureFixture::class.java)
-                CaptureFixture(raw.regions.map { region -> region.copy() })
+                require(raw.fixtureId == HISTORICAL_FIXTURE_ID)
+                require(raw.geometryVersion == CAPTURED_GEOMETRY_VERSION)
+                require(raw.mapPointsRevision == HISTORICAL_MAP_POINTS_REVISION)
+                require(raw.fixtureRevision == HISTORICAL_FIXTURE_REVISION)
+                require(raw.sourceSha256 == HISTORICAL_SOURCE_SHA256)
+                raw
             }
         }
 
-        private data class CaptureFixture(val regions: List<CaptureRegion>)
+        private data class HistoricalFloor(
+            val workingId: String,
+            val floorId: String,
+            val point: MineLocationPosition,
+        )
+
+        private data class HistoricalMapPointsFixture(
+            val fixtureId: String,
+            val geometryVersion: Int,
+            val mapPointsRevision: String,
+            val world: String,
+            val workings: List<HistoricalWorkingPoint>,
+            val workshop: List<HistoricalWorkshopPoint>,
+        )
+
+        private data class HistoricalWorkingPoint(
+            val workingId: String,
+            val floorId: String,
+            val x: Double,
+            val y: Double,
+            val z: Double,
+            val yaw: Float,
+        )
+
+        private data class HistoricalWorkshopPoint(
+            val role: String,
+            val x: Double,
+            val y: Double,
+            val z: Double,
+            val yaw: Float,
+        )
+
+        private data class CaptureFixture(
+            val fixtureId: String,
+            val geometryVersion: Int,
+            val mapPointsRevision: String,
+            val fixtureRevision: String,
+            val sourceSha256: String,
+            val regions: List<CaptureRegion>,
+        )
 
         private data class CaptureRegion(
             val from: List<Int>,

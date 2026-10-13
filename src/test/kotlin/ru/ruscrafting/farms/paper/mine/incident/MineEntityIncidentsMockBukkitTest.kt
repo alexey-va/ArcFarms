@@ -382,6 +382,7 @@ class MineEntityIncidentsMockBukkitTest : FunSpec({
         val graph = entityGraph(paper, effects, "RescueA")
         val runtime = graph.registry.byId("old_shafts")!!
         replaceEntityIndex(graph, runtime, floors)
+        prewarmLostMinerScene(graph, runtime)
 
         graph.lostMiner.start(runtime, now = 1_000L) shouldBe true
         repeat(64) { graph.lostMiner.process() }
@@ -527,6 +528,7 @@ class MineEntityIncidentsMockBukkitTest : FunSpec({
         val graph = entityGraph(paper, effects, "RescueRepeat")
         val runtime = graph.registry.byId("old_shafts")!!
         replaceEntityIndex(graph, runtime, floors)
+        prewarmLostMinerScene(graph, runtime)
         // Classic staged mines offer rescue during extraction; both forced starts
         // must use a scheduler-eligible phase rather than bypassing its contract.
         runtime.state = runtime.state.copy(phase = MinePhase.EXTRACTION)
@@ -557,6 +559,11 @@ private fun entityGraph(paper: MockBukkitTestRuntime, effects: RecordingIncident
             5_000L,
         )
     }
+
+private fun prewarmLostMinerScene(graph: MineComponentGraph, runtime: MineRuntime) {
+    graph.lostMiner.prewarm(runtime, now = 1_000L)
+    repeat(256) { graph.lostMiner.process() }
+}
 
 private fun replaceEntityIndex(
     graph: MineComponentGraph,

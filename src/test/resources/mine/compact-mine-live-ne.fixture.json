@@ -1,4 +1,9 @@
 {
+  "fixtureId": "compact-mine-live-2026-09-14-ne-geometry-v3-points-042da9e",
+  "geometryVersion": 3,
+  "mapPointsRevision": "042da9e",
+  "fixtureRevision": "b167f5a",
+  "sourceSha256": "055370ec8473a9cb1012a588930748d38c01f91e6c76dac78e9d66046233954f",
   "version": 1,
   "world": "rc_atelier_compact_mine",
   "source": "ruscrafting-ops/scripts/location-atelier/examples/compact-mine/live-source-20260914/compact-mine-live.atelier.json",

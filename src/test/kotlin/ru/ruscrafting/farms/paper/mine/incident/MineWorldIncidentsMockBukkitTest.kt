@@ -8,8 +8,8 @@ import io.mockk.mockk
 import io.mockk.verify
 import org.bukkit.Location
 import org.bukkit.Material
+import org.bukkit.NamespacedKey
 import org.bukkit.block.BlockFace
-import org.bukkit.block.data.Levelled
 import org.bukkit.Sound
 import org.bukkit.entity.Player
 import org.bukkit.entity.Interaction
@@ -18,17 +18,26 @@ import org.bukkit.event.player.PlayerInteractEvent
 import org.bukkit.event.player.PlayerInteractEntityEvent
 import org.bukkit.inventory.ItemStack
 import org.bukkit.inventory.EquipmentSlot
+import org.bukkit.persistence.PersistentDataType
 import ru.arc.paper.testing.MockBukkitTestRuntime
+import ru.ruscrafting.farms.config.CuboidBounds
+import ru.ruscrafting.farms.config.ZoneReference
+import ru.ruscrafting.farms.domain.MineIncidentState
 import ru.ruscrafting.farms.domain.MineIncidentType
 import ru.ruscrafting.farms.domain.MinePhase
 import ru.ruscrafting.farms.domain.MineShiftState
+import ru.ruscrafting.farms.domain.MineWorkingEngine
+import ru.ruscrafting.farms.domain.MineWorkingPlacement
 import ru.ruscrafting.farms.domain.worksite.WorksitePosition
 import ru.ruscrafting.farms.paper.CuboidRegionGateway
+import ru.ruscrafting.farms.paper.farm.care.mole.FarmMoleBurrowWorksiteSceneCodec
+import ru.ruscrafting.farms.paper.fixtures.MockBukkitFarmBlockDataDecoder
 import ru.ruscrafting.farms.paper.mine.ImmediateMineJournal
 import ru.ruscrafting.farms.paper.mine.MineComponentGraph
 import ru.ruscrafting.farms.paper.mine.testMineComponentGraph
 import ru.ruscrafting.farms.paper.mine.prewarmIncidentCandidates
 import ru.ruscrafting.farms.paper.mine.immediateMinePort
+import ru.ruscrafting.farms.paper.mine.working.MineWorkingLayout
 import ru.ruscrafting.farms.paper.mine.incident.entity.MineIncidentEntityKind
 import ru.ruscrafting.farms.paper.mine.index.MineAnchorRole
 import ru.ruscrafting.farms.paper.mine.index.MineIndexDefinition
@@ -36,6 +45,7 @@ import ru.ruscrafting.farms.paper.mine.index.MineIndexedTarget
 import ru.ruscrafting.farms.paper.mine.mineV2Settings
 import ru.ruscrafting.farms.paper.worksite.ServiceItemIdentity
 import ru.ruscrafting.farms.paper.worksite.WorksiteServiceItems
+import ru.ruscrafting.farms.paper.worksite.scene.WorksitePreparedSceneRecord
 
 class MineWorldIncidentsMockBukkitTest : FunSpec({
     lateinit var paper: MockBukkitTestRuntime
@@ -58,10 +68,14 @@ class MineWorldIncidentsMockBukkitTest : FunSpec({
         val initial = graph.flooding.waterPositions(runtime)
         (initial.size in 20..30) shouldBe true
         initial.all { position -> world.getBlockAt(position.x, position.y - 1, position.z).type == Material.STONE } shouldBe true
-        initial.map { position -> (world.getBlockAt(position.x, position.y, position.z).blockData as Levelled).level }
-            .let { levels -> levels.all { it == 0 } shouldBe true }
+        val source = initial.first()
+        val sourceBlock = world.getBlockAt(source.x, source.y, source.z)
+        sourceBlock.type shouldBe Material.WATER
+        sourceBlock.blockData.asString shouldBe "minecraft:water[level=0]"
+        initial.drop(1).all { position -> world.getBlockAt(position.x, position.y, position.z).type == Material.AIR } shouldBe true
         graph.module.tick(31_000L)
         graph.flooding.waterPositions(runtime) shouldContainExactlyInAnyOrder initial
+        sourceBlock.blockData.asString shouldBe "minecraft:water[level=0]"
 
         val persisted = runtime.state
         val restartedPort = immediateMinePort()
@@ -101,6 +115,11 @@ class MineWorldIncidentsMockBukkitTest : FunSpec({
         while (restartedRuntime.state.phase == MinePhase.INCIDENT) {
             val next = restarted.flooding.waterPositions(restartedRuntime).first()
             val water = world.getBlockAt(next.x, next.y, next.z)
+            // MockBukkit does not run vanilla fluid ticks. Mark the next durable
+            // cell as water so this fixture can exercise the scoop handler; that
+            // handler checks the material, not the flowing-water level.
+            water.type shouldBe Material.AIR
+            water.setType(Material.WATER, false)
             player.teleport(water.location.clone().add(.5, 1.0, .5))
             player.inventory.setItemInMainHand(ItemStack(Material.BUCKET))
             val scoop = org.bukkit.event.player.PlayerBucketFillEvent(player, water, water, BlockFace.UP,
@@ -130,26 +149,75 @@ class MineWorldIncidentsMockBukkitTest : FunSpec({
         lights.all { world.getBlockAt(it.x, it.y, it.z).type == Material.AIR } shouldBe true
     }
 
-    test("saved working from the old geometry is retired before a new scene is projected") {
-        val world = paper.server.addSimpleWorld("world")
-        val graph = worldGraph(paper, ImmediateMineJournal(), WorldIncidentItems(), "LegacyWorking")
-        val runtime = graph.registry.byId("old_shafts")!!
-        val original = runtime.state
-        val placement = ru.ruscrafting.farms.domain.MineWorkingPlacement(
-            WorksitePosition(world.name, 5, 63, 5), 0, "legacy-floor", geometryVersion = 0,
-        )
-        runtime.state = original.copy(
-            phase = MinePhase.INCIDENT,
-            resumePhase = MinePhase.MINING,
-            incident = ru.ruscrafting.farms.domain.MineIncidentState(
-                MineIncidentType.TUNNEL_DRIVE, required = 93, startedAt = 1_000L,
-                working = ru.ruscrafting.farms.domain.MineWorkingEngine.initial(MineIncidentType.TUNNEL_DRIVE, placement),
-            ),
-        )
-        graph.incidentSet.reconcileRecovery()
-        runtime.state.phase shouldBe MinePhase.MINING
-        runtime.state.incident shouldBe null
-        world.getBlockAt(5, 64, 5).type shouldBe Material.AIR
+    listOf(0, 2, 3, 4).forEach { geometryVersion ->
+        test("saved tunnel geometry v$geometryVersion is retired and its journal restores the old route") {
+            val world = paper.server.addSimpleWorld("world")
+            val plugin = paper.createSimplePlugin("MineLegacyWorkingV$geometryVersion")
+            val settings = mineV2Settings().copy(
+                reference = ZoneReference(world.name, null, CuboidBounds(-16, 50, -16, 64, 90, 64)),
+            )
+            val graph = testMineComponentGraph(
+                plugin, CuboidRegionGateway(), immediateMinePort(),
+                clock = { 1_000L }, journal = ImmediateMineJournal(),
+            ).also { it.module.rebuild(listOf(settings), emptyMap(), 5_000L) }
+            val runtime = graph.registry.byId("old_shafts")!!
+            val placement = MineWorkingPlacement(
+                WorksitePosition(world.name, 5, 63, 5), 0, "legacy-floor", geometryVersion = geometryVersion,
+            )
+            val plan = MineWorkingLayout.plan(MineIncidentType.TUNNEL_DRIVE, placement)
+            val oldRoutePosition = plan.blocks.keys.maxBy(WorksitePosition::z)
+            val activeData = plan.blocks.getValue(oldRoutePosition)
+            // Keep the rollback visible even when this legacy route used stone at its endpoint.
+            val originalData = if (activeData == "minecraft:stone") "minecraft:air" else "minecraft:stone"
+            val oldRouteBlock = world.getBlockAt(oldRoutePosition.x, oldRoutePosition.y, oldRoutePosition.z)
+            oldRouteBlock.setBlockData(MockBukkitFarmBlockDataDecoder.decode(originalData), false)
+
+            val chunk = oldRouteBlock.chunk.also { it.load() }
+            val journalKey = NamespacedKey(plugin, "mine_working_v1")
+            val sceneId = 9
+            val record = WorksitePreparedSceneRecord(
+                world = world.name,
+                zoneId = runtime.settings.id,
+                sequence = runtime.state.sequence,
+                sceneId = sceneId,
+                x = oldRoutePosition.x,
+                y = oldRoutePosition.y,
+                z = oldRoutePosition.z,
+                originalData = originalData,
+                activeData = activeData,
+                marker = "NONE",
+                totalRecords = 1,
+            )
+            val codec = FarmMoleBurrowWorksiteSceneCodec(plugin, "mine_working")
+            chunk.persistentDataContainer.set(
+                journalKey,
+                PersistentDataType.BYTE_ARRAY,
+                codec.encode(listOf(record), world.name, chunk.x, chunk.z, world.minHeight, world.maxHeight),
+            )
+            oldRouteBlock.setBlockData(MockBukkitFarmBlockDataDecoder.decode(activeData), false)
+            oldRouteBlock.blockData.asString shouldBe activeData
+
+            runtime.state = runtime.state.copy(
+                phase = MinePhase.INCIDENT,
+                resumePhase = MinePhase.MINING,
+                incident = MineIncidentState(
+                    MineIncidentType.TUNNEL_DRIVE,
+                    required = 93,
+                    startedAt = 1_000L,
+                    objectiveNonce = sceneId.toLong(),
+                    working = MineWorkingEngine.initial(MineIncidentType.TUNNEL_DRIVE, placement),
+                ),
+            )
+
+            graph.module.activateLoadedState()
+
+            runtime.state.phase shouldBe MinePhase.MINING
+            runtime.state.incident shouldBe null
+            oldRouteBlock.blockData.asString shouldBe activeData
+            graph.incidentSet.process()
+            oldRouteBlock.blockData.asString shouldBe originalData
+            chunk.persistentDataContainer.has(journalKey, PersistentDataType.BYTE_ARRAY) shouldBe false
+        }
     }
 
 })

@@ -1,0 +1,18 @@
+{
+  "fixtureId": "compact-mine-map-points-v3-042da9e",
+  "geometryVersion": 3,
+  "mapPointsRevision": "042da9e",
+  "world": "rc_atelier_compact_mine",
+  "workings": [
+    { "workingId": "working_3", "floorId": "bottom", "x": 72.5, "y": 83.0, "z": 27.5, "yaw": -90.0 },
+    { "workingId": "working_2", "floorId": "middle", "x": 72.5, "y": 97.0, "z": 27.5, "yaw": -90.0 },
+    { "workingId": "working_1", "floorId": "top", "x": 72.5, "y": 111.0, "z": 27.5, "yaw": -90.0 }
+  ],
+  "workshop": [
+    { "role": "ore_input", "x": 40.5, "y": 111.0, "z": 23.5, "yaw": 0.0 },
+    { "role": "ore_crusher", "x": 44.5, "y": 111.0, "z": 24.5, "yaw": 0.0 },
+    { "role": "ore_furnace", "x": 44.5, "y": 97.0, "z": 23.5, "yaw": 0.0 },
+    { "role": "ore_output", "x": 40.5, "y": 97.0, "z": 23.5, "yaw": 0.0 },
+    { "role": "ore_shipping", "x": 48.5, "y": 97.0, "z": 23.5, "yaw": 0.0 }
+  ]
+}
