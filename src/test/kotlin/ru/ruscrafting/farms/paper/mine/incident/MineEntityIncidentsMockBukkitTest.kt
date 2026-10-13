@@ -491,22 +491,24 @@ class MineEntityIncidentsMockBukkitTest : FunSpec({
         graph.incidentSet.onInteractEntity(foundEvent) shouldBe true
         foundEvent.isCancelled shouldBe true
         runtime.state.phase shouldBe MinePhase.MINING
-        // Completion returns the rescuer to the saved surface, while the authored
-        // maze remains retained until its grace policy expires.
+        // Completion returns the rescuer and removes both entrance markers,
+        // while the authored maze remains retained until its grace expires.
         runtime.region.contains(player.location) shouldBe true
         effects.count(MineIncidentEntityKind.MINER) shouldBe 0
-        effects.count(MineIncidentEntityKind.MINER_MAZE_ENTRANCE) shouldBe 1
-        effects.count(MineIncidentEntityKind.MINER_MAZE_ENTRANCE_HITBOX) shouldBe 1
+        effects.count(MineIncidentEntityKind.MINER_MAZE_ENTRANCE) shouldBe 0
+        effects.count(MineIncidentEntityKind.MINER_MAZE_ENTRANCE_HITBOX) shouldBe 0
         effects.count(MineIncidentEntityKind.MINER_CAMP_LANTERN) shouldBe 0
         effects.count(MineIncidentEntityKind.MINER_CAMP_SUPPLIES) shouldBe 0
         effects.count(MineIncidentEntityKind.RESCUE_CREATURE) shouldBe 0
 
         // The fixed test clock starts at 1,000 ms; move away from the scene and
         // advance exactly through the 60-second grace, not the hard deadline.
-        player.teleport(Location(world, 30.5, 64.0, 30.5))
+        player.teleport(Location(world, 100.5, 64.0, 100.5))
+        graph.lostMiner.transitioning(runtime) shouldBe true
+        graph.lostMiner.tick(runtime, 60_999L)
+        graph.lostMiner.isRestoring(runtime) shouldBe false
         graph.lostMiner.tick(runtime, 61_001L)
-        effects.count(MineIncidentEntityKind.MINER_MAZE_ENTRANCE) shouldBe 0
-        effects.count(MineIncidentEntityKind.MINER_MAZE_ENTRANCE_HITBOX) shouldBe 0
+        graph.lostMiner.isRestoring(runtime) shouldBe true
         }
     }
 
