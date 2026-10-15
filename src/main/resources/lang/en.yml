@@ -1829,6 +1829,7 @@ mine-lift:
     bottom: '<number> · Lava level'
     casino: '<number> · Main Casino Hall'
     casino_bowling: '<number> · Bowling · Lower Hall'
+    casino_club: '<number> · Club Floor and VIP'
   casino:
     title: '<white>Casino Lift</white>'
     description: '<color:#e8dfd2>Here: <floor>.<newline>Choose a hall; after boarding, the doors close and the ride begins.<newline>Exit onto the landing is automatic.</color>'

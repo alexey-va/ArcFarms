@@ -16,6 +16,7 @@ import org.mockbukkit.mockbukkit.entity.TextDisplayMock
 import org.mockbukkit.mockbukkit.world.WorldMock
 import ru.arc.paper.testing.MockBukkitTestRuntime
 import ru.arc.paper.testing.failOnUnsupportedMockBukkitOperation
+import ru.ruscrafting.farms.domain.mine.lift.MineLiftMotion
 import java.util.UUID
 import java.util.function.Consumer
 import kotlin.math.abs
@@ -156,6 +157,73 @@ class MineLiftInteractionGateTest : FunSpec({
                     }
                     scene.close()
                 }
+            } finally {
+                paper.close()
+            }
+        }
+    }
+
+    test("casino finished floor clears the fixed landing throughout arrival and door opening") {
+        failOnUnsupportedMockBukkitOperation {
+            val paper = MockBukkitTestRuntime.open()
+            try {
+                val world = LiftSceneWorldMock(paper.server).apply { name = "casino" }
+                paper.server.addWorld(world)
+                val plugin = paper.createSimplePlugin("CasinoLiftLandingTest")
+                val settings = MineLiftSettings(
+                    id = "casino", world = world.name, x = 49.5, z = 35.5,
+                    width = 4.4, depth = 4.4, speed = 6.0,
+                    floors = listOf(
+                        MineLiftFloor("casino", 65.0, LiftPoint(44.5, 65.0, 35.5), LiftPoint(45.92, 65.0, 38.5)),
+                        MineLiftFloor("casino_bowling", 49.0, LiftPoint(39.5, 49.0, 35.5), LiftPoint(40.92, 49.0, 38.5)),
+                    ),
+                    theme = MineLiftTheme.CASINO,
+                )
+                // The surveyed shaft keeps its solid bottom at Y=48. Only the
+                // upper landing is cut out under the cabin's swept footprint.
+                val fixedFloor = buildList {
+                    for (x in 47..51) for (z in 33..37) add(world.getBlockAt(x, 48, z).apply {
+                        type = Material.DEEPSLATE_BRICKS
+                    })
+                    for (y in listOf(48, 64)) for (z in 34..36) add(world.getBlockAt(46, y, z).apply {
+                        type = Material.WAXED_CUT_COPPER
+                    })
+                }
+                val scene = MineLiftScene(plugin, settings, world)
+                scene.spawn(65.0) { net.kyori.adventure.text.Component.text("floor") }
+                val floor = world.entities.filterIsInstance<BlockDisplay>().filter {
+                    abs(it.location.y - (65.0 - .22)) < .00001
+                }
+                floor.size shouldBe 20
+                fun checkLandingClearance() {
+                    for (display in floor) {
+                        val at = display.location
+                        val scale = display.transformation.scale
+                        for (support in fixedFloor) {
+                            val overlaps = minOf(at.x + scale.x, support.x + 1.0) > maxOf(at.x, support.x.toDouble()) &&
+                                minOf(at.z + scale.z, support.z + 1.0) > maxOf(at.z, support.z.toDouble())
+                            if (overlaps) (at.y + scale.y - (support.y + 1.0) >= .01) shouldBe true
+                        }
+                    }
+                }
+                val motion = MineLiftMotion(settings.floors.map { it.y }, settings.speed)
+                for (destination in listOf(1, 0)) {
+                    motion.board(destination) shouldBe true
+                    var arrived = false
+                    repeat(150) {
+                        if (!arrived) {
+                            arrived = motion.tick()
+                            scene.move(motion.y, motion.phase == MineLiftMotion.Phase.DOCKED) shouldBe true
+                            checkLandingClearance()
+                        }
+                    }
+                    arrived shouldBe true
+                    repeat(11) {
+                        scene.move(motion.y, open = true) shouldBe true
+                        checkLandingClearance()
+                    }
+                }
+                scene.close()
             } finally {
                 paper.close()
             }

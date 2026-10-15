@@ -1829,6 +1829,7 @@ mine-lift:
     bottom: '<number> · Лавовый ярус'
     casino: '<number> · Главный зал казино'
     casino_bowling: '<number> · Нижний зал боулинга'
+    casino_club: '<number> · Клубный этаж и VIP'
   casino:
     title: '<white>Лифт казино</white>'
     description: '<color:#e8dfd2>Сейчас: <floor>.<newline>Выбери зал — после посадки двери закроются и начнётся поездка.<newline>Выход на площадку автоматический.</color>'

@@ -193,15 +193,19 @@ internal class MineLiftScene(private val plugin: Plugin, private val settings: M
         val tileZ = settings.depth / rows
         val inlay = columns > 2 && rows > 2
         val borderWidth = .04
+        // At the lowest stop the native support ends at cabin Y. The finished
+        // floor stands 2 cm above it, matching the seats, without lifting walls.
+        // Its outer edge meets the inner wall faces so tile seams stay clear of wall seams.
+        val floorThickness = .24
         repeat(columns) { column -> repeat(rows) { row ->
             val x = -halfX + column * tileX
             val z = -halfZ + row * tileZ
             val center = column in 1 until columns - 1 && row in 1 until rows - 1
-            val left = if (center && column == 1) borderWidth else 0.0
-            val right = if (center && column == columns - 2) borderWidth else 0.0
-            val front = if (center && row == 1) borderWidth else 0.0
-            val back = if (center && row == rows - 2) borderWidth else 0.0
-            block(x + left, -.22, z + front, tileX - left - right, .22, tileZ - front - back,
+            val left = if (column == 0) WALL_THICKNESS else if (center && column == 1) borderWidth else 0.0
+            val right = if (column == columns - 1) WALL_THICKNESS else if (center && column == columns - 2) borderWidth else 0.0
+            val front = if (row == 0) WALL_THICKNESS else if (center && row == 1) borderWidth else 0.0
+            val back = if (row == rows - 1) WALL_THICKNESS else if (center && row == rows - 2) borderWidth else 0.0
+            block(x + left, -.22, z + front, tileX - left - right, floorThickness, tileZ - front - back,
                 if (!center) Material.DARK_OAK_PLANKS
                 else if ((column + row) % 2 == 0) settings.theme.floorMaterial else Material.RED_CONCRETE)
             block(x, settings.theme.cabinWallHeight, z, tileX, .18, tileZ,
@@ -211,9 +215,9 @@ internal class MineLiftScene(private val plugin: Plugin, private val settings: M
             val innerX = halfX - tileX
             val innerZ = halfZ - tileZ
             for (x in listOf(-innerX, innerX - borderWidth))
-                block(x, -.22, -innerZ, borderWidth, .22, innerZ * 2, Material.GOLD_BLOCK)
+                block(x, -.22, -innerZ, borderWidth, floorThickness, innerZ * 2, Material.GOLD_BLOCK)
             for (z in listOf(-innerZ, innerZ - borderWidth))
-                block(-innerX + borderWidth, -.22, z, innerX * 2 - 2 * borderWidth, .22, borderWidth, Material.GOLD_BLOCK)
+                block(-innerX + borderWidth, -.22, z, innerX * 2 - 2 * borderWidth, floorThickness, borderWidth, Material.GOLD_BLOCK)
             // The ceiling echoes the floor border, with the teal field recessed
             // above a shallow brass coffer instead of four unrelated light pads.
             val rim = .055
