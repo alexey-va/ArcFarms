@@ -1827,3 +1827,10 @@ mine-lift:
     middle: '<number> · Lush depths'
     lower: '<number> · Lower gallery'
     bottom: '<number> · Lava level'
+    casino: '<number> · Main Casino Hall'
+    casino_bowling: '<number> · Bowling · Lower Hall'
+  casino:
+    title: '<white>Casino Lift</white>'
+    description: '<color:#e8dfd2>Here: <floor>.<newline>Choose a hall; the cabin departs in 3 seconds.<newline>Exit onto the landing is automatic.</color>'
+    panel: '<white>Casino Lift · <floor></white><newline><color:#8ed8b1><state></color>'
+    near-panel: '<color:#e8dfd2>Approach a casino lift control panel.</color>'

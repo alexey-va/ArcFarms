@@ -18,6 +18,7 @@ import ru.arc.paper.testing.MockBukkitTestRuntime
 import ru.arc.paper.testing.failOnUnsupportedMockBukkitOperation
 import java.util.UUID
 import java.util.function.Consumer
+import kotlin.math.abs
 
 class MineLiftInteractionGateTest : FunSpec({
     test("deduplicates one player's repeated cabin click in a tick") {
@@ -88,6 +89,71 @@ class MineLiftInteractionGateTest : FunSpec({
                 scene.close()
                 cabinHitbox.isValid shouldBe false
                 rails.all { !it.isValid } shouldBe true
+            } finally {
+                paper.close()
+            }
+        }
+    }
+
+    test("casino center doors slide into fixed side panels within the cabin width") {
+        failOnUnsupportedMockBukkitOperation {
+            val paper = MockBukkitTestRuntime.open()
+            try {
+                val world = LiftSceneWorldMock(paper.server).apply { name = "casino" }
+                paper.server.addWorld(world)
+                val plugin = paper.createSimplePlugin("CasinoLiftInteractionTest")
+                val settings = MineLiftSettings(
+                    id = "casino",
+                    world = world.name,
+                    x = 0.0,
+                    z = 0.0,
+                    width = 4.4,
+                    depth = 4.4,
+                    speed = 3.2,
+                    floors = listOf(
+                        MineLiftFloor("casino", 65.0, LiftPoint(0.0, 65.0, 5.0), LiftPoint(3.0, 65.0, 3.0)),
+                        MineLiftFloor("casino_bowling", 49.0, LiftPoint(0.0, 49.0, 5.0), LiftPoint(3.0, 49.0, 3.0)),
+                    ),
+                    theme = MineLiftTheme.CASINO,
+                )
+                val scene = MineLiftScene(plugin, settings, world)
+                scene.spawn(65.0) { net.kyori.adventure.text.Component.text("floor") }
+                world.entities.filterIsInstance<BlockDisplay>().count { it.block.material == Material.GRAY_STAINED_GLASS } shouldBe 2
+                world.entities.filterIsInstance<BlockDisplay>().count { it.block.material == Material.SEA_LANTERN } shouldBe 1
+
+                val southWallParts = world.entities.filterIsInstance<BlockDisplay>().filter {
+                    abs(it.location.z - 2.13) < 0.0001 && it.location.y in 65.0..67.65
+                }
+                fun assertSouthWallBounds() {
+                    southWallParts.minOf { it.location.x } shouldBe (-2.2 plusOrMinus 0.0001)
+                    southWallParts.maxOf { it.location.x + it.transformation.scale.x.toDouble() } shouldBe (2.2 plusOrMinus 0.0001)
+                }
+
+                repeat(11) { scene.move(65.0, open = false) shouldBe true }
+                scene.isDoorOpenAt(0) shouldBe false
+                val upperDoorPanels = world.entities.filterIsInstance<BlockDisplay>().filter {
+                    it.block.material == Material.SMOOTH_QUARTZ &&
+                        abs(it.location.z - 2.13) < 0.0001 &&
+                        abs(it.location.y - 65.74) < 0.0001
+                }
+                upperDoorPanels.size shouldBe 4
+                upperDoorPanels.map { it.location.x }.sorted().zip(listOf(-2.2, -1.1, 0.0, 1.1)).forEach { (actual, expected) ->
+                    actual shouldBe (expected plusOrMinus 0.0001)
+                }
+                upperDoorPanels.forEach { it.transformation.scale.x.toDouble() shouldBe (1.1 plusOrMinus 0.0001) }
+                assertSouthWallBounds()
+
+                val closedX = upperDoorPanels.associate { it.uniqueId to it.location.x }
+                repeat(11) { scene.move(65.0, open = true) shouldBe true }
+                scene.isDoorOpenAt(0) shouldBe true
+                val movingDoors = upperDoorPanels.filter { abs(it.location.x - closedX.getValue(it.uniqueId)) > .5 }
+                movingDoors.size shouldBe 2
+                movingDoors.map { it.location.x }.sorted().zip(listOf(-2.2, 1.1)).forEach { (actual, expected) ->
+                    actual shouldBe (expected plusOrMinus 0.0001)
+                }
+                assertSouthWallBounds()
+
+                scene.close()
             } finally {
                 paper.close()
             }

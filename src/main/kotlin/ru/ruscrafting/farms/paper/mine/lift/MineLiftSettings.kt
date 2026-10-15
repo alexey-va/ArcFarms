@@ -1,10 +1,16 @@
 package ru.ruscrafting.farms.paper.mine.lift
 
 import org.bukkit.Location
+import org.bukkit.Material
 import org.bukkit.World
 import ru.arc.config.Config
 import ru.ruscrafting.farms.domain.mine.lift.MineLiftMotion
 import java.nio.file.Path
+
+private const val MINE_LIFT_CABIN_WALL_HEIGHT = 2.65
+private const val MINE_LIFT_CABIN_HEIGHT = 2.83
+private const val MINE_LIFT_CLEARANCE_ABOVE_STOP = 2.8
+private val CASINO_LIFT_MESSAGE_KEYS = setOf("title", "description", "panel", "near-panel")
 
 internal data class LiftPoint(val x: Double, val y: Double, val z: Double, val yaw: Float = 0f) {
     fun location(world: World) = Location(world, x, y, z, yaw, 0f)
@@ -12,6 +18,66 @@ internal data class LiftPoint(val x: Double, val y: Double, val z: Double, val y
 
 /** Cardinal side of the cabin that faces a floor landing. */
 internal enum class MineLiftDoorSide { NORTH, EAST, SOUTH, WEST }
+
+internal enum class MineLiftTheme(
+    val floorMaterial: Material,
+    val ceilingMaterial: Material,
+    val cornerMaterial: Material,
+    val wallMaterial: Material?,
+    val windowMaterial: Material?,
+    val doorMaterial: Material,
+    val railMaterial: Material,
+    val panelMaterial: Material,
+    val lightMaterial: Material,
+    val chainMaterial: Material,
+    val doorTravel: Double,
+    val enclosed: Boolean,
+) {
+    MINE(
+        Material.SPRUCE_PLANKS,
+        Material.DARK_OAK_PLANKS,
+        Material.STRIPPED_SPRUCE_LOG,
+        null,
+        null,
+        Material.IRON_BLOCK,
+        Material.IRON_BLOCK,
+        Material.CHISELED_COPPER,
+        Material.LANTERN,
+        Material.IRON_CHAIN,
+        doorTravel = 1.6,
+        enclosed = false,
+    ),
+    CASINO(
+        Material.SMOOTH_QUARTZ,
+        Material.DARK_OAK_PLANKS,
+        Material.STRIPPED_DARK_OAK_LOG,
+        Material.SMOOTH_QUARTZ,
+        Material.GRAY_STAINED_GLASS,
+        Material.WAXED_EXPOSED_CUT_COPPER,
+        Material.WAXED_EXPOSED_CUT_COPPER,
+        Material.WAXED_CUT_COPPER,
+        Material.SEA_LANTERN,
+        Material.IRON_CHAIN,
+        doorTravel = 1.1,
+        enclosed = true,
+    );
+
+    val shaftClearanceAboveStop: Double =
+        if (enclosed) MINE_LIFT_CABIN_WALL_HEIGHT + MINE_LIFT_CABIN_HEIGHT else MINE_LIFT_CLEARANCE_ABOVE_STOP
+
+    val cabinWallHeight: Double get() = MINE_LIFT_CABIN_WALL_HEIGHT
+
+    fun messagePath(key: String): String =
+        if (this == CASINO && key in CASINO_LIFT_MESSAGE_KEYS) "mine-lift.casino.$key" else "mine-lift.$key"
+
+    companion object {
+        fun parse(value: String?): MineLiftTheme = when (value) {
+            null, "mine" -> MINE
+            "casino" -> CASINO
+            else -> throw IllegalArgumentException("Mine lift theme must be mine or casino")
+        }
+    }
+}
 
 internal data class MineLiftFloor(val id: String, val y: Double, val exit: LiftPoint, val panel: LiftPoint)
 
@@ -24,6 +90,7 @@ internal data class MineLiftSettings(
     val depth: Double,
     val speed: Double,
     val floors: List<MineLiftFloor>,
+    val theme: MineLiftTheme = MineLiftTheme.MINE,
 ) {
     fun contains(point: Location): Boolean = point.world.name == world &&
         kotlin.math.abs(point.x - x) < width / 2 + CABIN_SHAFT_MARGIN &&
@@ -170,8 +237,17 @@ internal data class MineLiftSettings(
             require(floors.zipWithNext().all { (a, b) -> a.y - b.y >= 4 }) { "Lift floors must descend by at least four blocks" }
             val width = number("cabin.width").also { require(it in 1.8..6.5) }
             val depth = number("cabin.depth").also { require(it in 1.8..6.5) }
-            return MineLiftSettings(id, requireNotNull(config.stringOrNull(path("world"))), number("cabin.x"), number("cabin.z"),
-                width, depth, number("speed").also { require(it in 1.0..MineLiftMotion.MAX_SPEED) }, floors)
+            return MineLiftSettings(
+                id = id,
+                world = requireNotNull(config.stringOrNull(path("world"))),
+                x = number("cabin.x"),
+                z = number("cabin.z"),
+                width = width,
+                depth = depth,
+                speed = number("speed").also { require(it in 1.0..MineLiftMotion.MAX_SPEED) },
+                floors = floors,
+                theme = MineLiftTheme.parse(config.stringOrNull(path("theme"))),
+            )
         }
     }
 }

@@ -30,7 +30,40 @@ class MineLiftSettingsTest : FreeSpec({
     "loads the legacy main profile and an enabled additional profile" {
         val root = writeConfig(additionalX = 10.0)
         try {
-            MineLiftSettings.loadAll(root).map { it.id } shouldBe listOf("main", "service")
+            val settings = MineLiftSettings.loadAll(root)
+            settings.map { it.id } shouldBe listOf("main", "service")
+            settings[0].theme shouldBe MineLiftTheme.MINE
+            settings[0].theme.shaftClearanceAboveStop shouldBe 2.8
+            settings[0].theme.floorMaterial shouldBe org.bukkit.Material.SPRUCE_PLANKS
+            settings[0].theme.ceilingMaterial shouldBe org.bukkit.Material.DARK_OAK_PLANKS
+            settings[0].theme.cornerMaterial shouldBe org.bukkit.Material.STRIPPED_SPRUCE_LOG
+            settings[0].theme.wallMaterial shouldBe null
+            settings[0].theme.windowMaterial shouldBe null
+            settings[0].theme.doorMaterial shouldBe org.bukkit.Material.IRON_BLOCK
+            settings[0].theme.railMaterial shouldBe org.bukkit.Material.IRON_BLOCK
+            settings[0].theme.panelMaterial shouldBe org.bukkit.Material.CHISELED_COPPER
+            settings[0].theme.lightMaterial shouldBe org.bukkit.Material.LANTERN
+            settings[0].theme.chainMaterial shouldBe org.bukkit.Material.IRON_CHAIN
+            settings[0].theme.doorTravel shouldBe 1.6
+            settings[0].theme.enclosed shouldBe false
+            settings[0].theme.messagePath("title") shouldBe "mine-lift.title"
+            settings[1].theme shouldBe MineLiftTheme.CASINO
+            settings[1].theme.shaftClearanceAboveStop shouldBe 5.48
+            settings[1].theme.windowMaterial shouldBe org.bukkit.Material.GRAY_STAINED_GLASS
+            settings[1].theme.doorTravel shouldBe 1.1
+            settings[1].theme.messagePath("title") shouldBe "mine-lift.casino.title"
+            settings[1].theme.messagePath("full") shouldBe "mine-lift.full"
+        } finally {
+            root.toFile().deleteRecursively()
+        }
+    }
+
+    "rejects an unknown theme without discarding the main profile" {
+        val failures = mutableListOf<String>()
+        val root = writeConfig(additionalX = 10.0, additionalTheme = "gold")
+        try {
+            MineLiftSettings.loadAll(root) { id, _ -> failures += id }.map { it.id } shouldBe listOf("main")
+            failures shouldContain "service"
         } finally {
             root.toFile().deleteRecursively()
         }
@@ -159,6 +192,7 @@ private fun writeConfig(
     additionalZ: Double = 10.0,
     mainWidth: Double = 2.8,
     mainDepth: Double = mainWidth,
+    additionalTheme: String = "casino",
 ): Path {
     val root = createTempDirectory("mine-lift-settings")
     root.resolve("modules").createDirectories()
@@ -175,6 +209,7 @@ private fun writeConfig(
         additional-lifts:
           service:
             enabled: true
+            theme: $additionalTheme
             world: mine
             speed: 6.0
             cabin: {x: $additionalX, z: $additionalZ, width: 2.8, depth: 2.8}

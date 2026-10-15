@@ -109,7 +109,8 @@ internal class MineLiftRuntime(
             val minZ = floor(config.z - config.depth / 2).toInt()
             val maxZ = floor(config.z + config.depth / 2).toInt()
             for (x in minX..maxX) for (z in minZ..maxZ) {
-                for (y in floor(config.floors.last().y).toInt()..floor(config.floors.first().y + 2.8).toInt()) {
+                for (y in floor(config.floors.last().y).toInt()..
+                    floor(config.floors.first().y + config.theme.shaftClearanceAboveStop).toInt()) {
                     require(world.getBlockAt(x, y, z).type.isAir) { "Mine lift shaft obstructed at $x,$y,$z" }
                 }
             }
@@ -461,7 +462,7 @@ internal class MineLiftRuntime(
         "floors.${settings.floors[index].id}", player, mapOf("number" to Component.text(index + 1)),
     )
     private fun text(key: String, player: Player? = null, values: Map<String, Component> = emptyMap()) =
-        locale.renderPath("mine-lift.$key", player, values).decoration(TextDecoration.ITALIC, false)
+        locale.renderPath(settings.theme.messagePath(key), player, values).decoration(TextDecoration.ITALIC, false)
 
     private fun stopCabin() {
         movementTask?.cancel()
