@@ -118,7 +118,8 @@ class MineLiftInteractionGateTest : FunSpec({
                         abs(it.location.x) < 3 && abs(it.location.z) < 3 && it.transformation.scale.y > 0
                     }
                     cabin.count { it.block.material == Material.GRAY_STAINED_GLASS } shouldBe 0
-                    cabin.count { it.block.material == Material.SHROOMLIGHT } shouldBe 4
+                    cabin.count { it.block.material == Material.OCHRE_FROGLIGHT } shouldBe 3
+                    (cabin.size <= 145) shouldBe true
                     repeat(11) { scene.move(65.0, open = false) shouldBe true }
                     val closed = cabin.associate { it.uniqueId to it.location.clone() }
                     for (pose in 0..11) {

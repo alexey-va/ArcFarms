@@ -70,6 +70,7 @@ internal class MineLiftScene(private val plugin: Plugin, private val settings: M
             MineLiftDoorSide.entries.forEach { side ->
                 casinoWall(side, side.takeIf { it in doorSides })
             }
+            casinoDecoration(doorSides)
         } else {
             block(-halfX, -.22, -halfZ, settings.width, .22, settings.depth, theme.floorMaterial)
             block(-halfX, theme.cabinWallHeight, -halfZ, settings.width, .18, settings.depth, theme.ceilingMaterial)
@@ -190,21 +191,75 @@ internal class MineLiftScene(private val plugin: Plugin, private val settings: M
         val rows = ceil(settings.depth / MAX_CASINO_PANEL_WIDTH).toInt()
         val tileX = settings.width / columns
         val tileZ = settings.depth / rows
+        val inlay = columns > 2 && rows > 2
+        val borderWidth = .04
         repeat(columns) { column -> repeat(rows) { row ->
             val x = -halfX + column * tileX
             val z = -halfZ + row * tileZ
-            val border = column == 0 || row == 0 || column == columns - 1 || row == rows - 1
-            block(x, -.22, z, tileX, .22, tileZ,
-                if (border) Material.DARK_OAK_PLANKS else settings.theme.floorMaterial)
-            block(x, settings.theme.cabinWallHeight, z, tileX, .18, tileZ, settings.theme.ceilingMaterial)
+            val center = column in 1 until columns - 1 && row in 1 until rows - 1
+            val left = if (center && column == 1) borderWidth else 0.0
+            val right = if (center && column == columns - 2) borderWidth else 0.0
+            val front = if (center && row == 1) borderWidth else 0.0
+            val back = if (center && row == rows - 2) borderWidth else 0.0
+            block(x + left, -.22, z + front, tileX - left - right, .22, tileZ - front - back,
+                if (!center) Material.DARK_OAK_PLANKS
+                else if ((column + row) % 2 == 0) settings.theme.floorMaterial else Material.RED_CONCRETE)
+            block(x, settings.theme.cabinWallHeight, z, tileX, .18, tileZ,
+                if (center) Material.DARK_PRISMARINE else settings.theme.ceilingMaterial)
         } }
-        for (x in listOf(-halfX, halfX - WALL_THICKNESS)) for (z in listOf(-halfZ, halfZ - WALL_THICKNESS)) {
-            block(x, 0.0, z, WALL_THICKNESS, settings.theme.cabinWallHeight, WALL_THICKNESS, settings.theme.railMaterial)
+        if (inlay) {
+            val innerX = halfX - tileX
+            val innerZ = halfZ - tileZ
+            for (x in listOf(-innerX, innerX - borderWidth))
+                block(x, -.22, -innerZ, borderWidth, .22, innerZ * 2, Material.GOLD_BLOCK)
+            for (z in listOf(-innerZ, innerZ - borderWidth))
+                block(-innerX + borderWidth, -.22, z, innerX * 2 - 2 * borderWidth, .22, borderWidth, Material.GOLD_BLOCK)
+            // The ceiling echoes the floor border, with the teal field recessed
+            // above a shallow brass coffer instead of four unrelated light pads.
+            val rim = .055
+            for (x in listOf(-innerX, innerX - rim))
+                block(x, 2.58, -innerZ, rim, .07, innerZ * 2, Material.GOLD_BLOCK)
+            for (z in listOf(-innerZ, innerZ - rim))
+                block(-innerX + rim, 2.58, z, innerX * 2 - 2 * rim, .07, rim, Material.GOLD_BLOCK)
         }
-        // Four shallow warm lenses replace the single hanging cold-white cube.
-        for (x in listOf(-settings.width / 4, settings.width / 4)) for (z in listOf(-settings.depth / 4, settings.depth / 4)) {
-            block(x - .34, 2.6, z - .34, .68, .05, .68, settings.theme.railMaterial)
-            block(x - .26, 2.55, z - .26, .52, .05, .52, Material.SHROOMLIGHT)
+        for (x in listOf(-halfX, halfX - WALL_THICKNESS)) for (z in listOf(-halfZ, halfZ - WALL_THICKNESS)) {
+            block(x, 0.0, z, WALL_THICKNESS, settings.theme.cabinWallHeight, WALL_THICKNESS, Material.GOLD_BLOCK)
+        }
+        block(-.36, 2.58, -.36, .72, .07, .72, Material.GOLD_BLOCK)
+        block(-.26, 2.52, -.26, .52, .06, .52, Material.OCHRE_FROGLIGHT)
+    }
+
+    private fun casinoDecoration(doorSides: Set<MineLiftDoorSide>) {
+        val opposite = MineLiftDoorSide.entries[(settings.openingSide(0).ordinal + 2) % MineLiftDoorSide.entries.size]
+        val back = opposite.takeIf { it !in doorSides }
+            ?: MineLiftDoorSide.entries.firstOrNull { it !in doorSides } ?: return
+        val span = if (back == MineLiftDoorSide.NORTH || back == MineLiftDoorSide.SOUTH) settings.width else settings.depth
+        val scale = minOf(1.0, (span - .3) / 3.2)
+        fun detail(along: Double, y: Double, width: Double, height: Double, depth: Double, material: Material, inset: Double) =
+            casinoSurface(back, along * scale, y, width * scale, height, depth, material, inset)
+
+        // A raised, stepped crest is the focal point seen through the doorway.
+        // Each layer has real depth; the gold silhouette never shares a face
+        // with its teal backing or the burgundy central stone.
+        detail(-.85, 1.2, 1.7, 1.2, .04, Material.GOLD_BLOCK, WALL_THICKNESS)
+        detail(-.78, 1.27, 1.56, 1.06, .02, Material.DARK_PRISMARINE, .12)
+        detail(-.64, 1.36, 1.28, .05, .03, Material.GOLD_BLOCK, .14)
+        listOf(.28, .44, .60, .77, .60, .44, .28).forEachIndexed { index, height ->
+            detail(-.62 + index * .19, 1.41, .10, height, .03, Material.GOLD_BLOCK, .14)
+        }
+        detail(-.09, 1.36, .18, .13, .025, Material.RED_CONCRETE, .17)
+
+        // Paired ivory sconces frame the crest; no floating text or dead glass.
+        for (along in listOf(-1.47, 1.47)) {
+            detail(along - .14, 1.42, .28, .82, .045, Material.GOLD_BLOCK, WALL_THICKNESS)
+            detail(along - .08, 1.52, .16, .62, .055, Material.OCHRE_FROGLIGHT, .125)
+        }
+        MineLiftDoorSide.entries.filter { it != back && it !in doorSides }.forEach { side ->
+            val wallSpan = if (side == MineLiftDoorSide.NORTH || side == MineLiftDoorSide.SOUTH) settings.width else settings.depth
+            for (along in listOf(-wallSpan / 4, wallSpan / 4)) {
+                casinoSurface(side, along - .015, .77, .03, settings.theme.cabinWallHeight - .77, .025,
+                    Material.GOLD_BLOCK, inset = WALL_THICKNESS)
+            }
         }
     }
 
@@ -223,7 +278,7 @@ internal class MineLiftScene(private val plugin: Plugin, private val settings: M
             casinoPanels(side, -span / 2 + WALL_THICKNESS, span - 2 * WALL_THICKNESS)
             // A real projecting handrail has its own depth, clear of the panel faces.
             casinoSurface(side, -span / 2 + .32, 1.05, span - .64, .055, .055,
-                settings.theme.railMaterial, inset = WALL_THICKNESS + .04)
+                Material.GOLD_BLOCK, inset = WALL_THICKNESS + .04)
         }
     }
 
@@ -245,18 +300,18 @@ internal class MineLiftScene(private val plugin: Plugin, private val settings: M
             casinoSurface(side, along, 0.0, tileWidth, .72, WALL_THICKNESS,
                 Material.DARK_OAK_PLANKS, inset, doorSide, travelSign, travel)
             casinoSurface(side, along, .72, tileWidth, .05, WALL_THICKNESS,
-                settings.theme.railMaterial, inset, doorSide, travelSign, travel)
+                Material.GOLD_BLOCK, inset, doorSide, travelSign, travel)
             val upperHeight = (settings.theme.cabinWallHeight - .77) / 2
             repeat(2) { row ->
                 casinoSurface(side, along, .77 + row * upperHeight, tileWidth, upperHeight, WALL_THICKNESS,
-                    Material.STRIPPED_SPRUCE_WOOD, inset, doorSide, travelSign, travel)
+                    Material.STRIPPED_DARK_OAK_WOOD, inset, doorSide, travelSign, travel)
             }
         }
         if (doorSide != null) {
             val handle = if (travelSign < 0) start + width - .14 else start + .08
             for (handleInset in listOf(inset - .035, inset + WALL_THICKNESS)) {
                 casinoSurface(side, handle, 1.05, .06, .36, .035,
-                    settings.theme.doorMaterial, handleInset, doorSide, travelSign, travel)
+                    Material.GOLD_BLOCK, handleInset, doorSide, travelSign, travel)
             }
         }
     }

@@ -38,7 +38,6 @@ import ru.arc.paper.menu.PaperDialogScreen
 import ru.arc.paper.teleport.ScopedTeleportAuthorizer
 import ru.ruscrafting.farms.config.ArcFarmsLocale
 import ru.ruscrafting.farms.domain.mine.lift.MineLiftMotion
-import ru.ruscrafting.farms.domain.mine.lift.MineLiftMusic
 import ru.ruscrafting.farms.paper.FarmDialogScreens
 import java.util.UUID
 import java.util.logging.Level
@@ -86,7 +85,6 @@ internal class MineLiftRuntime(
     private val chunks = mutableListOf<org.bukkit.Chunk>()
     private var closed = false
     private var tickNumber = 0L
-    private var musicTick = 0
     private var movementTask: ScheduledTask? = null
     private val exiting = mutableSetOf<UUID>()
     private val maintenance = MineLiftMaintenanceClaim()
@@ -146,6 +144,7 @@ internal class MineLiftRuntime(
             val player = Bukkit.getPlayer(id)
             val seat = cabin.seats[riders.getValue(id)]
             if (player == null || player.isDead) {
+                player?.let(::stopMusic)
                 riders.remove(id)
                 releaseRider(id, settings.id)
                 return@forEach
@@ -166,16 +165,6 @@ internal class MineLiftRuntime(
             }
             exit.world.playSound(exit, Sound.BLOCK_NOTE_BLOCK_BELL, .65f, 1.1f)
         }
-        if (config.theme == MineLiftTheme.CASINO && riders.isNotEmpty() && state.phase != MineLiftMotion.Phase.DOCKED) {
-            MineLiftMusic.at(musicTick++)?.let { beat ->
-                riders.keys.mapNotNull(Bukkit::getPlayer).forEach { player ->
-                    player.playSound(player.location, Sound.BLOCK_NOTE_BLOCK_HARP, SoundCategory.RECORDS, .3f, beat.melodyPitch)
-                    beat.bassPitch?.let { pitch ->
-                        player.playSound(player.location, Sound.BLOCK_NOTE_BLOCK_BASS, SoundCategory.RECORDS, .18f, pitch)
-                    }
-                }
-            }
-        } else musicTick = 0
         if (tickNumber % 20 == 0L) {
             config.floors.indices.forEach { cabin.label(it, label(it)) }
             if (state.phase == MineLiftMotion.Phase.MOVING && config.theme != MineLiftTheme.CASINO) {
@@ -274,6 +263,9 @@ internal class MineLiftRuntime(
         }
         riders[player.uniqueId] = slot
         check(state.board(destination))
+        if (config.theme == MineLiftTheme.CASINO) {
+            player.playSound(player, CASINO_LIFT_MUSIC, SoundCategory.RECORDS, .65f, 1f)
+        }
         interactionGate.clearWalkIn(player.uniqueId)
         player.sendMessage(text("boarding", player, mapOf("floor" to floorName(destination, player))))
     }
@@ -282,6 +274,7 @@ internal class MineLiftRuntime(
         at.clone().add(0.0, 1.0, 0.0).block.isPassable && at.clone().add(0.0, -1.0, 0.0).block.type.isSolid
 
     private fun unload(player: Player, destination: Location): Boolean {
+        stopMusic(player)
         if (!safe(destination)) return false
         exiting += player.uniqueId
         try {
@@ -417,6 +410,7 @@ internal class MineLiftRuntime(
     fun damage(event: EntityDamageEvent) { if (event.entity.uniqueId in riders) event.isCancelled = true }
 
     @EventHandler fun quit(event: PlayerQuitEvent) {
+        stopMusic(event.player)
         interactionGate.clear(event.player.uniqueId)
         recover(event.player)
         if (riders.remove(event.player.uniqueId) != null) releaseRider(event.player.uniqueId, settings.id)
@@ -477,15 +471,19 @@ internal class MineLiftRuntime(
     private fun text(key: String, player: Player? = null, values: Map<String, Component> = emptyMap()) =
         locale.renderPath(settings.theme.messagePath(key), player, values).decoration(TextDecoration.ITALIC, false)
 
+    private fun stopMusic(player: Player) {
+        if (settings.theme == MineLiftTheme.CASINO) player.stopSound(CASINO_LIFT_MUSIC, SoundCategory.RECORDS)
+    }
+
     private fun stopCabin() {
         movementTask?.cancel()
         movementTask = null
         riders.keys.toList().mapNotNull(Bukkit::getPlayer).forEach { player ->
+            stopMusic(player)
             runCatching { recover(player) }.onFailure { plugin.logger.log(Level.SEVERE, "Mine lift recovery remains pending", it) }
         }
         riders.keys.forEach { releaseRider(it, settings.id) }
         scene?.close(); scene = null; motion = null; riders.clear()
-        musicTick = 0
         chunks.forEach { it.removePluginChunkTicket(plugin) }; chunks.clear()
     }
 
@@ -496,3 +494,5 @@ internal class MineLiftRuntime(
         stopCabin(); tasks.close(); dialogs.close(); interactionGate.clear(); HandlerList.unregisterAll(this)
     }
 }
+
+private const val CASINO_LIFT_MUSIC = "arc_casino:lift_local_forecast"
