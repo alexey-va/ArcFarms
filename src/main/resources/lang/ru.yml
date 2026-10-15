@@ -1831,6 +1831,6 @@ mine-lift:
     casino_bowling: '<number> · Нижний зал боулинга'
   casino:
     title: '<white>Лифт казино</white>'
-    description: '<color:#e8dfd2>Сейчас: <floor>.<newline>Выбери зал — кабина отправится через 3 секунды.<newline>Выход на площадку автоматический.</color>'
+    description: '<color:#e8dfd2>Сейчас: <floor>.<newline>Выбери зал — после посадки двери закроются и начнётся поездка.<newline>Выход на площадку автоматический.</color>'
     panel: '<white>Лифт казино · <floor></white><newline><color:#8ed8b1><state></color>'
     near-panel: '<color:#e8dfd2>Подойди к панели лифта казино.</color>'

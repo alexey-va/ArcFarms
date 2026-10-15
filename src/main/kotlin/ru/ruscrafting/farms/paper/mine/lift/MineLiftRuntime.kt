@@ -6,6 +6,7 @@ import net.kyori.adventure.text.format.TextDecoration
 import org.bukkit.Bukkit
 import org.bukkit.Location
 import org.bukkit.Sound
+import org.bukkit.SoundCategory
 import org.bukkit.command.Command
 import org.bukkit.command.CommandExecutor
 import org.bukkit.command.CommandSender
@@ -37,6 +38,7 @@ import ru.arc.paper.menu.PaperDialogScreen
 import ru.arc.paper.teleport.ScopedTeleportAuthorizer
 import ru.ruscrafting.farms.config.ArcFarmsLocale
 import ru.ruscrafting.farms.domain.mine.lift.MineLiftMotion
+import ru.ruscrafting.farms.domain.mine.lift.MineLiftMusic
 import ru.ruscrafting.farms.paper.FarmDialogScreens
 import java.util.UUID
 import java.util.logging.Level
@@ -84,6 +86,7 @@ internal class MineLiftRuntime(
     private val chunks = mutableListOf<org.bukkit.Chunk>()
     private var closed = false
     private var tickNumber = 0L
+    private var musicTick = 0
     private var movementTask: ScheduledTask? = null
     private val exiting = mutableSetOf<UUID>()
     private val maintenance = MineLiftMaintenanceClaim()
@@ -163,9 +166,19 @@ internal class MineLiftRuntime(
             }
             exit.world.playSound(exit, Sound.BLOCK_NOTE_BLOCK_BELL, .65f, 1.1f)
         }
+        if (config.theme == MineLiftTheme.CASINO && riders.isNotEmpty() && state.phase != MineLiftMotion.Phase.DOCKED) {
+            MineLiftMusic.at(musicTick++)?.let { beat ->
+                riders.keys.mapNotNull(Bukkit::getPlayer).forEach { player ->
+                    player.playSound(player.location, Sound.BLOCK_NOTE_BLOCK_HARP, SoundCategory.RECORDS, .3f, beat.melodyPitch)
+                    beat.bassPitch?.let { pitch ->
+                        player.playSound(player.location, Sound.BLOCK_NOTE_BLOCK_BASS, SoundCategory.RECORDS, .18f, pitch)
+                    }
+                }
+            }
+        } else musicTick = 0
         if (tickNumber % 20 == 0L) {
             config.floors.indices.forEach { cabin.label(it, label(it)) }
-            if (state.phase == MineLiftMotion.Phase.MOVING) {
+            if (state.phase == MineLiftMotion.Phase.MOVING && config.theme != MineLiftTheme.CASINO) {
                 val at = Location(Bukkit.getWorld(config.world), config.x, state.y, config.z)
                 at.world.playSound(at, Sound.BLOCK_CHAIN_STEP, .55f, .65f)
             }
@@ -472,6 +485,7 @@ internal class MineLiftRuntime(
         }
         riders.keys.forEach { releaseRider(it, settings.id) }
         scene?.close(); scene = null; motion = null; riders.clear()
+        musicTick = 0
         chunks.forEach { it.removePluginChunkTicket(plugin) }; chunks.clear()
     }
 

@@ -64,17 +64,18 @@ internal class MineLiftScene(private val plugin: Plugin, private val settings: M
         val halfX = settings.width / 2
         val halfZ = settings.depth / 2
         val theme = settings.theme
-        block(-halfX, -.22, -halfZ, settings.width, .22, settings.depth, theme.floorMaterial)
-        block(-halfX, theme.cabinWallHeight, -halfZ, settings.width, .18, settings.depth, theme.ceilingMaterial)
-        for (x in listOf(-halfX, halfX - .16)) for (z in listOf(-halfZ, halfZ - .16)) {
-            block(x, 0.0, z, .16, theme.cabinWallHeight, .16, theme.cornerMaterial)
-        }
         val doorSides = settings.floors.indices.map(settings::openingSide).toSet()
         if (theme.enclosed) {
+            casinoFloorAndCeiling()
             MineLiftDoorSide.entries.forEach { side ->
                 casinoWall(side, side.takeIf { it in doorSides })
             }
         } else {
+            block(-halfX, -.22, -halfZ, settings.width, .22, settings.depth, theme.floorMaterial)
+            block(-halfX, theme.cabinWallHeight, -halfZ, settings.width, .18, settings.depth, theme.ceilingMaterial)
+            for (x in listOf(-halfX, halfX - .16)) for (z in listOf(-halfZ, halfZ - .16)) {
+                block(x, 0.0, z, .16, theme.cabinWallHeight, .16, theme.cornerMaterial)
+            }
             MineLiftDoorSide.entries.forEach { side ->
                 val openingSide = side.takeIf { it in doorSides }
                 when (side) {
@@ -84,9 +85,9 @@ internal class MineLiftScene(private val plugin: Plugin, private val settings: M
                     MineLiftDoorSide.SOUTH -> guard(-halfX, halfZ - .08, settings.width, vertical = false, openingSide)
                 }
             }
+            block(-.2, 2.3, -.2, .4, .35, .4, theme.lightMaterial)
         }
         spawnCabinHitbox(y)
-        block(-.2, 2.3, -.2, .4, .35, .4, theme.lightMaterial)
         parts.forEach { it.display.teleport(origin(y).add(it.x, it.y, it.z)) }
         for (x in seatAxis(settings.width)) for (z in seatAxis(settings.depth)) {
             seatOffsets += x to z
@@ -105,8 +106,17 @@ internal class MineLiftScene(private val plugin: Plugin, private val settings: M
                 mark(it); it.interactionWidth = .85f; it.interactionHeight = 1.3f; it.isResponsive = true
             }.also(entities::add)
             panels[panel.uniqueId] = index
-            display(floor.panel.location(world).add(-.3, .0, -.3), theme.panelMaterial).apply {
-                transformation = transform(0.0, 0.0, 0.0, .6, .75, .6)
+            if (theme.enclosed) {
+                val horizontal = settings.openingSide(index) in setOf(MineLiftDoorSide.NORTH, MineLiftDoorSide.SOUTH)
+                val sx = if (horizontal) .46 else .12
+                val sz = if (horizontal) .12 else .46
+                display(floor.panel.location(world).add(-sx / 2, .55, -sz / 2), theme.panelMaterial).apply {
+                    transformation = transform(0.0, 0.0, 0.0, sx, .7, sz)
+                }
+            } else {
+                display(floor.panel.location(world).add(-.3, .0, -.3), theme.panelMaterial).apply {
+                    transformation = transform(0.0, 0.0, 0.0, .6, .75, .6)
+                }
             }
             labels += world.spawn(floor.panel.location(world).add(0.0, 1.6, 0.0), TextDisplay::class.java) {
                 mark(it); it.text(floorText(index)); it.billboard = Display.Billboard.VERTICAL
@@ -173,130 +183,109 @@ internal class MineLiftScene(private val plugin: Plugin, private val settings: M
         }
     }
 
-    private fun casinoWall(side: MineLiftDoorSide, openingSide: MineLiftDoorSide?) {
-        if (openingSide != null) {
-            casinoDoorWall(side)
-            return
-        }
-
+    private fun casinoFloorAndCeiling() {
         val halfX = settings.width / 2
         val halfZ = settings.depth / 2
-        val wallMaterial = requireNotNull(settings.theme.wallMaterial)
-        if (side == MineLiftDoorSide.EAST || side == MineLiftDoorSide.WEST) {
-            casinoSideWindowWall(side, wallMaterial, requireNotNull(settings.theme.windowMaterial))
+        val columns = ceil(settings.width / MAX_CASINO_PANEL_WIDTH).toInt()
+        val rows = ceil(settings.depth / MAX_CASINO_PANEL_WIDTH).toInt()
+        val tileX = settings.width / columns
+        val tileZ = settings.depth / rows
+        repeat(columns) { column -> repeat(rows) { row ->
+            val x = -halfX + column * tileX
+            val z = -halfZ + row * tileZ
+            val border = column == 0 || row == 0 || column == columns - 1 || row == rows - 1
+            block(x, -.22, z, tileX, .22, tileZ,
+                if (border) Material.DARK_OAK_PLANKS else settings.theme.floorMaterial)
+            block(x, settings.theme.cabinWallHeight, z, tileX, .18, tileZ, settings.theme.ceilingMaterial)
+        } }
+        for (x in listOf(-halfX, halfX - WALL_THICKNESS)) for (z in listOf(-halfZ, halfZ - WALL_THICKNESS)) {
+            block(x, 0.0, z, WALL_THICKNESS, settings.theme.cabinWallHeight, WALL_THICKNESS, settings.theme.railMaterial)
+        }
+        // Four shallow warm lenses replace the single hanging cold-white cube.
+        for (x in listOf(-settings.width / 4, settings.width / 4)) for (z in listOf(-settings.depth / 4, settings.depth / 4)) {
+            block(x - .34, 2.6, z - .34, .68, .05, .68, settings.theme.railMaterial)
+            block(x - .26, 2.55, z - .26, .52, .05, .52, Material.SHROOMLIGHT)
+        }
+    }
+
+    private fun casinoWall(side: MineLiftDoorSide, openingSide: MineLiftDoorSide?) {
+        val span = if (side == MineLiftDoorSide.NORTH || side == MineLiftDoorSide.SOUTH) settings.width else settings.depth
+        if (openingSide != null) {
+            val leafWidth = minOf(settings.theme.doorTravel, span / 2 - WALL_THICKNESS)
+            val sideWidth = span / 2 - leafWidth - WALL_THICKNESS
+            if (sideWidth > 0.0) {
+                casinoPanels(side, -span / 2 + WALL_THICKNESS, sideWidth)
+                casinoPanels(side, leafWidth, sideWidth)
+            }
+            casinoPanels(side, -leafWidth, leafWidth, -1.0, leafWidth)
+            casinoPanels(side, 0.0, leafWidth, 1.0, leafWidth)
         } else {
-            when (side) {
-                MineLiftDoorSide.WEST -> block(-halfX, 0.0, -halfZ, .08, settings.theme.cabinWallHeight, settings.depth, wallMaterial)
-                MineLiftDoorSide.EAST -> block(halfX - .08, 0.0, -halfZ, .08, settings.theme.cabinWallHeight, settings.depth, wallMaterial)
-                MineLiftDoorSide.NORTH -> block(-halfX, 0.0, -halfZ, settings.width, settings.theme.cabinWallHeight, .08, wallMaterial)
-                MineLiftDoorSide.SOUTH -> block(-halfX, 0.0, halfZ - .08, settings.width, settings.theme.cabinWallHeight, .08, wallMaterial)
+            casinoPanels(side, -span / 2 + WALL_THICKNESS, span - 2 * WALL_THICKNESS)
+            // A real projecting handrail has its own depth, clear of the panel faces.
+            casinoSurface(side, -span / 2 + .32, 1.05, span - .64, .055, .055,
+                settings.theme.railMaterial, inset = WALL_THICKNESS + .04)
+        }
+    }
+
+    private fun casinoPanels(
+        side: MineLiftDoorSide,
+        start: Double,
+        width: Double,
+        travelSign: Double = 0.0,
+        travel: Double? = null,
+    ) {
+        val doorSide = side.takeIf { travel != null }
+        // Leaves retract BEHIND the fixed wall: the full .08 wall thickness plus
+        // .06 clearance separates their faces at every intermediate/open pose.
+        val inset = if (doorSide == null) 0.0 else -CASINO_DOOR_TRACK_OFFSET
+        val columns = ceil(width / MAX_CASINO_PANEL_WIDTH).toInt().coerceAtLeast(1)
+        val tileWidth = width / columns
+        repeat(columns) { column ->
+            val along = start + column * tileWidth
+            casinoSurface(side, along, 0.0, tileWidth, .72, WALL_THICKNESS,
+                Material.DARK_OAK_PLANKS, inset, doorSide, travelSign, travel)
+            casinoSurface(side, along, .72, tileWidth, .05, WALL_THICKNESS,
+                settings.theme.railMaterial, inset, doorSide, travelSign, travel)
+            val upperHeight = (settings.theme.cabinWallHeight - .77) / 2
+            repeat(2) { row ->
+                casinoSurface(side, along, .77 + row * upperHeight, tileWidth, upperHeight, WALL_THICKNESS,
+                    Material.STRIPPED_SPRUCE_WOOD, inset, doorSide, travelSign, travel)
+            }
+        }
+        if (doorSide != null) {
+            val handle = if (travelSign < 0) start + width - .14 else start + .08
+            for (handleInset in listOf(inset - .035, inset + WALL_THICKNESS)) {
+                casinoSurface(side, handle, 1.05, .06, .36, .035,
+                    settings.theme.doorMaterial, handleInset, doorSide, travelSign, travel)
             }
         }
     }
 
-    private fun casinoDoorWall(side: MineLiftDoorSide) {
-        val span = if (side == MineLiftDoorSide.NORTH || side == MineLiftDoorSide.SOUTH) settings.width else settings.depth
-        val halfSpan = span / 2
-        val leafWidth = minOf(settings.theme.doorTravel, span / 2)
-        val sideWidth = (span - 2 * leafWidth) / 2
-        val sideTiles = ceil(sideWidth / MAX_CASINO_PANEL_WIDTH).toInt().coerceAtLeast(1)
-        val sideTileWidth = sideWidth / sideTiles
-
-        if (sideWidth > 0.0) repeat(sideTiles) { index ->
-            val tileStart = -halfSpan + index * sideTileWidth
-            casinoDoorPanel(side, tileStart, sideTileWidth)
-        }
-        casinoDoorPanel(side, -leafWidth, leafWidth, openingSide = side, travelSign = -1.0, doorTravel = leafWidth)
-        casinoDoorPanel(side, 0.0, leafWidth, openingSide = side, travelSign = 1.0, doorTravel = leafWidth)
-        if (sideWidth > 0.0) repeat(sideTiles) { index ->
-            val tileStart = leafWidth + index * sideTileWidth
-            casinoDoorPanel(side, tileStart, sideTileWidth)
-        }
-    }
-
-    private fun casinoDoorPanel(
+    /** A wall-local panel; inset is measured inward from the cabin's outer face. */
+    private fun casinoSurface(
         side: MineLiftDoorSide,
-        alongStart: Double,
-        alongWidth: Double,
-        openingSide: MineLiftDoorSide? = null,
+        along: Double,
+        y: Double,
+        width: Double,
+        height: Double,
+        thickness: Double,
+        material: Material,
+        inset: Double = 0.0,
+        doorSide: MineLiftDoorSide? = null,
         travelSign: Double = 0.0,
-        doorTravel: Double? = null,
+        travel: Double? = null,
     ) {
-        val halfX = settings.width / 2
-        val halfZ = settings.depth / 2
         val horizontal = side == MineLiftDoorSide.NORTH || side == MineLiftDoorSide.SOUTH
-        val normalX = when (side) {
-            MineLiftDoorSide.WEST -> -halfX
-            MineLiftDoorSide.EAST -> halfX - WALL_THICKNESS
-            else -> 0.0
-        }
-        val normalZ = when (side) {
-            MineLiftDoorSide.NORTH -> -halfZ
-            MineLiftDoorSide.SOUTH -> halfZ - WALL_THICKNESS
-            else -> 0.0
-        }
-        val outwardX = when (side) {
-            MineLiftDoorSide.WEST -> -DOOR_FACE_OFFSET
-            MineLiftDoorSide.EAST -> DOOR_FACE_OFFSET
-            else -> 0.0
-        }
-        val outwardZ = when (side) {
-            MineLiftDoorSide.NORTH -> -DOOR_FACE_OFFSET
-            MineLiftDoorSide.SOUTH -> DOOR_FACE_OFFSET
-            else -> 0.0
-        }
-        val x = if (horizontal) alongStart else normalX + outwardX
-        val z = if (horizontal) normalZ + outwardZ else alongStart
-        val sx = if (horizontal) alongWidth else WALL_THICKNESS
-        val sz = if (horizontal) WALL_THICKNESS else alongWidth
-        val moveX = if (horizontal) travelSign else 0.0
-        val moveZ = if (horizontal) 0.0 else travelSign
-        val doorSide = openingSide
-        val upperMaterial = requireNotNull(settings.theme.wallMaterial)
-        val lowerMaterial = settings.theme.ceilingMaterial
-        val brassMaterial = settings.theme.railMaterial
-        val lowerHeight = .62
-        val railHeight = .12
-
-        fun panel(y: Double, height: Double, material: Material) = block(
-            x, y, z, sx, height, sz, material, doorSide,
-            doorShiftX = moveX, doorShiftZ = moveZ, doorTravel = doorTravel,
+        val halfNormal = if (horizontal) settings.depth / 2 else settings.width / 2
+        val normal = if (side == MineLiftDoorSide.NORTH || side == MineLiftDoorSide.WEST) {
+            -halfNormal + inset
+        } else halfNormal - inset - thickness
+        block(
+            if (horizontal) along else normal, y, if (horizontal) normal else along,
+            if (horizontal) width else thickness, height, if (horizontal) thickness else width,
+            material, doorSide, doorShiftX = if (horizontal) travelSign else 0.0,
+            doorShiftZ = if (horizontal) 0.0 else travelSign, doorTravel = travel,
         )
-
-        panel(0.0, lowerHeight, lowerMaterial)
-        panel(lowerHeight, railHeight, brassMaterial)
-        panel(lowerHeight + railHeight, settings.theme.cabinWallHeight - lowerHeight - railHeight, upperMaterial)
-        if (openingSide != null) {
-            val handleWidth = .06
-            val handleStart = alongStart + (alongWidth - handleWidth) / 2
-            val handleX = if (horizontal) handleStart else x
-            val handleZ = if (horizontal) z else handleStart
-            val handleSizeX = if (horizontal) handleWidth else WALL_THICKNESS
-            val handleSizeZ = if (horizontal) WALL_THICKNESS else handleWidth
-            block(
-                handleX, 1.2, handleZ, handleSizeX, .18, handleSizeZ,
-                settings.theme.doorMaterial, doorSide, doorShiftX = moveX, doorShiftZ = moveZ, doorTravel = doorTravel,
-            )
-        }
-    }
-
-    private fun casinoSideWindowWall(side: MineLiftDoorSide, wall: Material, glass: Material) {
-        val halfX = settings.width / 2
-        val halfZ = settings.depth / 2
-        val wallX = if (side == MineLiftDoorSide.WEST) -halfX else halfX - WALL_THICKNESS
-        val span = settings.depth
-        val windowWidth = minOf(MAX_CASINO_PANEL_WIDTH, span)
-        val windowStart = -windowWidth / 2
-        val sideWidth = (span - windowWidth) / 2
-        val windowBottom = .82
-        val windowTop = 2.12
-        val sidePanels = listOf(-halfZ to sideWidth, (windowStart + windowWidth) to sideWidth)
-        sidePanels.filter { it.second > 0.0 }.forEach { (z, width) ->
-            block(wallX, 0.0, z, WALL_THICKNESS, settings.theme.cabinWallHeight, width, wall)
-        }
-        block(wallX, 0.0, windowStart, WALL_THICKNESS, windowBottom, windowWidth, wall)
-        block(wallX, windowTop, windowStart, WALL_THICKNESS, settings.theme.cabinWallHeight - windowTop, windowWidth, wall)
-        block(wallX, windowBottom, windowStart, WALL_THICKNESS, windowTop - windowBottom, windowWidth, glass)
     }
 
     private fun spawnCabinHitbox(y: Double) {
@@ -357,7 +346,7 @@ internal class MineLiftScene(private val plugin: Plugin, private val settings: M
 
     private companion object {
         const val WALL_THICKNESS = .08
-        const val DOOR_FACE_OFFSET = .01
+        const val CASINO_DOOR_TRACK_OFFSET = .14
         const val MAX_CASINO_PANEL_WIDTH = 1.1
     }
 }

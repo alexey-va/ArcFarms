@@ -95,65 +95,66 @@ class MineLiftInteractionGateTest : FunSpec({
         }
     }
 
-    test("casino center doors slide into fixed side panels within the cabin width") {
+    test("casino sliding leaves stay inside the wall pockets without coplanar faces at any door pose") {
         failOnUnsupportedMockBukkitOperation {
             val paper = MockBukkitTestRuntime.open()
             try {
                 val world = LiftSceneWorldMock(paper.server).apply { name = "casino" }
                 paper.server.addWorld(world)
                 val plugin = paper.createSimplePlugin("CasinoLiftInteractionTest")
-                val settings = MineLiftSettings(
-                    id = "casino",
-                    world = world.name,
-                    x = 0.0,
-                    z = 0.0,
-                    width = 4.4,
-                    depth = 4.4,
-                    speed = 3.2,
-                    floors = listOf(
-                        MineLiftFloor("casino", 65.0, LiftPoint(0.0, 65.0, 5.0), LiftPoint(3.0, 65.0, 3.0)),
-                        MineLiftFloor("casino_bowling", 49.0, LiftPoint(0.0, 49.0, 5.0), LiftPoint(3.0, 49.0, 3.0)),
-                    ),
-                    theme = MineLiftTheme.CASINO,
-                )
-                val scene = MineLiftScene(plugin, settings, world)
-                scene.spawn(65.0) { net.kyori.adventure.text.Component.text("floor") }
-                world.entities.filterIsInstance<BlockDisplay>().count { it.block.material == Material.GRAY_STAINED_GLASS } shouldBe 2
-                world.entities.filterIsInstance<BlockDisplay>().count { it.block.material == Material.SEA_LANTERN } shouldBe 1
-
-                val southWallParts = world.entities.filterIsInstance<BlockDisplay>().filter {
-                    abs(it.location.z - 2.13) < 0.0001 && it.location.y in 65.0..67.65
+                for ((exitX, exitZ) in listOf(-5.0 to 0.0, 5.0 to 0.0, 0.0 to -5.0, 0.0 to 5.0)) {
+                    val settings = MineLiftSettings(
+                        id = "casino", world = world.name, x = 0.0, z = 0.0,
+                        width = 4.4, depth = 4.4, speed = 3.2,
+                        floors = listOf(
+                            MineLiftFloor("casino", 65.0, LiftPoint(exitX, 65.0, exitZ), LiftPoint(4.0, 65.0, 4.0)),
+                            MineLiftFloor("casino_bowling", 49.0, LiftPoint(exitX, 49.0, exitZ), LiftPoint(4.0, 49.0, 4.0)),
+                        ),
+                        theme = MineLiftTheme.CASINO,
+                    )
+                    val scene = MineLiftScene(plugin, settings, world)
+                    scene.spawn(65.0) { net.kyori.adventure.text.Component.text("floor") }
+                    val cabin = world.entities.filterIsInstance<BlockDisplay>().filter {
+                        abs(it.location.x) < 3 && abs(it.location.z) < 3 && it.transformation.scale.y > 0
+                    }
+                    cabin.count { it.block.material == Material.GRAY_STAINED_GLASS } shouldBe 0
+                    cabin.count { it.block.material == Material.SHROOMLIGHT } shouldBe 4
+                    repeat(11) { scene.move(65.0, open = false) shouldBe true }
+                    val closed = cabin.associate { it.uniqueId to it.location.clone() }
+                    for (pose in 0..11) {
+                        val boxes = cabin.map { display ->
+                            val at = display.location
+                            val scale = display.transformation.scale
+                            listOf(at.x, at.y, at.z, at.x + scale.x, at.y + scale.y, at.z + scale.z)
+                        }
+                        val overlaps = mutableListOf<String>()
+                        for (first in boxes.indices) for (second in first + 1 until boxes.size) {
+                            val left = boxes[first]
+                            val right = boxes[second]
+                            for (axis in 0..2) {
+                                val projected = (0..2).filter { it != axis }.all {
+                                    minOf(left[it + 3], right[it + 3]) - maxOf(left[it], right[it]) > .00001
+                                }
+                                if (projected && (abs(left[axis] - right[axis]) < .00001 ||
+                                        abs(left[axis + 3] - right[axis + 3]) < .00001)) {
+                                    overlaps += "pose=$pose side=${settings.openingSide(0)} pair=$first/$second axis=$axis"
+                                }
+                            }
+                        }
+                        overlaps shouldBe emptyList()
+                        if (pose < 11) scene.move(65.0, open = true) shouldBe true
+                    }
+                    scene.isDoorOpenAt(0) shouldBe true
+                    val moving = cabin.filter { it.location.distanceSquared(closed.getValue(it.uniqueId)) > .5 }
+                    moving.size shouldBe 12
+                    val horizontal = exitZ != 0.0
+                    moving.forEach {
+                        val start = if (horizontal) it.location.x else it.location.z
+                        val width = if (horizontal) it.transformation.scale.x else it.transformation.scale.z
+                        (start >= -2.20001 && start + width <= 2.20001) shouldBe true
+                    }
+                    scene.close()
                 }
-                fun assertSouthWallBounds() {
-                    southWallParts.minOf { it.location.x } shouldBe (-2.2 plusOrMinus 0.0001)
-                    southWallParts.maxOf { it.location.x + it.transformation.scale.x.toDouble() } shouldBe (2.2 plusOrMinus 0.0001)
-                }
-
-                repeat(11) { scene.move(65.0, open = false) shouldBe true }
-                scene.isDoorOpenAt(0) shouldBe false
-                val upperDoorPanels = world.entities.filterIsInstance<BlockDisplay>().filter {
-                    it.block.material == Material.SMOOTH_QUARTZ &&
-                        abs(it.location.z - 2.13) < 0.0001 &&
-                        abs(it.location.y - 65.74) < 0.0001
-                }
-                upperDoorPanels.size shouldBe 4
-                upperDoorPanels.map { it.location.x }.sorted().zip(listOf(-2.2, -1.1, 0.0, 1.1)).forEach { (actual, expected) ->
-                    actual shouldBe (expected plusOrMinus 0.0001)
-                }
-                upperDoorPanels.forEach { it.transformation.scale.x.toDouble() shouldBe (1.1 plusOrMinus 0.0001) }
-                assertSouthWallBounds()
-
-                val closedX = upperDoorPanels.associate { it.uniqueId to it.location.x }
-                repeat(11) { scene.move(65.0, open = true) shouldBe true }
-                scene.isDoorOpenAt(0) shouldBe true
-                val movingDoors = upperDoorPanels.filter { abs(it.location.x - closedX.getValue(it.uniqueId)) > .5 }
-                movingDoors.size shouldBe 2
-                movingDoors.map { it.location.x }.sorted().zip(listOf(-2.2, 1.1)).forEach { (actual, expected) ->
-                    actual shouldBe (expected plusOrMinus 0.0001)
-                }
-                assertSouthWallBounds()
-
-                scene.close()
             } finally {
                 paper.close()
             }

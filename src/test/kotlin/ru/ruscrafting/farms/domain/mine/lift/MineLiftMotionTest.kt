@@ -7,6 +7,14 @@ import io.kotest.matchers.doubles.shouldBeLessThanOrEqual
 import kotlin.math.abs
 
 class MineLiftMotionTest : FreeSpec({
+    "casino trip completes its sixteen block journey including boarding in four and a half seconds" {
+        val lift = MineLiftMotion(listOf(65.0, 49.0), 8.0)
+        lift.board(1) shouldBe true
+        repeat(89) { lift.tick() shouldBe false }
+        lift.tick() shouldBe true
+        lift.y shouldBe 49.0
+    }
+
     "speed validation accepts the faster cap but rejects unsafe values" {
         MineLiftMotion(listOf(123.0, 38.0), MineLiftMotion.MAX_SPEED)
         shouldThrow<IllegalArgumentException> { MineLiftMotion(listOf(123.0, 38.0), 20.000001) }
