@@ -119,8 +119,25 @@ internal class MineLiftScene(private val plugin: Plugin, private val settings: M
                     transformation = transform(0.0, 0.0, 0.0, .6, .75, .6)
                 }
             }
-            labels += world.spawn(floor.panel.location(world).add(0.0, 1.6, 0.0), TextDisplay::class.java) {
-                mark(it); it.text(floorText(index)); it.billboard = Display.Billboard.VERTICAL
+            val labelAt = floor.panel.location(world).add(0.0, 1.6, 0.0)
+            if (theme == MineLiftTheme.CASINO) {
+                labelAt.yaw = when (settings.openingSide(index)) {
+                    MineLiftDoorSide.NORTH -> 180f
+                    MineLiftDoorSide.EAST -> -90f
+                    MineLiftDoorSide.SOUTH -> 0f
+                    MineLiftDoorSide.WEST -> 90f
+                }
+                // Keep the fixed text plane on the room side of the call panel.
+                labelAt.add(labelAt.direction.multiply(.16))
+            }
+            labels += world.spawn(labelAt, TextDisplay::class.java) {
+                mark(it); it.text(floorText(index))
+                it.billboard = if (theme == MineLiftTheme.CASINO) Display.Billboard.FIXED else Display.Billboard.VERTICAL
+                if (theme == MineLiftTheme.CASINO) {
+                    it.transformation = transform(0.0, 0.0, 0.0, .8, .8, .8)
+                    it.lineWidth = 128
+                    it.brightness = Display.Brightness(15, 15)
+                }
                 it.isShadowed = true; it.viewRange = .4f
                 it.backgroundColor = org.bukkit.Color.fromARGB(150, 25, 21, 17)
             }.also(entities::add)

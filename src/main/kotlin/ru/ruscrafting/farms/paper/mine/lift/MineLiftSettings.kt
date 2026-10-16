@@ -10,7 +10,7 @@ import java.nio.file.Path
 private const val MINE_LIFT_CABIN_WALL_HEIGHT = 2.65
 private const val MINE_LIFT_CABIN_HEIGHT = 2.83
 private const val MINE_LIFT_CLEARANCE_ABOVE_STOP = 2.8
-private val CASINO_LIFT_MESSAGE_KEYS = setOf("title", "description", "panel", "near-panel")
+private val CASINO_LIFT_MESSAGE_KEYS = setOf("title", "description", "panel", "panel-ready", "panel-call", "near-panel")
 
 internal data class LiftPoint(val x: Double, val y: Double, val z: Double, val yaw: Float = 0f) {
     fun location(world: World) = Location(world, x, y, z, yaw, 0f)

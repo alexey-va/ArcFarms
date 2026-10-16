@@ -1833,5 +1833,7 @@ mine-lift:
   casino:
     title: '<white>Лифт казино</white>'
     description: '<color:#e8dfd2>Сейчас: <floor>.<newline>Выбери зал — после посадки двери закроются и начнётся поездка.<newline>Выход на площадку автоматический.</color>'
-    panel: '<white>Лифт казино · <floor></white><newline><color:#8ed8b1><state></color>'
+    panel: '<white>Лифт казино</white><newline><color:#8ed8b1><state></color>'
+    panel-ready: 'ПКМ · Выбрать этаж'
+    panel-call: 'ПКМ · Вызвать лифт'
     near-panel: '<color:#e8dfd2>Подойди к панели лифта казино.</color>'

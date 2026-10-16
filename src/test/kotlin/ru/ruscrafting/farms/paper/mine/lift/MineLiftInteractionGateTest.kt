@@ -66,6 +66,12 @@ class MineLiftInteractionGateTest : FunSpec({
                 val scene = MineLiftScene(plugin, settings, world)
                 scene.spawn(100.0) { net.kyori.adventure.text.Component.text("floor") }
 
+                world.entities.filterIsInstance<TextDisplay>().sortedByDescending { it.y }.forEachIndexed { index, label ->
+                    label.billboard shouldBe Display.Billboard.VERTICAL
+                    label.location shouldBe settings.floors[index].panel.location(world).add(0.0, 1.6, 0.0)
+                    label.transformation.scale.x shouldBe 1f
+                }
+
                 val cabinHitbox = world.entities.filterIsInstance<Interaction>().single(scene::ownsCabinHitbox)
                 world.entities.filterIsInstance<Interaction>().count(scene::ownsCabinInteraction) shouldBe 1
                 scene.seats.size shouldBe 16
@@ -115,6 +121,17 @@ class MineLiftInteractionGateTest : FunSpec({
                     )
                     val scene = MineLiftScene(plugin, settings, world)
                     scene.spawn(65.0) { net.kyori.adventure.text.Component.text("floor") }
+                    val facing = org.bukkit.util.Vector(exitX, 0.0, exitZ).normalize()
+                    val labels = world.entities.filterIsInstance<TextDisplay>().sortedByDescending { it.y }
+                    labels.forEachIndexed { index, label ->
+                        label.billboard shouldBe Display.Billboard.FIXED
+                        label.location.direction.dot(facing) shouldBe (1.0 plusOrMinus .000001)
+                        val expected = settings.floors[index].panel.location(world).add(0.0, 1.6, 0.0).add(facing.clone().multiply(.16))
+                        label.location.distanceSquared(expected) shouldBe (0.0 plusOrMinus .000001)
+                        label.transformation.scale.x shouldBe .8f
+                        label.lineWidth shouldBe 128
+                    }
+                    val labelLocations = labels.map { it.location.clone() }
                     val cabin = world.entities.filterIsInstance<BlockDisplay>().filter {
                         abs(it.location.x) < 3 && abs(it.location.z) < 3 && it.transformation.scale.y > 0
                     }
@@ -147,6 +164,7 @@ class MineLiftInteractionGateTest : FunSpec({
                         if (pose < 11) scene.move(65.0, open = true) shouldBe true
                     }
                     scene.isDoorOpenAt(0) shouldBe true
+                    labels.map { it.location } shouldBe labelLocations
                     val moving = cabin.filter { it.location.distanceSquared(closed.getValue(it.uniqueId)) > .5 }
                     moving.size shouldBe 12
                     val horizontal = exitZ != 0.0
@@ -251,12 +269,14 @@ class MineLiftInteractionGateTest : FunSpec({
     }
 })
 
-/** MockBukkit's TextDisplayMock aborts on billboard; that presentation setting is irrelevant to this scene test. */
+/** MockBukkit's TextDisplayMock does not store billboard mode; retain the requested native setting for scene assertions. */
 private class LiftSceneWorldMock(private val owner: ServerMock) : WorldMock() {
     override fun <T : Entity> spawn(location: Location, clazz: Class<T>, consumer: Consumer<in T>?): T {
         if (clazz != TextDisplay::class.java) return super.spawn(location, clazz, consumer)
         val display = object : TextDisplayMock(owner, UUID.randomUUID()) {
-            override fun setBillboard(billboard: Display.Billboard) = Unit
+            private var mode = Display.Billboard.FIXED
+            override fun setBillboard(billboard: Display.Billboard) { mode = billboard }
+            override fun getBillboard(): Display.Billboard = mode
         }
         display.location = location
         display.setSpawnReason(CreatureSpawnEvent.SpawnReason.DEFAULT)

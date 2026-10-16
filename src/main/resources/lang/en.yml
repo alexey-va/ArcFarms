@@ -1833,5 +1833,7 @@ mine-lift:
   casino:
     title: '<white>Casino Lift</white>'
     description: '<color:#e8dfd2>Here: <floor>.<newline>Choose a hall; after boarding, the doors close and the ride begins.<newline>Exit onto the landing is automatic.</color>'
-    panel: '<white>Casino Lift · <floor></white><newline><color:#8ed8b1><state></color>'
+    panel: '<white>Casino Lift</white><newline><color:#8ed8b1><state></color>'
+    panel-ready: 'Right-click: floors'
+    panel-call: 'Right-click: call'
     near-panel: '<color:#e8dfd2>Approach a casino lift control panel.</color>'

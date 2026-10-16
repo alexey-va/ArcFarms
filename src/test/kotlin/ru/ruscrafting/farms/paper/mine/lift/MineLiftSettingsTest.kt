@@ -52,6 +52,9 @@ class MineLiftSettingsTest : FreeSpec({
             settings[1].theme.windowMaterial shouldBe org.bukkit.Material.GRAY_STAINED_GLASS
             settings[1].theme.doorTravel shouldBe 1.1
             settings[1].theme.messagePath("title") shouldBe "mine-lift.casino.title"
+            settings[1].theme.messagePath("panel-ready") shouldBe "mine-lift.casino.panel-ready"
+            settings[1].theme.messagePath("panel-call") shouldBe "mine-lift.casino.panel-call"
+            settings[0].theme.messagePath("panel-ready") shouldBe "mine-lift.panel-ready"
             settings[1].theme.messagePath("full") shouldBe "mine-lift.full"
         } finally {
             root.toFile().deleteRecursively()
