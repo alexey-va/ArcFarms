@@ -11,7 +11,7 @@ network:
 
 locale:
   default: ru
-  use-client-locale: true
+  use-client-locale: false
 
 ui:
   menu-presentation: DIALOG

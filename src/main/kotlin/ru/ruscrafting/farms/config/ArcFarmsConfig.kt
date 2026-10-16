@@ -2646,7 +2646,7 @@ class ArcFarmsConfig private constructor(
                 serverId = serverId,
                 network = network,
                 defaultLocale = defaultLocale,
-                useClientLocale = config.boolean("locale.use-client-locale", true),
+                useClientLocale = config.boolean("locale.use-client-locale", false),
                 bossbars = config.boolean("ui.bossbars", true),
                 particles = config.boolean("ui.particles", true),
                 sounds = config.boolean("ui.sounds", true),

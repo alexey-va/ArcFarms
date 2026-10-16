@@ -65,6 +65,17 @@ class ArcFarmsConfigTest : FunSpec({
         settings.configuredMenuItems.values.all { it.customModelData == 0 } shouldBe true
     }
 
+    test("client locale is opt-in for bundled and legacy configs") {
+        val root = resourceTree()
+        ArcFarmsConfig.inspect(root).useClientLocale shouldBe false
+        val legacyConfig = root.resolve("config.yml")
+        Files.writeString(
+            legacyConfig,
+            Files.readString(legacyConfig).replace("  use-client-locale: false\n", ""),
+        )
+        ArcFarmsConfig.inspect(root).useClientLocale shouldBe false
+    }
+
     test("shift-start persistence retries use a bounded live policy") {
         val settings = ArcFarmsConfig.inspect(resourceTree()).shiftStartPersistence
 
