@@ -38,7 +38,7 @@ class ArcFarmsPluginMockBukkitIntegrationTest : FunSpec({
             operator.isOp = true
 
             operator.performCommand("arcfarms") shouldBe true
-            operator.openInventory.topInventory.getItem(3).plainName() shouldBe "Farm"
+            operator.openInventory.topInventory.getItem(3).plainName() shouldBe "Ферма"
 
             updatePluginConfig(
                 plugin.dataFolder.toPath(),
@@ -46,7 +46,7 @@ class ArcFarmsPluginMockBukkitIntegrationTest : FunSpec({
             )
             operator.performCommand("arcfarms reload") shouldBe true
 
-            operator.openInventory.topInventory.getItem(3).plainName() shouldBe "Farm · Core API"
+            operator.openInventory.topInventory.getItem(3).plainName() shouldBe "Ферма · Core API"
             paper.server.pluginManager.disablePlugin(plugin)
         } finally {
             paper.close()
@@ -69,7 +69,7 @@ class ArcFarmsPluginMockBukkitIntegrationTest : FunSpec({
             operator.isOp = true
             operator.performCommand("arcfarms status") shouldBe true
             PlainTextComponentSerializer.plainText().serialize(requireNotNull(operator.nextComponentMessage())) shouldContain
-                "Current work shifts"
+                "Текущие рабочие смены"
 
             operator.performCommand("arcfarms") shouldBe true
             val root = operator.openInventory.topInventory
@@ -84,11 +84,11 @@ class ArcFarmsPluginMockBukkitIntegrationTest : FunSpec({
             root.getItem(3)?.itemMeta?.customModelData shouldBe 31_001
             root.getItem(22)?.itemMeta?.customModelData shouldBe 31_002
             root.assertVisibleComponentsAreNonItalic()
-            root.getItem(22).plainLore() shouldContain "LMB — open my farm"
+            root.getItem(22).plainLore() shouldContain "ЛКМ — открыть компании"
             root.getItem(3).plainLoreLines().apply {
                 size shouldBe 3
                 this[1] shouldBe ""
-                this[2] shouldContain "LMB — travel to the shift"
+                this[2] shouldContain "ЛКМ — перейти к смене"
             }
 
             clickTopInventory(paper, operator, 22, ClickType.RIGHT).isCancelled shouldBe true
@@ -111,10 +111,10 @@ class ArcFarmsPluginMockBukkitIntegrationTest : FunSpec({
             companies.getItem(4)?.type shouldBe Material.GOLDEN_AXE
             companies.getItem(6)?.type shouldBe Material.CHEST_MINECART
             companies.getItem(18)?.type shouldBe Material.ARROW
-            companies.getItem(3).plainLore() shouldContain "Test mode"
+            companies.getItem(3).plainLore() shouldContain "Тестовый режим"
             companies.getItem(3).plainLoreLines().apply {
                 count(String::isEmpty) shouldBe 3
-                last() shouldContain "LMB — open company"
+                last() shouldContain "ЛКМ — открыть компанию"
             }
             companies.getItem(4).plainLoreLines().apply {
                 this[1] shouldBe ""
@@ -140,7 +140,7 @@ class ArcFarmsPluginMockBukkitIntegrationTest : FunSpec({
             farmCompany.getItem(30)?.type shouldBe Material.GOLD_BLOCK
             farmCompany.getItem(10)?.itemMeta?.customModelData shouldBe 31_003
             farmCompany.getItem(36)?.type shouldBe Material.ARROW
-            farmCompany.getItem(10).plainLore() shouldContain "Fund estimate; payment is not promised"
+            farmCompany.getItem(10).plainLore() shouldContain "Оценка фонда, выплата не обещана"
             farmCompany.getItem(28).plainLore().contains("LMB —") shouldBe false
             farmCompany.assertVisibleComponentsAreNonItalic()
 
