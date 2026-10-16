@@ -75,6 +75,7 @@ class MineLiftInteractionGateTest : FunSpec({
                 val cabinHitbox = world.entities.filterIsInstance<Interaction>().single(scene::ownsCabinHitbox)
                 world.entities.filterIsInstance<Interaction>().count(scene::ownsCabinInteraction) shouldBe 1
                 scene.seats.size shouldBe 16
+                scene.seats.all { it is Interaction } shouldBe true
                 scene.panels.size shouldBe 2
                 cabinHitbox.interactionWidth shouldBe 6.2f
                 cabinHitbox.interactionHeight shouldBe 3.23f
@@ -133,7 +134,8 @@ class MineLiftInteractionGateTest : FunSpec({
                     }
                     val labelLocations = labels.map { it.location.clone() }
                     val cabin = world.entities.filterIsInstance<BlockDisplay>().filter {
-                        abs(it.location.x) < 3 && abs(it.location.z) < 3 && it.transformation.scale.y > 0
+                        it.block.material != Material.AIR &&
+                            abs(it.location.x) < 3 && abs(it.location.z) < 3 && it.transformation.scale.y > 0
                     }
                     cabin.count { it.block.material == Material.GRAY_STAINED_GLASS } shouldBe 0
                     cabin.count { it.block.material == Material.OCHRE_FROGLIGHT } shouldBe 3
@@ -242,6 +244,73 @@ class MineLiftInteractionGateTest : FunSpec({
                     }
                 }
                 scene.close()
+            } finally {
+                paper.close()
+            }
+        }
+    }
+
+    test("casino passenger carriers share the cabin interpolation and preserve the riding plane throughout round trips") {
+        failOnUnsupportedMockBukkitOperation {
+            val paper = MockBukkitTestRuntime.open()
+            try {
+                val world = LiftSceneWorldMock(paper.server).apply { name = "casino" }
+                paper.server.addWorld(world)
+                val plugin = paper.createSimplePlugin("CasinoLiftMotionTest")
+                val settings = MineLiftSettings(
+                    id = "casino", world = world.name, x = 49.5, z = 35.5,
+                    width = 4.4, depth = 4.4, speed = 6.0,
+                    floors = listOf(65.0, 49.0, 33.0).mapIndexed { index, y ->
+                        MineLiftFloor("floor_$index", y, LiftPoint(44.5, y, 35.5), LiftPoint(44.94, y, 38.5))
+                    },
+                    theme = MineLiftTheme.CASINO,
+                )
+                val scene = MineLiftScene(plugin, settings, world)
+                scene.spawn(65.0) { net.kyori.adventure.text.Component.text("floor") }
+                val seats = scene.seats.toList()
+                seats.size shouldBe 9
+                // Interaction has no native position interpolator. An AIR display
+                // shares the visible cabin's interpolator without adding geometry.
+                seats.all { it is BlockDisplay } shouldBe true
+                val carriers = seats.filterIsInstance<BlockDisplay>()
+                val floor = world.entities.filterIsInstance<BlockDisplay>().first {
+                    abs(it.y - (65.0 - .22)) < .00001
+                }
+                carriers.forEach {
+                    it.block.material shouldBe Material.AIR
+                    it.teleportDuration shouldBe 1
+                    it.teleportDuration shouldBe floor.teleportDuration
+                    it.isPersistent shouldBe false
+                }
+                val player = paper.addPlayer("LiftRider")
+                seats.first().addPassenger(player) shouldBe true
+                player.vehicle shouldBe seats.first()
+                // MockBukkit still rejects mounted teleports using the old Paper
+                // contract. Native passenger retention requires server acceptance.
+                player.leaveVehicle() shouldBe true
+                val motion = MineLiftMotion(settings.floors.map { it.y }, settings.speed)
+                for (destination in listOf(2, 1, 0)) {
+                    motion.board(destination) shouldBe true
+                    var arrived = false
+                    repeat(240) {
+                        if (!arrived) {
+                            arrived = motion.tick()
+                            scene.move(motion.y, motion.phase == MineLiftMotion.Phase.DOCKED) shouldBe true
+                            scene.seats shouldBe seats
+                            carriers.forEach { carrier ->
+                                // The old seat's origin was Y+.02 and its native
+                                // passenger attachment was its .01 interaction height.
+                                carrier.y shouldBe (motion.y + .03 plusOrMinus .0000001)
+                                (carrier.y - floor.y) shouldBe (.25 plusOrMinus .0000001)
+                                carrier.teleportDuration shouldBe floor.teleportDuration
+                            }
+                        }
+                    }
+                    arrived shouldBe true
+                    motion.y shouldBe settings.floors[destination].y
+                }
+                scene.close()
+                carriers.all { !it.isValid } shouldBe true
             } finally {
                 paper.close()
             }

@@ -19,7 +19,7 @@ import java.util.UUID
 import kotlin.math.ceil
 import kotlin.math.floor
 
-/** Bounded vanilla display scene in the surveyed shaft. Interaction seats scale with the cabin footprint. */
+/** Bounded vanilla display scene in the surveyed shaft. Native seats scale with the cabin footprint. */
 internal class MineLiftScene(private val plugin: Plugin, private val settings: MineLiftSettings, private val world: World) : AutoCloseable {
     private data class Part(
         val display: BlockDisplay,
@@ -35,8 +35,10 @@ internal class MineLiftScene(private val plugin: Plugin, private val settings: M
     private val parts = mutableListOf<Part>()
     private val entities = mutableListOf<Entity>()
     private val chain = mutableListOf<BlockDisplay>()
-    val seats = mutableListOf<Interaction>()
+    val seats = mutableListOf<Entity>()
     private val seatOffsets = mutableListOf<Pair<Double, Double>>()
+    // Interaction's native passenger attachment is its .01 height; displays have zero height.
+    private val seatYOffset = .02 + if (settings.theme == MineLiftTheme.CASINO) .01f.toDouble() else 0.0
     val panels = mutableMapOf<UUID, Int>()
     private var cabinHitbox: Interaction? = null
     private val labels = mutableListOf<TextDisplay>()
@@ -92,9 +94,16 @@ internal class MineLiftScene(private val plugin: Plugin, private val settings: M
         parts.forEach { it.display.teleport(origin(y).add(it.x, it.y, it.z)) }
         for (x in seatAxis(settings.width)) for (z in seatAxis(settings.depth)) {
             seatOffsets += x to z
-            seats += world.spawn(origin(y).add(x, .02, z), Interaction::class.java) {
-                mark(it); it.interactionWidth = .7f; it.interactionHeight = .01f; it.isResponsive = true
-            }.also(entities::add)
+            val at = origin(y).add(x, seatYOffset, z)
+            seats += if (theme == MineLiftTheme.CASINO) {
+                // Interaction has no position interpolator: position-sync packets reset the
+                // rider's camera history. Share the cabin's one-tick native interpolation.
+                display(at, Material.AIR)
+            } else {
+                world.spawn(at, Interaction::class.java) {
+                    mark(it); it.interactionWidth = .7f; it.interactionHeight = .01f; it.isResponsive = true
+                }.also(entities::add)
+            }
         }
         val anchorY = settings.floors.first().y + 3
         repeat(kotlin.math.ceil(anchorY - settings.floors.last().y).toInt()) {
@@ -171,7 +180,7 @@ internal class MineLiftScene(private val plugin: Plugin, private val settings: M
         }
         seats.forEachIndexed { index, seat ->
             val (x, z) = seatOffsets[index]
-            moved = seat.teleport(origin(y).add(x, .02, z)) && moved
+            moved = seat.teleport(origin(y).add(x, seatYOffset, z)) && moved
         }
         cabinHitbox?.let {
             moved = it.teleport(origin(y).add(0.0, settings.cabinHitboxBottomOffset(), 0.0)) && moved
