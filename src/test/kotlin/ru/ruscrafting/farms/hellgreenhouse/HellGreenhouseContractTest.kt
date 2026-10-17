@@ -44,12 +44,12 @@ class HellGreenhouseContractTest : FunSpec({
 
     test("admin event alias starts the greenhouse stage") {
         val player = mockk<Player>(relaxed = true) { every { hasPermission("arcfarms.admin") } returns true }
-        val service = mockk<ArcFarmsService>(relaxed = true) { every { adminSetFarmStage(any(), any(), any()) } returns true }
-        val command = ArcFarmsCommand(service, mockk(relaxed = true), mockk<ArcFarmsMenu>(relaxed = true)) { Result.success(Unit) }
+        val service = mockk<ArcFarmsService>(relaxed = true) { every { adminSetFarmStageAsync(any(), any(), any()) } returns java.util.concurrent.CompletableFuture.completedFuture(true) }
+        val command = ArcFarmsCommand(service, mockk(relaxed = true), mockk<ArcFarmsMenu>(relaxed = true)) { java.util.concurrent.CompletableFuture.completedFuture(Unit) }
 
         command.onCommand(player, mockk<Command>(relaxed = true), "arcfarms", arrayOf("admin", "event", "communal_farm", "hell-greenhouse"))
 
-        verify(exactly = 1) { service.adminSetFarmStage(player, "communal_farm", "hell-greenhouse") }
+        verify(exactly = 1) { service.adminSetFarmStageAsync(player, "communal_farm", "hell-greenhouse") }
     }
 
     test("both locale catalogs contain the greenhouse message family") {

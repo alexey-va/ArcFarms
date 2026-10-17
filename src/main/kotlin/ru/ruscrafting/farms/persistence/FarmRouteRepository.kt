@@ -14,7 +14,11 @@ class FarmRouteRepository(dataRoot: Path) : AutoCloseable {
 
     fun load(): FarmRouteState = store.load()
 
+    fun saveAsync(value: FarmRouteState): java.util.concurrent.CompletableFuture<Unit> = store.saveAsync(value)
+
     fun saveBlocking(value: FarmRouteState) = store.saveBlocking(value)
+
+    fun closeAsync(): java.util.concurrent.CompletableFuture<Unit> = store.closeAsync()
 
     override fun close() = store.close()
 

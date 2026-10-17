@@ -14,6 +14,7 @@ import ru.ruscrafting.farms.paper.FarmRuntime
 import ru.ruscrafting.farms.paper.worksite.WorksiteAudiencePort
 import ru.ruscrafting.farms.persistence.FarmRouteRepository
 import java.util.UUID
+import java.util.concurrent.CompletableFuture
 import java.util.random.RandomGenerator
 import kotlin.math.sqrt
 
@@ -22,6 +23,9 @@ internal class FarmRouteAdminService(
     private val debug: ArcFarmsDebug,
     private val port: WorksiteAudiencePort,
     private val runtimes: () -> Collection<FarmRuntime>,
+    private val onMain: (() -> Unit) -> CompletableFuture<Unit> = { action ->
+        action(); CompletableFuture.completedFuture(Unit)
+    },
 ) {
     private data class Recording(
         val zoneId: String,
@@ -30,6 +34,8 @@ internal class FarmRouteAdminService(
     )
 
     private var state = repository.load()
+    var isSaving = false
+        private set
     private val recordings = mutableMapOf<UUID, Recording>()
 
     fun route(zoneId: String, routeName: String = FarmRouteKeys.DEFAULT_NAME): FarmDeliveryRoute? =
@@ -114,10 +120,13 @@ internal class FarmRouteAdminService(
         }
         val storageKey = FarmRouteKeys.encode(recording.zoneId, recording.routeName)
         val candidate = state.copy(routes = state.routes + (storageKey to route))
-        return runCatching { repository.saveBlocking(candidate) }.fold(
-            onSuccess = {
+        if (isSaving) { port.sendChat(player, MessageKey.GENERIC_ERROR); return false }
+        isSaving = true
+        repository.saveAsync(candidate).whenComplete { _, failure -> onMain {
+            isSaving = false
+            if (failure == null) {
                 state = candidate
-                recordings.remove(player.uniqueId)
+                recordings.remove(player.uniqueId, recording)
                 port.sendChat(
                     player,
                     MessageKey.ADMIN_ROUTE_SAVED,
@@ -127,13 +136,9 @@ internal class FarmRouteAdminService(
                     "farm_route_saved", "zone" to recording.zoneId, "route" to recording.routeName,
                     "player" to player.name, "points" to route.points.size,
                 )
-                true
-            },
-            onFailure = {
-                port.sendChat(player, MessageKey.GENERIC_ERROR)
-                false
-            },
-        )
+            } else if (player.isOnline) port.sendChat(player, MessageKey.GENERIC_ERROR)
+        } }
+        return true
     }
 
     fun cancel(player: Player, reason: String = "admin_cancel"): Boolean {
@@ -161,14 +166,16 @@ internal class FarmRouteAdminService(
             return false
         }
         val candidate = state.copy(routes = state.routes - storageKey)
-        return runCatching { repository.saveBlocking(candidate) }.fold(
-            onSuccess = {
+        if (isSaving) { port.sendChat(player, MessageKey.GENERIC_ERROR); return false }
+        isSaving = true
+        repository.saveAsync(candidate).whenComplete { _, failure -> onMain {
+            isSaving = false
+            if (failure == null) {
                 state = candidate
                 port.sendChat(player, MessageKey.ADMIN_ROUTE_CLEARED, mapOf("zone" to portText(label(zoneId, routeName))))
-                true
-            },
-            onFailure = { port.sendChat(player, MessageKey.GENERIC_ERROR); false },
-        )
+            } else if (player.isOnline) port.sendChat(player, MessageKey.GENERIC_ERROR)
+        } }
+        return true
     }
 
     fun status(player: Player, zoneId: String, routeName: String = FarmRouteKeys.DEFAULT_NAME): Boolean {

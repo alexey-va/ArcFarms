@@ -26,30 +26,42 @@ class WorksiteAsyncBlockScannerTest : FunSpec({
         val delayed = ArrayDeque<() -> Unit>()
         val token = mockk<RuntimeTaskSupervisor.Token>()
         var asyncCalls = 0
+        var onWorker = false
         val tasks = mockk<WorksiteTaskPort>(relaxed = true) {
             every { lifecycleToken() } returns token
-            every { runLater(token, any(), any()) } answers {
-                delayed.addLast(thirdArg())
-                true
+            every { capture(token, any(), any()) } answers {
+                val current = secondArg<() -> Boolean>()
+                val step = thirdArg<() -> Boolean>()
+                val result = java.util.concurrent.CompletableFuture<Unit>()
+                fun slice() {
+                    if (!current()) result.cancel(false)
+                    else if (step()) result.complete(Unit)
+                    else delayed.addLast(::slice)
+                }
+                delayed.addLast(::slice)
+                result
             }
             every { runAsync(token, any()) } answers {
                 asyncCalls++
-                secondArg<() -> Unit>().invoke()
+                onWorker = true
+                try { secondArg<() -> Unit>().invoke() } finally { onWorker = false }
                 true
             }
             every { runSync(token, any()) } answers {
-                secondArg<() -> Unit>().invoke()
+                val previous = onWorker
+                onWorker = false
+                try { secondArg<() -> Unit>().invoke() } finally { onWorker = previous }
                 true
             }
         }
         var result: Result<List<Material>>? = null
-        val scanner = WorksiteAsyncBlockScanner(tasks, maxChunksPerTick = 1, captureNanosPerTick = Long.MAX_VALUE)
+        val scanner = WorksiteAsyncBlockScanner(tasks)
 
         scanner.submit(
             world = world,
             chunkCoordinates = positions.map { WorksiteChunkCoordinate(it.x shr 4, it.z shr 4) },
             stillValid = { true },
-            plan = { snapshot -> positions.map { snapshot.type(it) ?: Material.AIR } },
+            plan = { snapshot -> onWorker shouldBe true; positions.map { snapshot.type(it) ?: Material.AIR } },
             complete = { result = it },
         ) shouldBe true
 
@@ -60,7 +72,7 @@ class WorksiteAsyncBlockScannerTest : FunSpec({
         }
 
         captureSlices shouldBe 3
-        asyncCalls shouldBe 1
+        asyncCalls shouldBe 2
         result!!.getOrThrow().shouldContainExactly(Material.STONE, Material.STONE, Material.STONE)
     }
 })

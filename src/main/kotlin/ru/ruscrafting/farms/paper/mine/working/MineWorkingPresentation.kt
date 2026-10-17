@@ -1,6 +1,8 @@
 package ru.ruscrafting.farms.paper.mine.working
 
 import net.kyori.adventure.text.Component
+import ru.ruscrafting.farms.paper.worksite.WorksiteTaskPort
+import ru.ruscrafting.farms.paper.worksite.captureLoadedEntities
 import org.bukkit.Bukkit
 import org.bukkit.Location
 import org.bukkit.NamespacedKey
@@ -30,11 +32,14 @@ internal class MineWorkingPresentation(
     textDisplays: FarmTextDisplayRenderer,
     private val cart: MineCartEffects,
     private val floorNumber: (String) -> Int? = { null },
-    private val drill: MineDrillScene = MineDrillScene(plugin),
+    private val tasks: WorksiteTaskPort? = null,
+    private val drill: MineDrillScene = MineDrillScene(plugin, tasks),
 ) {
     private data class Marker(val target: MineWorkingTarget, val entities: List<Entity>)
-    private val highlights = MineWorkingBlockHighlights(plugin)
+    private val highlights = MineWorkingBlockHighlights(plugin, tasks)
     private val marker = locale?.let { WorksiteEntryMarker(it, textDisplays) }
+    private val generationKey = NamespacedKey(plugin, "mine_working_marker_generation")
+    private var generation = java.util.UUID.randomUUID().toString()
     private val tag = NamespacedKey(plugin, "mine_working_marker")
     private val markers = mutableMapOf<String, MutableMap<String, Marker>>()
     private val returnMarkers=ru.ruscrafting.farms.paper.mine.expedition.MineExpeditionMarkers(plugin, "mine_working_return")
@@ -76,6 +81,7 @@ internal class MineWorkingPresentation(
                 glowing = true, viewRange = 1.5f,
                 mark = { entity ->
                     entity.persistentDataContainer.set(tag, PersistentDataType.STRING, runtime.settings.id)
+                    entity.persistentDataContainer.set(generationKey, PersistentDataType.STRING, generation)
                     if (entity is Interaction) interactions[entity.uniqueId] = runtime.settings.id to target
                 },
                 values = mapOf("floor" to Component.text(working.placement.floorId),
@@ -174,9 +180,13 @@ internal class MineWorkingPresentation(
     fun reconcileLoaded() {
         drill.reconcileLoaded()
         highlights.reconcileLoaded()
-        Bukkit.getWorlds().forEach { world -> world.loadedChunks.forEach { chunk ->
-            chunk.entities.filter { it.persistentDataContainer.has(tag, PersistentDataType.STRING) }.forEach(Entity::remove)
-        } }
+        generation = java.util.UUID.randomUUID().toString()
+        val remove: (Entity) -> Unit = { entity ->
+            if (entity.persistentDataContainer.has(tag, PersistentDataType.STRING) &&
+                entity.persistentDataContainer.get(generationKey, PersistentDataType.STRING) != generation) entity.remove()
+        }
+        if (tasks != null) tasks.captureLoadedEntities(remove)
+        else Bukkit.getWorlds().forEach { world -> world.loadedChunks.forEach { chunk -> chunk.entities.forEach(remove) } }
         markers.clear(); interactions.clear();returnMarkers.cleanup();returnTargets.clear()
     }
 

@@ -26,6 +26,8 @@ import ru.ruscrafting.farms.domain.mine.expedition.MineFactoryProgram
 import kotlin.math.abs
 import kotlin.math.sin
 import java.util.UUID
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.ConcurrentHashMap
 import org.bukkit.util.Transformation
 import org.joml.Quaternionf
 import org.joml.Vector3f
@@ -37,7 +39,7 @@ import org.joml.Vector3f
  */
 internal class MineExpeditionMachinery(
     private val plugin: Plugin,
-    private val project: (MineExpeditionScene, Map<ExpeditionPoint, String>) -> Boolean,
+    private val project: (MineExpeditionScene, Map<ExpeditionPoint, String>) -> CompletableFuture<Boolean>,
     private val furnishingPoint: (MineExpeditionScene,String,ExpeditionPoint) -> ExpeditionPoint = { _,_,p -> p },
 ) {
     private data class SceneKey(val world: String, val zone: String, val sequence: Long, val nonce: Long)
@@ -54,6 +56,7 @@ internal class MineExpeditionMachinery(
     )
 
     private val runtimes = linkedMapOf<SceneKey, Runtime>()
+    private val pending = ConcurrentHashMap.newKeySet<SceneKey>()
     private val machineKey = NamespacedKey(plugin, "mine_expedition_machine")
     private val roleKey = NamespacedKey(plugin, "mine_expedition_machine_role")
     private val zoneKey = NamespacedKey(plugin, "mine_expedition_machine_zone")
@@ -61,18 +64,22 @@ internal class MineExpeditionMachinery(
     private val nonceKey = NamespacedKey(plugin, "mine_expedition_machine_nonce")
 
     /** Rebuilds visual state after reload and journals a stopped machine body. */
-    fun sync(scene: MineExpeditionScene, state: MineExpeditionState): Boolean {
-        if (!scene.ready || !scene.contains(scene.at(scene.plan.spawn))) return false
+    fun sync(scene: MineExpeditionScene, state: MineExpeditionState): CompletableFuture<Boolean> {
+        if (!scene.ready || !scene.contains(scene.at(scene.plan.spawn))) return CompletableFuture.completedFuture(false)
         val local = localCenter(scene, state)
-        val runtime = runtime(scene, state, local) ?: return false
+        val runtime = runtime(scene, state, local) ?: return CompletableFuture.completedFuture(false)
+        if (runtime.key in pending) return CompletableFuture.completedFuture(false)
         if (runtime.seats.isNotEmpty() && runtime.projectedCenter != local) return rollback(scene, state)
         val blueprint = translatedBlueprint(scene, runtime.projectedCenter, local)
-        if (blueprint.isNotEmpty() && runtime.projectedCenter != local) {
-            if (!project(scene, blueprint)) return false
-            runtime.projectedCenter = local
+        if (blueprint.isEmpty() || runtime.projectedCenter == local) {
+            runtime.center = local
+            return CompletableFuture.completedFuture(true)
         }
-        runtime.center = local
-        return true
+        pending += runtime.key
+        return project(scene, blueprint).thenApply { applied ->
+            if (!applied || runtimes[runtime.key] !== runtime) false
+            else { runtime.projectedCenter = local; runtime.center = local; true }
+        }.whenComplete { _, _ -> pending.remove(runtime.key) }
     }
 
     /** The optional crane controller moves the existing billet and its existing chain together. */
@@ -136,77 +143,80 @@ internal class MineExpeditionMachinery(
         before: MineExpeditionState,
         after: MineExpeditionState,
         participants: Collection<Player>,
-    ): Boolean {
-        if (!scene.ready || !isMotion(before, scene) || before.placement != after.placement) return false
+    ): CompletableFuture<Boolean> {
+        if (!scene.ready || !isMotion(before, scene) || before.placement != after.placement) return CompletableFuture.completedFuture(false)
         val oldCenter = localCenter(scene, before)
         val target = targetAfter(scene.plan, before, after)
-        if (target == oldCenter && before.stage == after.stage) return false
-        val runtime = runtime(scene, before, oldCenter) ?: return false
+        if (target == oldCenter && before.stage == after.stage) return CompletableFuture.completedFuture(false)
+        val runtime = runtime(scene, before, oldCenter) ?: return CompletableFuture.completedFuture(false)
         val playerList = participants.filter { player ->
             player.isOnline && player.world === scene.world &&
                 onDeck(scene, player.location, oldCenter)
         }
-        if (playerList.isEmpty()) return false
-        if (playerList.any { it.vehicle != null && it.vehicle !== runtime.seats[it.uniqueId] }) return false
+        if (playerList.isEmpty()) return CompletableFuture.completedFuture(false)
+        if (playerList.any { it.vehicle != null && it.vehicle !== runtime.seats[it.uniqueId] }) return CompletableFuture.completedFuture(false)
         val boarded = mutableListOf<Player>()
         for (player in playerList) {
             val carrier = runtime.seats.getOrPut(player.uniqueId) { spawnCarrier(scene, player.location) }
             if (player.vehicle == null) {
                 if (!carrier.addPassenger(player)) {
                     boarded.forEach(::release)
-                    return false
+                    return CompletableFuture.completedFuture(false)
                 }
                 boarded += player
             }
         }
 
+        if (!pending.add(runtime.key)) { boarded.forEach(::release); return CompletableFuture.completedFuture(false) }
         val targetBlocks = translatedBlueprint(scene, oldCenter, target)
-        if (targetBlocks.isNotEmpty() && !project(scene, targetBlocks)) {
-            boarded.forEach(::release)
-            return false
-        }
-        val previousSeats = runtime.seats.values.associateWith { it.location.clone() }
-        val delta = scene.at(target).toVector().subtract(scene.at(oldCenter).toVector())
-        val moved = previousSeats.keys.all { seat ->
-            seat.teleport(seat.location.clone().add(delta), TeleportFlag.EntityState.RETAIN_PASSENGERS)
-        }
-        if (!moved) {
-            // The callback is journal-owned and can retry this exact target on
-            // the next authorized tick; first restore the old body when the
-            // carrier itself rejected the move. Do not teleport passengers directly.
-            val rollback = translatedBlueprint(scene, target, oldCenter)
-            if (rollback.isNotEmpty() && project(scene, rollback)) {
-                runtime.projectedCenter = oldCenter
-                runtime.center = oldCenter
-            } else {
-                // Keep the projected marker honest so sync() retries the
-                // target-to-old restoration after the journal becomes ready.
-                runtime.projectedCenter = target
+        val projected = if (targetBlocks.isEmpty()) CompletableFuture.completedFuture(true) else project(scene, targetBlocks)
+        return projected.thenCompose { applied ->
+            if (!applied || runtimes[runtime.key] !== runtime) {
+                if (runtimes[runtime.key] === runtime) boarded.forEach(::release)
+                return@thenCompose CompletableFuture.completedFuture(false)
             }
-            previousSeats.forEach { (seat, location) -> seat.teleport(location, TeleportFlag.EntityState.RETAIN_PASSENGERS) }
-            boarded.forEach(::release)
-            return false
-        }
-        runtime.center = target
-        runtime.projectedCenter = target
-        return true
+            val previousSeats = runtime.seats.values.associateWith { it.location.clone() }
+            val delta = scene.at(target).toVector().subtract(scene.at(oldCenter).toVector())
+            val moved = previousSeats.keys.all { seat ->
+                seat.teleport(seat.location.clone().add(delta), TeleportFlag.EntityState.RETAIN_PASSENGERS)
+            }
+            if (moved) {
+                runtime.center = target
+                runtime.projectedCenter = target
+                CompletableFuture.completedFuture(true)
+            } else {
+                val rollback = translatedBlueprint(scene, target, oldCenter)
+                val restored = if (rollback.isEmpty()) CompletableFuture.completedFuture(true) else project(scene, rollback)
+                restored.thenApply { restoredBody ->
+                    if (runtimes[runtime.key] === runtime) {
+                        runtime.projectedCenter = if (restoredBody) oldCenter else target
+                        if (restoredBody) runtime.center = oldCenter
+                        previousSeats.forEach { (seat, location) -> if (seat.isValid) seat.teleport(location, TeleportFlag.EntityState.RETAIN_PASSENGERS) }
+                        boarded.forEach(::release)
+                    }
+                    false
+                }
+            }
+        }.whenComplete { _, _ -> pending.remove(runtime.key) }
     }
 
     /** Restore a rejected domain step without separating passengers from the deck. */
-    fun rollback(scene: MineExpeditionScene, state: MineExpeditionState): Boolean {
-        val runtime = runtimes[key(scene)] ?: return true
+    fun rollback(scene: MineExpeditionScene, state: MineExpeditionState): CompletableFuture<Boolean> {
+        val runtime = runtimes[key(scene)] ?: return CompletableFuture.completedFuture(true)
         val target = localCenter(scene, state)
-        val previous = runtime.projectedCenter ?: return true
-        if (previous == target) return true
-        if (!project(scene, translatedBlueprint(scene, previous, target))) return false
-        val delta = scene.at(target).toVector().subtract(scene.at(previous).toVector())
-        runtime.seats.values.forEach { seat ->
-            seat.teleport(seat.location.clone().add(delta), TeleportFlag.EntityState.RETAIN_PASSENGERS)
-        }
-        runtime.center = target
-        runtime.projectedCenter = target
-        park(scene)
-        return true
+        val previous = runtime.projectedCenter ?: return CompletableFuture.completedFuture(true)
+        if (previous == target) return CompletableFuture.completedFuture(true)
+        if (!pending.add(runtime.key)) return CompletableFuture.completedFuture(false)
+        return project(scene, translatedBlueprint(scene, previous, target)).thenApply { applied ->
+            if (!applied || runtimes[runtime.key] !== runtime) false else {
+                val delta = scene.at(target).toVector().subtract(scene.at(previous).toVector())
+                runtime.seats.values.forEach { seat -> seat.teleport(seat.location.clone().add(delta), TeleportFlag.EntityState.RETAIN_PASSENGERS) }
+                runtime.center = target
+                runtime.projectedCenter = target
+                park(scene)
+                true
+            }
+        }.whenComplete { _, _ -> pending.remove(runtime.key) }
     }
 
     /** Bounded visual animation; factory effects are sparse particles, not entity spam. */

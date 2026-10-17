@@ -10,6 +10,10 @@ import ru.ruscrafting.farms.paper.worksite.WorksiteChunkPayload
 import org.bukkit.plugin.Plugin
 import ru.ruscrafting.farms.domain.FarmPlotPosition
 import java.util.LinkedHashMap
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.CancellationException
+import ru.ruscrafting.farms.paper.worksite.WorksiteTaskPort
+import org.bukkit.persistence.PersistentDataType
 import java.util.logging.Level
 
 internal data class ManagedFarmBlockRecord(
@@ -43,7 +47,7 @@ internal data class ManagedFarmOrchardLeafRecord(
     val z: Int,
 )
 
-private class ManagedFarmBlockSnapshot(source: List<ManagedFarmBlockRecord>) {
+internal class ManagedFarmBlockSnapshot(source: List<ManagedFarmBlockRecord>) {
     val records: List<ManagedFarmBlockRecord> = source.toList()
     private val sortedRecords = records.sortedBy { coordinateKey(it.x, it.y, it.z) }
 
@@ -85,6 +89,152 @@ internal class FarmBlockLedger(plugin: Plugin) {
     private val orchardCache = boundedChunkCache<ManagedFarmOrchardLeafRecord>()
     /** Main-thread scratch retained across the compatibility bulk lookup. */
     private val lookupSnapshots = HashMap<Chunk, ManagedFarmBlockSnapshot>()
+    private val revisions = HashMap<String, Long>()
+
+    internal class LoadedChunk internal constructor(
+        internal val cacheKey: String, internal val revision: Long,
+        val contents: FarmLedgerContents, internal val blocks: ManagedFarmBlockSnapshot,
+    )
+
+    fun isCurrent(chunk: Chunk, loaded: LoadedChunk): Boolean =
+        chunk.isLoaded && chunk.cacheKey() == loaded.cacheKey && (revisions[loaded.cacheKey] ?: 0L) == loaded.revision
+
+    /** Worker encoding followed by one revision-fenced native journal write. */
+    fun commitBlocksAsync(
+        chunk: Chunk, loaded: LoadedChunk, records: List<ManagedFarmBlockRecord>,
+        tasks: WorksiteTaskPort, isCurrent: () -> Boolean,
+    ): CompletableFuture<Unit> {
+        val token = tasks.lifecycleToken()
+        return tasks.compute {
+            if (records == loaded.contents.blocks) null else FarmBlockLedgerCodec.encodeBlocks(records) to ManagedFarmBlockSnapshot(records)
+        }.thenCompose { prepared -> tasks.callSync(token) {
+                tasks.capture(token, { isCurrent() && this.isCurrent(chunk, loaded) }) {
+                    if (prepared != null) {
+                        writeEncoded(chunk, key, prepared.first)
+                        revisions[loaded.cacheKey] = loaded.revision + 1
+                        blockCache[loaded.cacheKey] = prepared.second
+                    }
+                    true
+                }
+            }.thenCompose { it } }
+    }
+
+    fun loadAsync(chunk: Chunk, tasks: WorksiteTaskPort, isCurrent: () -> Boolean): CompletableFuture<LoadedChunk> {
+        val token = tasks.lifecycleToken()
+        val cacheKey = chunk.cacheKey()
+        val revision = revisions[cacheKey] ?: 0L
+        val cachedBlocks = blockCache[cacheKey]
+        val cachedFixed = fixedCropCache[cacheKey]
+        val cachedLeaves = orchardCache[cacheKey]
+        if (cachedBlocks != null && cachedFixed != null && cachedLeaves != null) return CompletableFuture.completedFuture(
+            LoadedChunk(cacheKey, revision, FarmLedgerContents(cachedBlocks.records, cachedFixed, cachedLeaves), cachedBlocks))
+        val x = chunk.x
+        val z = chunk.z
+        val minimum = chunk.world.minHeight
+        val maximum = chunk.world.maxHeight
+        val raw = arrayOfNulls<Any>(3)
+        val keys = arrayOf(key, fixedCropKey, orchardLeafKey)
+        var index = 0
+        fun current() = isCurrent() && (revisions[cacheKey] ?: 0L) == revision && chunk.isLoaded
+        return tasks.capture(token, ::current) {
+            val container = chunk.persistentDataContainer
+            val field = keys[index]
+            raw[index] = when {
+                container.has(field, PersistentDataType.BYTE_ARRAY) -> container.get(field, PersistentDataType.BYTE_ARRAY)
+                container.has(field, PersistentDataType.STRING) -> container.get(field, PersistentDataType.STRING)
+                else -> null
+            }
+            ++index == keys.size
+        }.thenCompose { tasks.compute {
+            val contents = FarmBlockLedgerCodec.decode(raw[0], raw[1], raw[2], x, z, minimum, maximum)
+            LoadedChunk(cacheKey, revision, contents, ManagedFarmBlockSnapshot(contents.blocks))
+        } }.thenCompose { loaded -> tasks.callSync(token) {
+            if (!current()) throw CancellationException("Farm ledger changed while decoding")
+            blockCache[cacheKey] = loaded.blocks
+            fixedCropCache[cacheKey] = loaded.contents.fixed
+            orchardCache[cacheKey] = loaded.contents.leaves
+            loaded
+        } }
+    }
+
+    /** Per-category native writes stay ordered; a concurrent ledger mutation fences the remaining writes. */
+    fun replaceZoneIndexAsync(
+        chunk: Chunk, zoneId: String, beds: List<ManagedFarmBlockRecord>,
+        fixed: List<ManagedFarmFixedCropRecord>, leaves: List<ManagedFarmOrchardLeafRecord>,
+        tasks: WorksiteTaskPort, isCurrent: () -> Boolean,
+    ): CompletableFuture<Unit> {
+        val token = tasks.lifecycleToken()
+        return loadAsync(chunk, tasks, isCurrent).thenCompose { loaded -> tasks.compute {
+            require(loaded.contents.fixed.none { it.zoneId == zoneId && it.restoreAt != null }) {
+                "Farm zone $zoneId still has pending fixed crop restoration"
+            }
+            val bedCoordinates = beds.mapTo(hashSetOf()) { Triple(it.x, it.y, it.z) }
+            val fixedCoordinates = fixed.mapTo(hashSetOf()) { Triple(it.x, it.y, it.z) }
+            val leafCoordinates = leaves.mapTo(hashSetOf()) { Triple(it.x, it.y, it.z) }
+            val contents = FarmLedgerContents(
+                loaded.contents.blocks.filterNot { it.zoneId == zoneId || Triple(it.x, it.y, it.z) in bedCoordinates } + beds,
+                loaded.contents.fixed.filterNot { it.zoneId == zoneId || Triple(it.x, it.y, it.z) in fixedCoordinates } + fixed,
+                loaded.contents.leaves.filterNot { it.zoneId == zoneId || Triple(it.x, it.y, it.z) in leafCoordinates } + leaves,
+            )
+            Triple(loaded, contents, FarmBlockLedgerCodec.encode(contents))
+        } }.thenCompose { (loaded, contents, payloads) ->
+            tasks.compute { ManagedFarmBlockSnapshot(contents.blocks) }.thenCompose { blocks -> tasks.callSync(token) {
+                var expected = loaded.revision
+                var step = 0
+                tasks.capture(token, { isCurrent() && chunk.isLoaded && (revisions[loaded.cacheKey] ?: 0L) == expected }) {
+                    when (step++) {
+                        0 -> { writeEncoded(chunk, key, payloads.blocks); blockCache[loaded.cacheKey] = blocks }
+                        1 -> { writeEncoded(chunk, fixedCropKey, payloads.fixed); fixedCropCache[loaded.cacheKey] = contents.fixed }
+                        2 -> { writeEncoded(chunk, orchardLeafKey, payloads.leaves); orchardCache[loaded.cacheKey] = contents.leaves }
+                    }
+                    expected++
+                    revisions[loaded.cacheKey] = expected
+                    step == 3
+                }
+            }.thenCompose { it } }
+        }
+    }
+
+    fun restoreTemporaryAsync(chunk: Chunk, zoneId: String, tasks: WorksiteTaskPort,
+        isCurrent: () -> Boolean): CompletableFuture<Unit> {
+        val token = tasks.lifecycleToken()
+        return loadAsync(chunk, tasks, isCurrent).thenCompose { loaded -> tasks.compute {
+            loaded.contents.blocks.filter { it.zoneId == zoneId && it.indexed && it.temporaryMutation != null }.iterator()
+        }.thenCompose { iterator -> tasks.callSync(token) {
+            tasks.capture(token, { isCurrent() && chunk.isLoaded && (revisions[loaded.cacheKey] ?: 0L) == loaded.revision }) {
+                if (iterator.hasNext()) {
+                    val record = iterator.next()
+                    val soil = chunk.world.getBlockAt(record.x, record.y, record.z)
+                    soil.setBlockData(Bukkit.createBlockData(record.originalSoilData), false)
+                    restoreActiveCrop(soil, record)
+                }
+                !iterator.hasNext()
+            }
+        }.thenCompose { it } }.thenCompose { tasks.compute {
+            val records = loaded.contents.blocks.map { record ->
+                if (record.zoneId == zoneId && record.indexed && record.temporaryMutation != null)
+                    record.copy(temporaryMutation = null, temporaryRestoreAt = null) else record
+            }
+            ManagedFarmBlockSnapshot(records) to FarmBlockLedgerCodec.encodeBlocks(records)
+        } }.thenCompose { (blocks, payload) -> tasks.callSync(token) {
+            tasks.capture(token, { isCurrent() && chunk.isLoaded && (revisions[loaded.cacheKey] ?: 0L) == loaded.revision }) {
+                writeEncoded(chunk, key, payload)
+                blockCache[loaded.cacheKey] = blocks
+                revisions[loaded.cacheKey] = loaded.revision + 1
+                true
+            }
+        }.thenCompose { it } } }
+    }
+
+    private fun writeEncoded(chunk: Chunk, field: NamespacedKey, bytes: ByteArray?) {
+        if (bytes == null) chunk.persistentDataContainer.remove(field)
+        else WorksiteChunkPayload.write(chunk.persistentDataContainer, field, bytes)
+    }
+
+    private fun changed(chunk: Chunk) {
+        val cacheKey = chunk.cacheKey()
+        revisions[cacheKey] = (revisions[cacheKey] ?: 0L) + 1L
+    }
 
     internal inner class RecordLookup {
         private var world: org.bukkit.World? = null
@@ -587,6 +737,7 @@ internal class FarmBlockLedger(plugin: Plugin) {
     }
 
     private fun write(chunk: Chunk, records: List<ManagedFarmBlockRecord>) {
+        changed(chunk)
         require(records.size <= MAX_RECORDS_PER_CHUNK) { "Managed farm block list is unbounded" }
         val container = chunk.persistentDataContainer
         if (records.isEmpty()) container.remove(key)
@@ -595,6 +746,7 @@ internal class FarmBlockLedger(plugin: Plugin) {
     }
 
     private fun writeFixedCrops(chunk: Chunk, records: List<ManagedFarmFixedCropRecord>) {
+        changed(chunk)
         require(records.size <= MAX_RECORDS_PER_CHUNK) { "Fixed farm crop list is unbounded" }
         val container = chunk.persistentDataContainer
         if (records.isEmpty()) container.remove(fixedCropKey)
@@ -603,6 +755,7 @@ internal class FarmBlockLedger(plugin: Plugin) {
     }
 
     private fun writeOrchardLeaves(chunk: Chunk, records: List<ManagedFarmOrchardLeafRecord>) {
+        changed(chunk)
         require(records.size <= MAX_RECORDS_PER_CHUNK) { "Farm orchard leaf list is unbounded" }
         val container = chunk.persistentDataContainer
         if (records.isEmpty()) container.remove(orchardLeafKey)

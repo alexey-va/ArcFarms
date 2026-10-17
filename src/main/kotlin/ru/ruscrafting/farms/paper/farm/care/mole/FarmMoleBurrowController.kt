@@ -101,6 +101,9 @@ internal class FarmMoleBurrowController(
     fun prepare(runtime: FarmRuntime, targets: List<ru.ruscrafting.farms.domain.FarmCareTarget>, placementSequence: Long): Boolean =
         world.prepare(runtime, targets, placementSequence)
 
+    fun prepareAsync(runtime: FarmRuntime, targets: List<ru.ruscrafting.farms.domain.FarmCareTarget>, placementSequence: Long) =
+        world.prepareAsync(runtime, targets, placementSequence)
+
     fun discardPrepared(runtime: FarmRuntime) =
         world.beginRestore(runtime.region.world, runtime.settings.id, runtime.state.sequence)
 

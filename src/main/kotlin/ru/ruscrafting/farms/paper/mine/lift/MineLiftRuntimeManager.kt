@@ -21,15 +21,20 @@ import java.util.logging.Level
 internal class MineLiftRuntimeManager(
     private val plugin: JavaPlugin,
     private val locale: ArcFarmsLocale,
+    private val prepared: Prepared = prepare(plugin.dataFolder.toPath(), null) { id, failure ->
+        plugin.logger.log(Level.SEVERE, "Mine lift $id configuration rejected; lift remains closed", failure)
+    },
+    private val capture: ((() -> Boolean), (() -> Boolean)) -> java.util.concurrent.CompletableFuture<Unit> = { current, step ->
+        while (current() && !step()) Unit
+        java.util.concurrent.CompletableFuture.completedFuture(Unit)
+    },
 ) : AutoCloseable, CommandExecutor, TabCompleter, MineLiftAccess {
     private val riderOwners = mutableMapOf<UUID, String>()
     private val runtimes: Map<String, MineLiftRuntime>
     private val excludedShafts: List<MineLiftSettings>
 
     init {
-        val configured = MineLiftSettings.loadAll(plugin.dataFolder.toPath()) { id, failure ->
-            plugin.logger.log(Level.SEVERE, "Mine lift $id configuration rejected; lift remains closed", failure)
-        }
+        val configured = prepared.settings
         excludedShafts = configured
         lateinit var allRuntimes: Collection<MineLiftRuntime>
         val created = linkedMapOf<String, MineLiftRuntime>()
@@ -39,6 +44,8 @@ internal class MineLiftRuntimeManager(
                     plugin = plugin,
                     locale = locale,
                     settings = settings,
+                    recovery = prepared.recovery.getValue(settings.id),
+                    capture = capture,
                     claimRider = { player, lift ->
                         riderOwners[player]?.let { owner -> owner == lift } ?: run {
                             riderOwners[player] = lift
@@ -61,6 +68,23 @@ internal class MineLiftRuntimeManager(
         }
         allRuntimes = created.values
         runtimes = created
+    }
+
+    internal data class Prepared(val settings: List<MineLiftSettings>, val recovery: Map<String, MineLiftRecovery>)
+
+    companion object {
+        fun prepare(
+            root: java.nio.file.Path,
+            writer: ru.arc.core.BoundedAsyncExecutor?,
+            rejected: (String, Throwable) -> Unit,
+        ): Prepared {
+            val settings = MineLiftSettings.loadAll(root, rejected)
+            val recovery = settings.mapNotNull { lift ->
+                runCatching { lift.id to MineLiftRecovery(root, lift.id, writer) }
+                    .onFailure { rejected(lift.id, it) }.getOrNull()
+            }.toMap()
+            return Prepared(settings, recovery)
+        }
     }
 
     fun start() {

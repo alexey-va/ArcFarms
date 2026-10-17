@@ -66,6 +66,13 @@ internal class MineAdminService(
         return incidentSet.forceAdmin(runtime, type, now)
     }
 
+    override fun forceIncidentAsync(zoneId: String, incidentId: String, now: Long): java.util.concurrent.CompletableFuture<Boolean> {
+        val type = MineIncidentType.entries.firstOrNull { it.name.equals(incidentId, ignoreCase = true) }
+            ?: return java.util.concurrent.CompletableFuture.completedFuture(false)
+        val runtime = registry.byId(zoneId) ?: return java.util.concurrent.CompletableFuture.completedFuture(false)
+        return incidentSet.forceAdminAsync(runtime, type, now)
+    }
+
     override fun startReindex(zoneId: String): Boolean {
         if (zoneId in reindexes) return false
         val runtime = registry.byId(zoneId) ?: return false

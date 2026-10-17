@@ -37,17 +37,16 @@ internal class MineBlockRecoveryController(
         restoreAtOf = PendingMineBlock::restoreAt,
     )
     private var queueInitialized = false
+    private var queueCapture: CompletableFuture<Unit>? = null
     private var knownJournalCount: Int? = null
 
     val pendingCount: Int get() = journal.pendingCount()
 
-    fun records(zoneId: String): List<PendingMineBlock> = journal.records().filter { it.zoneId == zoneId }
+    fun records(zoneId: String): List<PendingMineBlock> = journal.recordsForZone(zoneId).toList()
 
     fun records(): List<PendingMineBlock> = journal.records()
 
-    fun canStart(zoneId: String): Boolean = journal.records().none {
-        it.zoneId == zoneId && !it.isOrdinaryMiningBreak()
-    }
+    fun canStart(zoneId: String): Boolean = !journal.hasNonMiningRecords(zoneId)
 
     fun containsPosition(positionKey: String): Boolean =
         journal.containsPosition(positionKey) || positionKey in inFlightPositions
@@ -117,7 +116,7 @@ internal class MineBlockRecoveryController(
             ) {
                 release(record.positionKey, result)
                 state.log(Level.INFO, "Mine recovery mutation rejected reason=lifecycle_token_inactive zone=${record.zoneId} " +
-                    "record=${record.id} position=${record.positionKey} expected=$expectedOriginal actual=${block.type}")
+                    "record=${record.id} position=${record.positionKey} expected=$expectedOriginal")
                 retire(record, "stale")
                 result.complete(false)
             }
@@ -312,12 +311,8 @@ internal class MineBlockRecoveryController(
         ensureTemporaryResult(position, expectedTemporary) == MineTemporaryEnsureResult.READY
 
     override fun activateLoadedState() {
-        val records = journal.records()
-        val now = clock()
-        state.log(Level.INFO, "Mine recovery activated pending=${records.size} due=${records.count { it.restoreAt <= now }} " +
-            "zones=${records.groupingBy(PendingMineBlock::zoneId).eachCount()}")
-        val processed = processDue(now)
-        state.log(Level.INFO, "Mine recovery activation completed processed=$processed remaining=${journal.records().size}")
+        ensureQueue()
+        state.log(Level.INFO, "Mine recovery activated pending=${journal.pendingCount()}; restoration uses the shared tick budget")
     }
 
     override fun reconcileChunk(chunk: Chunk) {
@@ -330,18 +325,22 @@ internal class MineBlockRecoveryController(
     override fun beforeReload(reason: String) {
         cancelPending()
         queue.clear()
+        queueCapture?.cancel(false)
+        queueCapture = null
         queueInitialized = false
         knownJournalCount = null
     }
 
     override fun cleanup(reason: String) {
-        state.log(Level.INFO, "Mine recovery cleanup started reason=$reason pending=${journal.records().size} inFlight=${pendingResults.size}")
+        state.log(Level.INFO, "Mine recovery cleanup started reason=$reason pending=${journal.pendingCount()} inFlight=${pendingResults.size}")
         cancelPending()
         // Keep the durable journal authoritative across shutdown. A bounded
         // pass may repair a few already-due loaded blocks, but shutdown must
         // not force a full-world restoration or scan tens of thousands of rows.
         val processed = processDue(clock(), CLEANUP_BUDGET)
         queue.clear()
+        queueCapture?.cancel(false)
+        queueCapture = null
         queueInitialized = false
         knownJournalCount = null
         state.log(Level.INFO, "Mine recovery cleanup completed reason=$reason processed=$processed " +
@@ -356,19 +355,18 @@ internal class MineBlockRecoveryController(
     }
 
     private fun ensureQueue() {
-        if (!queueInitialized) {
-            journal.records().forEach(queue::schedule)
-            queueInitialized = true
-            knownJournalCount = journal.pendingCount()
-            return
-        }
-        // Production journals expose an O(1) count. A full snapshot is only
-        // taken after a journal mutation observed between queue flushes, which
-        // also keeps source-compatible test journals working.
-        val currentCount = journal.pendingCount()
-        if (currentCount != knownJournalCount) {
-            journal.records().forEach(queue::schedule)
-            knownJournalCount = currentCount
+        val count = journal.pendingCount()
+        if (queueCapture?.isDone == false || queueInitialized && knownJournalCount == count) return
+        val snapshot = journal.recordsView().iterator()
+        val token = tasks.lifecycleToken()
+        queueInitialized = true
+        knownJournalCount = count
+        queueCapture = tasks.capture(token, { true }) {
+            if (snapshot.hasNext()) {
+                val record = snapshot.next()
+                if (journal.record(record.id) == record) queue.schedule(record)
+            }
+            !snapshot.hasNext()
         }
     }
 

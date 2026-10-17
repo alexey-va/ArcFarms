@@ -15,6 +15,10 @@ internal fun interface FarmPointProvider {
     fun resolve(runtime: FarmRuntime, kind: FarmPointKind): FarmPointPosition
 
     fun configured(runtime: FarmRuntime, kind: FarmPointKind): FarmPointPosition? = null
+
+    fun resolveAsync(runtime: FarmRuntime, kind: FarmPointKind, isCurrent: () -> Boolean):
+        java.util.concurrent.CompletableFuture<FarmPointPosition> =
+        java.util.concurrent.CompletableFuture.completedFuture(resolve(runtime, kind))
 }
 
 /** Sole application boundary through which a feature may apply a farm state transition. */
@@ -84,4 +88,6 @@ internal class FarmTaskHintRouter : FarmTaskHintSink {
 /** Temporary typed seam until field discovery moves into FarmFieldController. */
 internal fun interface FarmIncidentBedProvider {
     fun discover(runtime: FarmRuntime): Set<FarmPlotPosition>
+    fun discoverAsync(runtime: FarmRuntime, isCurrent: () -> Boolean): java.util.concurrent.CompletableFuture<Set<FarmPlotPosition>> =
+        java.util.concurrent.CompletableFuture.completedFuture(discover(runtime))
 }

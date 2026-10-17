@@ -133,6 +133,10 @@ internal class MineVersionedModule(
     override fun incidentIds(): List<String> = (delegate as? MineModule)?.admin?.incidentIds().orEmpty()
     override fun status(zoneId: String): WorksiteAdminStatus? = (delegate as? MineModule)?.adminStatus(zoneId)
     override fun start(zoneId: String, player: Player): Boolean = (delegate as? MineModule)?.adminStart(zoneId, player) == true
+    override fun forceIncidentAsync(zoneId: String, incidentId: String, now: Long): java.util.concurrent.CompletableFuture<Boolean> =
+        (delegate as? MineModule)?.admin?.forceIncidentAsync(zoneId, incidentId, now)
+            ?: java.util.concurrent.CompletableFuture.completedFuture(false)
+
     override fun forceIncident(zoneId: String, incidentId: String, now: Long): Boolean =
         (delegate as? MineModule)?.admin?.forceIncident(zoneId, incidentId, now) == true
     override fun startReindex(zoneId: String): Boolean = (delegate as? MineModule)?.adminStartReindex(zoneId) == true

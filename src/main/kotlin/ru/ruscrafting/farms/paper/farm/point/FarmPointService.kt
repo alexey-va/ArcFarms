@@ -1,6 +1,7 @@
 package ru.ruscrafting.farms.paper.farm.point
 
 import org.bukkit.Location
+import java.util.concurrent.CompletableFuture
 import ru.ruscrafting.farms.config.ArcFarmsConfig
 import ru.ruscrafting.farms.config.TeleportDestination
 import ru.ruscrafting.farms.domain.ActivityKind
@@ -18,8 +19,13 @@ import kotlin.math.sin
 internal class FarmPointService(
     private val settings: () -> ArcFarmsConfig,
     private val repository: FarmLocationRepository,
+    private val onMain: (() -> Unit) -> CompletableFuture<Unit> = { action ->
+        action(); CompletableFuture.completedFuture(Unit)
+    },
 ) {
     private var overrides = FarmLocationOverrides()
+    var isSaving = false
+        private set
 
     fun load(): FarmLocationOverrides = repository.load().also { overrides = it }
 
@@ -65,6 +71,28 @@ internal class FarmPointService(
             throw failure
         }
         return true
+    }
+
+    fun saveAsync(zoneId: String, kind: FarmPointKind, position: FarmPointPosition,
+        validate: (FarmLocationOverrides) -> Unit): CompletableFuture<Unit> {
+        val zone = overrides.zones[zoneId].orEmpty() + (kind to position)
+        return publishAsync(overrides.copy(zones = overrides.zones + (zoneId to zone)), validate)
+    }
+
+    fun clearAsync(zoneId: String, kind: FarmPointKind, validate: (FarmLocationOverrides) -> Unit): CompletableFuture<Unit> =
+        publishAsync(overrides.without(zoneId, kind), validate)
+
+    private fun publishAsync(candidate: FarmLocationOverrides, validate: (FarmLocationOverrides) -> Unit): CompletableFuture<Unit> {
+        if (isSaving) return CompletableFuture.failedFuture(IllegalStateException("Farm point save is already in progress"))
+        validate(candidate)
+        isSaving = true
+        return repository.saveAsync(candidate).handle { _, failure -> failure }.thenCompose { failure ->
+            onMain {
+                isSaving = false
+                if (failure != null) throw failure
+                overrides = candidate
+            }
+        }
     }
 
     fun destination(kind: ActivityKind, runtimes: Collection<FarmRuntime>): TeleportDestination {

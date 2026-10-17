@@ -43,9 +43,9 @@ class ArcFarmsMenu(
         enterpriseMenu.onDrag(event)
     }
 
-    fun prepareReload(): PaperMenuConfiguration = loadConfiguration()
+    fun prepareReload(): ArcFarmsMenuPlatform.Prepared = loadConfiguration()
 
-    fun publishReload(candidate: PaperMenuConfiguration) = menus.replace(candidate)
+    fun publishReload(candidate: ArcFarmsMenuPlatform.Prepared) = menus.replace(candidate)
 
     private fun content(player: Player, configuration: PaperMenuConfiguration): FarmMenuContent {
         val stats = service.playerStats(player.uniqueId)
@@ -220,7 +220,7 @@ class ArcFarmsMenu(
         }
     }
 
-    private fun loadConfiguration(): PaperMenuConfiguration = menus.prepareReload()
+    private fun loadConfiguration(): ArcFarmsMenuPlatform.Prepared = menus.prepareReload()
 
     override fun close() {
         menus.close()

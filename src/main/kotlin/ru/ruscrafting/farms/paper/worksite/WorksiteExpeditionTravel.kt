@@ -56,16 +56,17 @@ internal class WorksiteExpeditionTravel(
             request.surface.world.name, request.surface.x, request.surface.y, request.surface.z,
             request.surface.yaw, request.surface.pitch, System.currentTimeMillis(),
         )
-        if (pending.putIfAbsent(player.uniqueId, record) != null) return
+        val playerId = player.uniqueId
+        if (pending.putIfAbsent(playerId, record) != null) return
         advance(player.uniqueId)
         val token = tasks.lifecycleToken()
-        if (!tasks.runAsync(token) {
+        tasks.compute {
             try {
                 returns.commit(record)
                 var callbackRan = false
                 val entered = tasks.runSync(token) {
                     callbackRan = true
-                    val currentAttempt = pending.remove(player.uniqueId, record)
+                    val currentAttempt = pending.remove(record.playerId, record)
                     if (!currentAttempt || !validEntry(request) || !stillValid()) {
                         if (currentAttempt) acknowledge(record)
                         return@runSync
@@ -83,14 +84,14 @@ internal class WorksiteExpeditionTravel(
                     } else onEntered()
                 }
                 if (!entered) {
-                    pending.remove(player.uniqueId, record)
+                    pending.remove(record.playerId, record)
                     if (callbackRan) acknowledge(record)
                 }
             } catch (error: Exception) {
-                pending.remove(player.uniqueId, record)
+                pending.remove(record.playerId, record)
                 state.log(Level.SEVERE, "expedition entry failed: player=${record.playerId}", error)
             }
-        }) pending.remove(player.uniqueId, record)
+        }.whenComplete { _, failure -> if (failure != null) pending.remove(record.playerId, record) }
     }
 
     fun recover(player: Player, afterReturn: (Boolean) -> Unit = {}) {
@@ -98,12 +99,12 @@ internal class WorksiteExpeditionTravel(
         if (retains(player) || recoveryInFlight.putIfAbsent(playerId, generation(playerId)) != null) return
         val expectedGeneration = requireNotNull(recoveryInFlight[playerId])
         val token = tasks.lifecycleToken()
-        if (!tasks.runAsync(token) {
+        tasks.compute {
             try {
                 val record = returns.load(playerId)
                 if (record == null) {
                     recoveryInFlight.remove(playerId, expectedGeneration)
-                    return@runAsync
+                    return@compute
                 }
                 val scheduled = tasks.runSync(token) {
                     try {
@@ -119,9 +120,9 @@ internal class WorksiteExpeditionTravel(
                 if (!scheduled) recoveryInFlight.remove(playerId, expectedGeneration)
             } catch (error: Exception) {
                 recoveryInFlight.remove(playerId, expectedGeneration)
-                state.log(Level.SEVERE, "expedition return read failed: player=${player.uniqueId}", error)
+                state.log(Level.SEVERE, "expedition return read failed: player=$playerId", error)
             }
-        }) recoveryInFlight.remove(playerId, expectedGeneration)
+        }.whenComplete { _, failure -> if (failure != null) recoveryInFlight.remove(playerId, expectedGeneration) }
     }
 
     fun exit(player: Player, fallback: FarmBurrowReturn? = null): Boolean {
@@ -197,7 +198,7 @@ internal class WorksiteExpeditionTravel(
                 player.world === destination.world && player.location.distanceSquared(destination) <= 4.0
         }
 
-    private fun acknowledge(record: FarmBurrowReturn) = tasks.runAsync(tasks.lifecycleToken()) {
+    private fun acknowledge(record: FarmBurrowReturn) = tasks.compute {
         runCatching { returns.acknowledge(record) }
             .onFailure { state.log(Level.SEVERE, "expedition return acknowledgement failed: player=${record.playerId}", it) }
     }

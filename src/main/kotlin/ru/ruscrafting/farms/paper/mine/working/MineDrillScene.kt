@@ -1,5 +1,7 @@
 package ru.ruscrafting.farms.paper.mine.working
 
+import ru.ruscrafting.farms.paper.worksite.WorksiteTaskPort
+import ru.ruscrafting.farms.paper.worksite.captureLoadedEntities
 import org.bukkit.Bukkit
 import org.bukkit.Color
 import org.bukkit.Location
@@ -32,7 +34,7 @@ import kotlin.math.PI
  * controller owns right-click handling and cancels the event before Minecraft
  * can mount the operator.
  */
-internal class MineDrillScene(plugin: Plugin) {
+internal class MineDrillScene(plugin: Plugin, private val tasks: WorksiteTaskPort? = null) {
     private data class Entities(
         val cart: Minecart,
         val head: BlockDisplay,
@@ -41,6 +43,8 @@ internal class MineDrillScene(plugin: Plugin) {
         var lastEffectAt: Long? = null,
     )
 
+    private val generationKey = NamespacedKey(plugin, "minedrillscene_generation")
+    private var generation = java.util.UUID.randomUUID().toString()
     private val zoneKey = NamespacedKey(plugin, "mine_working_drill_zone")
     private val roleKey = NamespacedKey(plugin, "mine_working_drill_role")
     private val worldKey = NamespacedKey(plugin, "mine_working_drill_world")
@@ -97,12 +101,13 @@ internal class MineDrillScene(plugin: Plugin) {
 
     /** Removes orphaned nonpersistent entities left by a reload or plugin stop. */
     fun reconcileLoaded() {
-        Bukkit.getWorlds().forEach { world ->
-            world.loadedChunks.forEach { chunk ->
-                chunk.entities.filter(::owns).forEach(Entity::remove)
-            }
-        }
+        generation = java.util.UUID.randomUUID().toString()
         scenes.clear()
+        val remove: (Entity) -> Unit = { entity ->
+            if (owns(entity) && entity.persistentDataContainer.get(generationKey, PersistentDataType.STRING) != generation) entity.remove()
+        }
+        if (tasks != null) tasks.captureLoadedEntities(remove)
+        else Bukkit.getWorlds().forEach { world -> world.loadedChunks.forEach { chunk -> chunk.entities.forEach(remove) } }
     }
 
     private fun spawn(runtime: MineRuntime, position: WorksitePosition, location: Location): Entities {
@@ -167,6 +172,7 @@ internal class MineDrillScene(plugin: Plugin) {
 
     private fun mark(entity: Entity, runtime: MineRuntime, position: WorksitePosition, role: String) {
         entity.persistentDataContainer.set(zoneKey, PersistentDataType.STRING, runtime.settings.id)
+        entity.persistentDataContainer.set(generationKey, PersistentDataType.STRING, generation)
         entity.persistentDataContainer.set(roleKey, PersistentDataType.STRING, role)
         entity.persistentDataContainer.set(worldKey, PersistentDataType.STRING, position.world)
         entity.persistentDataContainer.set(xKey, PersistentDataType.INTEGER, position.x)

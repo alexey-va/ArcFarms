@@ -79,6 +79,7 @@ import java.util.concurrent.TimeUnit
 import java.util.random.RandomGenerator
 import java.util.logging.Level
 import ru.arc.paper.api.ArcSidebarHandle
+import ru.arc.core.LifecycleTaskScope
 
 class ArcFarmsService(
     private val plugin: Plugin,
@@ -100,10 +101,17 @@ class ArcFarmsService(
     private val menus: ArcFarmsMenuPlatform,
     private val mineLift: MineLiftAccess? = null,
     private val sidebar: ArcSidebarHandle? = null,
+    private val calculate: (() -> Unit) -> CompletableFuture<Unit> = { action ->
+        action(); CompletableFuture.completedFuture(Unit)
+    },
+    private val retainStorage: (() -> CompletableFuture<Unit>) -> Unit = {},
 ) : AutoCloseable {
     @Volatile
     private var settings: ArcFarmsConfig = initialSettings
-    private val stats = ActivityStatsIndex(currentWeekStartEpochDay = { farmWeekStartEpochDay(clock()) })
+    private val stats = ActivityStatsIndex(currentWeekStartEpochDay = { farmWeekStartEpochDay(clock()) }, calculate = calculate)
+    internal fun captureNative(isCurrent: () -> Boolean, step: () -> Boolean): CompletableFuture<Unit> =
+        lifecycleTaskSupervisor.capture(lifecycleTaskSupervisor.token(), { !closed && isCurrent() }, step)
+
     fun reportCommandFailure(sender: org.bukkit.command.CommandSender, label: String, failure: Exception) {
         plugin.logger.log(Level.SEVERE, "ArcFarms command failed: /$label", failure)
         sender.sendMessage(locale.render(MessageKey.GENERIC_ERROR, sender))
@@ -123,6 +131,8 @@ class ArcFarmsService(
         network = network,
         stats = stats,
         lifecycleSupervisor = lifecycleTaskSupervisor,
+        calculate = calculate,
+        retainStorage = retainStorage,
         delayedSupervisor = gameplayTaskSupervisor,
         operational = ::isOperational,
         access = ::hasAccess,
@@ -202,6 +212,8 @@ class ArcFarmsService(
     private var persistenceSuspended = false
     private var persistenceRequestedWhileSuspended = false
     private var seederVisualTick = 0L
+    private val reloadTasks = LifecycleTaskScope()
+    private var reloadPending = false
     fun start() {
         check(!started && !closed) { "ArcFarms service cannot be started in its current lifecycle state" }
         lifecycleTaskSupervisor.activate()
@@ -245,72 +257,75 @@ class ArcFarmsService(
                 "${mineModule.pendingBlockCount} pending mine blocks",
         )
     }
-    fun reload(candidate: ArcFarmsConfig, publishSettings: (ArcFarmsConfig) -> Unit) {
-        check(started) { "ArcFarms service is not started" }
+    fun reload(candidate: ArcFarmsConfig, publishSettings: (ArcFarmsConfig) -> Unit): CompletableFuture<Unit> {
+        check(started && !closed && !reloadPending) { "ArcFarms service is not ready for reload" }
         ArcFarmsHotReloadPolicy.validate(settings, candidate)
+        require(!farm.pointService.isSaving && !farm.routeAdmin.isSaving) { "ArcFarms cannot reload while admin points are being saved" }
         require(!farm.worldAdmin.backupBusy()) { "ArcFarms cannot reload while a farm backup operation is active" }
-        val validationSnapshot = runtimeValidator.reconcileOrderProgress(candidate, snapshotState())
-        runtimeValidator.validateReload(candidate, validationSnapshot)
         runtimeValidator.validateRuntime(candidate)
         runtimeValidator.validateLocations(candidate, farm.pointService.snapshot())
         minePointAdmin.validate(candidate.mines)
-        farm.rewards.prepareForLifecycleBoundary()
-        farm.perks.beforeReload()
-        val snapshot = snapshotState()
-        val reconciledSnapshot = runtimeValidator.reconcileOrderProgress(candidate, snapshot)
-        persistBlocking()
-        val previous = settings
-        persistenceSuspended = true
-        persistenceRequestedWhileSuspended = false
-        publishSettings(candidate)
-        try {
-            stopTasks()
-            lifecycleTaskSupervisor.restart()
-            val enterpriseChanged = reconfigureRuntime(candidate, reconciledSnapshot, "reload")
-            if (enterpriseChanged) {
-                try {
-                    persistBlocking()
+        reloadPending = true
+        val token = reloadTasks.token()
+
+        fun commitCurrent(): CompletableFuture<Unit> {
+            val validationSnapshot = runtimeValidator.reconcileOrderProgress(candidate, snapshotState())
+            runtimeValidator.validateReload(candidate, validationSnapshot)
+            farm.rewards.prepareForLifecycleBoundary()
+            farm.perks.beforeReload()
+            val snapshot = snapshotState()
+            val reconciledSnapshot = runtimeValidator.reconcileOrderProgress(candidate, snapshot)
+            return stateRepository.saveAsync(snapshot).thenCompose {
+                reloadTasks.callSync(token) {
+                    check(started && !closed) { "ArcFarms closed during reload" }
+                    // Gameplay continues while disk is busy. Never publish a runtime from an older state.
+                    if (snapshotState() != snapshot) return@callSync commitCurrent()
+                    val previous = settings
+                    persistenceSuspended = true
                     persistenceRequestedWhileSuspended = false
-                } catch (failure: Exception) {
-                    if (failure is InterruptedException || failure.cause is InterruptedException) {
-                        Thread.currentThread().interrupt()
+                    publishSettings(candidate)
+                    try {
+                        stopTasks()
+                        lifecycleTaskSupervisor.restart()
+                        val enterpriseChanged = reconfigureRuntime(candidate, reconciledSnapshot, "reload")
+                        val acknowledged = if (enterpriseChanged || reconciledSnapshot != snapshot)
+                            stateRepository.saveAsync(snapshotState()) else CompletableFuture.completedFuture(Unit)
+                        persistenceSuspended = false
+                        if (persistenceRequestedWhileSuspended) {
+                            persistenceRequestedWhileSuspended = false
+                            persistAsync()
+                        }
+                        acknowledged.handle { _, failure -> failure }.thenCompose { failure -> reloadTasks.callSync(token) {
+                            if (failure != null) {
+                                stateSafeToPersist = false
+                                started = false
+                                throw ArcFarmsAmbiguousLiveReloadException(failure)
+                            }
+                            plugin.logger.info("ArcFarms reloaded with ${farm.runtimes.size + lumbermillModule.zoneCount + mineModule.zoneCount} zones")
+                        } }
+                    } catch (failure: Exception) {
+                        plugin.logger.log(Level.SEVERE, "ArcFarms reload failed after runtime mutation; restoring the previous runtime", failure)
+                        publishSettings(previous)
+                        val rollback = runCatching {
+                            stopTasks()
+                            lifecycleTaskSupervisor.restart()
+                            reconfigureRuntime(previous, snapshot, "reload_rollback")
+                        }
+                        if (rollback.isFailure) {
+                            stateSafeToPersist = false
+                            started = false
+                            failure.addSuppressed(requireNotNull(rollback.exceptionOrNull()))
+                            plugin.logger.log(Level.SEVERE, "ArcFarms reload rollback failed; the plugin must be disabled", rollback.exceptionOrNull())
+                        }
+                        persistenceRequestedWhileSuspended = false
+                        persistenceSuspended = false
+                        CompletableFuture.failedFuture(failure)
                     }
-                    throw ArcFarmsAmbiguousLiveReloadException(failure)
-                }
+                }.thenCompose { it }
             }
-        } catch (failure: Exception) {
-            if (failure is ArcFarmsAmbiguousLiveReloadException) {
-                stateSafeToPersist = false
-                started = false
-                persistenceRequestedWhileSuspended = false
-                persistenceSuspended = false
-                throw failure
-            }
-            plugin.logger.log(Level.SEVERE, "ArcFarms reload failed after runtime mutation; restoring the previous runtime", failure)
-            publishSettings(previous)
-            val rollback = runCatching {
-                stopTasks()
-                lifecycleTaskSupervisor.restart()
-                reconfigureRuntime(previous, snapshot, "reload_rollback")
-            }
-            if (rollback.isFailure) {
-                stateSafeToPersist = false
-                started = false
-                failure.addSuppressed(requireNotNull(rollback.exceptionOrNull()))
-                plugin.logger.log(Level.SEVERE, "ArcFarms reload rollback failed; the plugin must be disabled", rollback.exceptionOrNull())
-            }
-            persistenceRequestedWhileSuspended = false
-            persistenceSuspended = false
-            throw failure
         }
-        persistenceSuspended = false
-        if (persistenceRequestedWhileSuspended || reconciledSnapshot != snapshot) {
-            persistenceRequestedWhileSuspended = false
-            persistAsync()
-        }
-        plugin.logger.info(
-            "ArcFarms reloaded with ${farm.runtimes.size + lumbermillModule.zoneCount + mineModule.zoneCount} zones",
-        )
+        return runCatching(::commitCurrent).getOrElse { CompletableFuture.failedFuture(it) }
+            .whenComplete { _, _ -> reloadTasks.runSync(token) { reloadPending = false } }
     }
 
     fun isOperational(): Boolean = started && !closed
@@ -436,6 +451,10 @@ class ArcFarmsService(
     fun adminSetMineIncident(player: Player, zoneId: String, incidentId: String): Boolean =
         worksiteAdmins.handler(ActivityKind.MINE)?.forceIncident(zoneId, incidentId, clock()) == true
 
+    fun adminSetMineIncidentAsync(player: Player, zoneId: String, incidentId: String): java.util.concurrent.CompletableFuture<Boolean> =
+        worksiteAdmins.handler(ActivityKind.MINE)?.forceIncidentAsync(zoneId, incidentId, clock())
+            ?: java.util.concurrent.CompletableFuture.completedFuture(false)
+
     internal fun mineIncidentDiagnostics(zoneId: String): List<MineIncidentPlacementReport> =
         mineModule.incidentDiagnostics(zoneId)
 
@@ -456,6 +475,12 @@ class ArcFarmsService(
 
     fun adminClearFarmPoint(player: Player, zoneId: String, kind: FarmPointKind): Boolean =
         farm.pointAdmin.clear(player, zoneId, kind)
+
+    fun adminSetFarmStageAsync(player: Player, zoneId: String, stage: String): CompletableFuture<Boolean> =
+        farm.gameplayAdmin.setStageAsync(player, zoneId, stage)
+
+    fun adminAdvanceFarmAsync(player: Player, zoneId: String): CompletableFuture<Boolean> =
+        farm.gameplayAdmin.advanceAsync(player, zoneId)
 
     fun adminSetFarmStage(player: Player, zoneId: String, stage: String): Boolean =
         farm.gameplayAdmin.setStage(player, zoneId, stage)
@@ -678,12 +703,11 @@ class ArcFarmsService(
             }
     }
 
-    private fun persistBlocking() = stateRepository.saveBlocking(snapshotState())
-
     override fun close() {
         if (closed) return
         closed = true
         started = false
+        reloadTasks.close()
         val failures = mutableListOf<Throwable>()
         runCatching(farm.rewards::prepareForLifecycleBoundary).exceptionOrNull()?.let(failures::add)
         runCatching(::stopTasks).exceptionOrNull()?.let(failures::add)
@@ -698,7 +722,9 @@ class ArcFarmsService(
         runCatching { worksites.cleanup("plugin_close") }.exceptionOrNull()?.let(failures::add)
         runCatching(farm.worldAdmin::close).exceptionOrNull()?.let(failures::add)
         runCatching(farm.blockRegistry::close).exceptionOrNull()?.let(failures::add)
-        if (stateSafeToPersist) runCatching(::persistBlocking).exceptionOrNull()?.let(failures::add)
+        if (stateSafeToPersist) runCatching { stateRepository.saveAsync(snapshotState()).whenComplete { _, failure ->
+            if (failure != null) plugin.logger.log(Level.SEVERE, "Final ArcFarms state remains uncommitted", failure)
+        } }.exceptionOrNull()?.let(failures::add)
         if (failures.isNotEmpty()) {
             throw IllegalStateException("ArcFarms service shutdown completed with ${failures.size} failure(s)", failures.first()).also {
                 failures.drop(1).forEach(it::addSuppressed)

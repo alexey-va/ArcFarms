@@ -20,6 +20,8 @@ class MineLocationRepository(dataRoot: Path) : AutoCloseable {
 
     fun saveBlocking(value: MineLocations) = store.saveBlocking(value)
 
+    fun closeAsync(): java.util.concurrent.CompletableFuture<Unit> = store.closeAsync()
+
     override fun close() = store.close()
 
     private fun validate(value: MineLocations) {

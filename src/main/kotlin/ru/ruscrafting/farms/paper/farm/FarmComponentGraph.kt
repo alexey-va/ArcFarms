@@ -100,12 +100,14 @@ internal class FarmComponentGraph(
     private val vehiclePassengers = PaperFarmVehiclePassengerControl
     private val moleChunkRetention = PaperMoleBurrowChunkRetention(plugin)
     private val ledger = FarmBlockLedger(plugin)
-    val blockRegistry = FarmBlockRegistry(plugin, ledger, clock)
-    val pointService = FarmPointService(settings, farmLocationRepository)
-    val routeAdmin = FarmRouteAdminService(farmRouteRepository, debug, ports.audience, runtimes::snapshot)
+    val blockRegistry = FarmBlockRegistry(plugin, ledger, clock, tasks = ports.tasks)
+    val pointService = FarmPointService(settings, farmLocationRepository) { action -> taskSupervisor.callSync(taskSupervisor.token(), action) }
+    val routeAdmin = FarmRouteAdminService(farmRouteRepository, debug, ports.audience, runtimes::snapshot) { action ->
+        taskSupervisor.callSync(taskSupervisor.token(), action)
+    }
     private val basePoints = FarmPointProvider(pointService::resolveBase)
-    private val placement = FarmPlacementService(plugin, blockRegistry, basePoints, debug, random)
-    private val moleBurrowWorld = FarmMoleBurrowWorld(plugin, debug, moleChunkRetention, blockDataDecoder)
+    private val placement = FarmPlacementService(plugin, blockRegistry, basePoints, debug, random, ports.tasks)
+    private val moleBurrowWorld = FarmMoleBurrowWorld(plugin, debug, moleChunkRetention, blockDataDecoder, tasks = ports.tasks)
     private val carePlans = FarmCarePlanService(
         debug = debug,
         registry = blockRegistry,
@@ -116,6 +118,7 @@ internal class FarmComponentGraph(
         moleBurrow = moleBurrowWorld,
         participantCount = { region -> ports.audience.players(region).size },
         log = ports.state::log,
+        tasks = ports.tasks,
     )
     private val points = object : FarmPointProvider {
         override fun resolve(runtime: FarmRuntime, kind: FarmPointKind) =
@@ -123,6 +126,17 @@ internal class FarmComponentGraph(
 
         override fun configured(runtime: FarmRuntime, kind: FarmPointKind) =
             pointService.configured(runtime.settings.id, kind)
+
+        override fun resolveAsync(runtime: FarmRuntime, kind: FarmPointKind, isCurrent: () -> Boolean):
+            CompletableFuture<ru.ruscrafting.farms.domain.FarmPointPosition> {
+            val token = ports.tasks.lifecycleToken()
+            return carePlans.fixturePointAsync(runtime, kind, current = isCurrent).thenCompose { fixture ->
+                ports.tasks.callSync(token) {
+                    if (!isCurrent()) throw java.util.concurrent.CancellationException("Farm point source changed")
+                    fixture ?: pointService.resolveBase(runtime, kind)
+                }
+            }
+        }
     }
     private val transitions = FarmTransitionRouter()
     private val launches = FarmShiftLaunchRouter()
@@ -180,13 +194,17 @@ internal class FarmComponentGraph(
         ledger = ledger,
         registry = blockRegistry,
         plans = carePlans,
+        tasks = ports.tasks,
         points = points,
         moles = moles,
         transitions = transitions,
         runtimes = runtimes::snapshot,
         clock = clock,
     )
-    private val incidentBeds = FarmIncidentBedProvider(field::incidentBeds)
+    private val incidentBeds = object : FarmIncidentBedProvider {
+        override fun discover(runtime: FarmRuntime) = field.incidentBeds(runtime)
+        override fun discoverAsync(runtime: FarmRuntime, isCurrent: () -> Boolean) = field.incidentBedsAsync(runtime, isCurrent)
+    }
     private val nightShift = FarmNightShiftController(plugin)
     private val tornado = ru.ruscrafting.farms.paper.farm.incident.tornado.FarmTornadoIncident(
         plugin, settings, ports.access, ports.audience, ports.state, incidentBeds, transitions,
@@ -194,7 +212,7 @@ internal class FarmComponentGraph(
     )
     private val greenhouse = ru.ruscrafting.farms.paper.farm.incident.greenhouse.FarmHellGreenhouseIncident(
         plugin, settings, locale, ports.access, ports.audience, ports.state, incidentBeds, transitions, ledger,
-        rooms = FarmMoleBurrowWorld(plugin, debug, moleChunkRetention, blockDataDecoder, "farm_greenhouse"),
+        rooms = FarmMoleBurrowWorld(plugin, debug, moleChunkRetention, blockDataDecoder, "farm_greenhouse", ports.tasks),
         tasks = ports.tasks,
     )
     private val frost = FarmFrostIncident(

@@ -204,28 +204,25 @@ internal class FarmMoleBurrowWorksiteSceneCodec(
         }, world, chunkX, chunkZ, minHeight, maxHeight,
     )
 
-    override fun foreignJournalOverlaps(
-        chunk: Chunk,
-        positions: Collection<Triple<Int, Int, Int>>,
-    ): Boolean {
-        val wanted = positions.toHashSet()
-        return foreignJournalNamespaces
-            .asSequence()
-            .filter { it != journalNamespace }
+    override fun foreignJournalOverlaps(chunk: Chunk, positions: Collection<Triple<Int, Int, Int>>): Boolean =
+        captureForeignJournalCheck(chunk, positions).invoke()
+
+    override fun captureForeignJournalCheck(chunk: Chunk, positions: Collection<Triple<Int, Int, Int>>): () -> Boolean {
+        val world = chunk.world.name
+        val x = chunk.x
+        val z = chunk.z
+        val minimum = chunk.world.minHeight
+        val maximum = chunk.world.maxHeight
+        val captured = foreignJournalNamespaces.asSequence().filter { it != journalNamespace }
             .map { NamespacedKey(plugin, "${it}_v1") }
-            .any { key ->
-                val raw = chunk.persistentDataContainer.get(key, PersistentDataType.BYTE_ARRAY) ?: return@any false
-                runCatching {
-                    FarmMoleBurrowJournalCodec.decode(
-                        raw,
-                        chunk.world.name,
-                        chunk.x,
-                        chunk.z,
-                        chunk.world.minHeight,
-                        chunk.world.maxHeight,
-                    ).any { Triple(it.x, it.y, it.z) in wanted }
-                }.getOrElse { true }
-            }
+            .mapNotNull { chunk.persistentDataContainer.get(it, PersistentDataType.BYTE_ARRAY) }.toList()
+        return {
+            val wanted = positions.toHashSet()
+            captured.any { raw -> runCatching {
+                FarmMoleBurrowJournalCodec.decode(raw, world, x, z, minimum, maximum)
+                    .any { Triple(it.x, it.y, it.z) in wanted }
+            }.getOrElse { true } }
+        }
     }
 
 }

@@ -125,15 +125,18 @@ internal class MineComponentGraph(
             },
             ru.ruscrafting.farms.paper.worksite.scene.WorksitePreparedSceneBlockDataDecoder(
                 blockDataDecoder::decode),
+            tasks = ports.tasks,
         ),
         blockDataDecoder,
         { position -> recovery.containsPosition("${position.world}:${position.x}:${position.y}:${position.z}") },
+        ports.tasks,
     )
     private val workingPresentation = ru.ruscrafting.farms.paper.mine.working.MineWorkingPresentation(
         plugin, locale, ru.ruscrafting.farms.paper.platform.PaperFarmTextDisplayRenderer,
         ru.ruscrafting.farms.paper.mine.working.MineWorkingCart(plugin),
         { id -> lift?.floors()?.sortedByDescending { it.y }?.indexOfFirst { it.id == id }
             ?.takeIf { it >= 0 }?.plus(1) },
+        tasks = ports.tasks,
     )
     val workshop = ru.ruscrafting.farms.paper.mine.workshop.MineOreWorkshopController(
         plugin, { runtime -> points?.points(runtime).orEmpty().mapNotNull { (id, point) ->
@@ -146,7 +149,7 @@ internal class MineComponentGraph(
     private val driveController = ru.ruscrafting.farms.paper.mine.working.MineDriveController(plugin, workingWorld, ports.access, ports.state, ports.tasks, workingPresentation)
     private val railDriveService = ru.ruscrafting.farms.paper.mine.working.MineRailDriveService(plugin,workingEquipment,workingPresentation,driveController,ports.access)
     val workings = ru.ruscrafting.farms.paper.mine.working.MineWorkingController(
-        registry, ru.ruscrafting.farms.paper.mine.working.MineWorkingPlacementService(index, blockScanner, lift, ports.state, points),
+        registry, ru.ruscrafting.farms.paper.mine.working.MineWorkingPlacementService(index, blockScanner, lift, ports.state, points, ports.tasks),
         workingWorld, incidents, workingEquipment,
         workingPresentation,
         ru.ruscrafting.farms.paper.worksite.WorksiteExpeditionTravel(plugin, ports.tasks, ports.access, ports.state,
@@ -174,7 +177,7 @@ internal class MineComponentGraph(
     )
     val incidentScheduler = MineIncidentScheduler(
         caveIn, gasLeak, flooding, trackDamage, crystalResonance, creatureNest, powerFailure, lostMiner,
-        workings, ru.ruscrafting.farms.paper.mine.incident.MineIncidentPlacementDiagnostics(index, candidateStock), ports.state, workshop, expeditions,
+        workings, ru.ruscrafting.farms.paper.mine.incident.MineIncidentPlacementDiagnostics(index, candidateStock), ports.state, workshop, expeditions, ports.tasks,
     )
     val incidentSet = MineIncidentSet(
         registry, caveIn, trackDamage, gasLeak, crystalResonance, flooding, powerFailure, creatureNest, lostMiner, objectiveMarkers,

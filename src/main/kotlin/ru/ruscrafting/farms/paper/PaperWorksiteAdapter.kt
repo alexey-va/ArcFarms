@@ -53,12 +53,17 @@ internal class PaperWorksiteAdapter(
     private val persist: () -> CompletableFuture<Unit>,
     private val guard: (String, () -> Unit) -> Unit,
     sidebar: ArcSidebarHandle?,
+    private val calculate: (() -> Unit) -> CompletableFuture<Unit> = { action ->
+        action(); CompletableFuture.completedFuture(Unit)
+    },
+    private val retainStorage: (() -> CompletableFuture<Unit>) -> Unit = {},
 ) : WorksiteAccessPort,
     WorksiteAudiencePort,
     WorksiteStatePort,
     WorksiteTaskPort,
     WorksiteStatsPort,
     WorksiteNetworkPort {
+    override fun ownStorage(close: () -> CompletableFuture<Unit>) = retainStorage(close)
     fun ports(): WorksitePorts = WorksitePorts(this, this, this, this, this, this)
 
     private val sidebars = ru.ruscrafting.farms.paper.worksite.WorksiteSidebarController(sidebar)
@@ -340,6 +345,19 @@ internal class PaperWorksiteAdapter(
 
     override fun persistAsync(): CompletableFuture<Unit> = persist()
     override fun guarded(scope: String, task: () -> Unit) = guard(scope, task)
+    override fun capture(token: RuntimeTaskSupervisor.Token, isCurrent: () -> Boolean, step: () -> Boolean): CompletableFuture<Unit> =
+        lifecycleSupervisor.capture(token, isCurrent, step)
+    override fun <T> callSync(token: RuntimeTaskSupervisor.Token, task: () -> T): CompletableFuture<T> =
+        lifecycleSupervisor.callSync(token, task)
+
+    override fun <T> compute(task: () -> T): CompletableFuture<T> {
+        val result = CompletableFuture<T>()
+        calculate { result.complete(task()) }.whenComplete { _, failure ->
+            if (failure != null) result.completeExceptionally(failure)
+        }
+        return result
+    }
+
     override fun lifecycleToken(): RuntimeTaskSupervisor.Token = lifecycleSupervisor.token()
     override fun runSync(token: RuntimeTaskSupervisor.Token, task: () -> Unit): Boolean =
         lifecycleSupervisor.runSync(token, task) != null

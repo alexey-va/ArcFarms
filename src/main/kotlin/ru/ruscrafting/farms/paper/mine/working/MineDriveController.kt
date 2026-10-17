@@ -28,7 +28,7 @@ internal class MineDriveController(
     private val state: WorksiteStatePort,
     private val tasks: WorksiteTaskPort,
     private val presentation: MineWorkingPresentation,
-    private val rigs: MineDriveRig = MineDriveRig(plugin),
+    private val rigs: MineDriveRig = MineDriveRig(plugin, tasks),
 ) {
     private val saving = mutableMapOf<String, Any>()
     private val durable = mutableMapOf<String, Set<Int>>()

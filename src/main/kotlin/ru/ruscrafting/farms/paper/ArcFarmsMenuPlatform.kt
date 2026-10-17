@@ -38,13 +38,16 @@ import org.bukkit.event.inventory.InventoryType
 class ArcFarmsMenuPlatform(
     private val plugin: Plugin,
     dialogDisplay: FarmDialogDisplay? = null,
+    prepared: Prepared = prepare(plugin.dataFolder.toPath()),
     private val escapeCloses: (Player) -> Boolean = { player ->
         Bukkit.getServicesManager().load(LuckPerms::class.java)?.userManager?.getUser(player.uniqueId)
             ?.cachedData?.metaData?.getMetaValue("arc-menu-escape") == "close"
     },
 ) : AutoCloseable, Listener {
+    data class Prepared(val config: Config, val dialogMode: Boolean)
+
     private val items = PaperMenuItemFactory()
-    private val runtime = PaperMenuRuntime(plugin, BukkitTaskScheduler(plugin), loadConfiguration(plugin.dataFolder.toPath()))
+    private val runtime = PaperMenuRuntime(plugin, BukkitTaskScheduler(plugin), parse(prepared.config))
     private val sessions = mutableMapOf<UUID, FarmMenuSession>()
     private val tasks = LifecycleTaskScope(BukkitTaskScheduler(plugin))
     private var generation = 0L
@@ -67,14 +70,9 @@ class ArcFarmsMenuPlatform(
         }
     }
     private var dialogsUsed = false
-    private var dialogMode = readDialogMode()
+    private var dialogMode = prepared.dialogMode
     val usesDialogs: Boolean get() = dialogMode
     init { plugin.server.pluginManager.registerEvents(this, plugin) }
-    private fun readDialogMode(): Boolean {
-        val mode = Config(plugin.dataFolder.toPath(), "config.yml").stringOrNull("ui.menu-presentation") ?: "DIALOG"
-        require(mode in setOf("DIALOG", "INVENTORY")) { "ui.menu-presentation must be DIALOG or INVENTORY" }
-        return mode == "DIALOG"
-    }
     internal var dialogText: (Player, String) -> Component = { _, _ -> Component.empty() }
     fun configureDialogs(locale: ru.ruscrafting.farms.config.ArcFarmsLocale) {
         dialogText = { player, key -> locale.renderPath("dialog.$key", player) }
@@ -82,7 +80,7 @@ class ArcFarmsMenuPlatform(
 
     fun current(): PaperMenuConfiguration = runtime.current()
 
-    fun prepareReload(): PaperMenuConfiguration { readDialogMode(); return loadConfiguration(plugin.dataFolder.toPath()) }
+    fun prepareReload(): Prepared = prepare(plugin.dataFolder.toPath())
 
     fun item(menu: MenuId, element: MenuElementId, name: Component, lore: List<Component>) =
         items.create(current().template(menu, element), text(name, lore))
@@ -220,12 +218,13 @@ class ArcFarmsMenuPlatform(
         if (active.delegate == null && dialogMode) close(player)
     }
 
-    fun replace(candidate: PaperMenuConfiguration) {
-        val nextMode = readDialogMode()
+    fun replace(candidate: Prepared) {
+        val parsed = parse(candidate.config)
+        val nextMode = candidate.dialogMode
         val active = sessions.values.filter { it.player.isOnline }.map { it.reopen }
         generation++
         sessions.values.toList().forEach { close(it.player) }
-        runtime.replace(candidate)
+        runtime.replace(parsed)
         dialogMode = nextMode
         active.forEach { it() }
     }
@@ -326,8 +325,16 @@ class ArcFarmsMenuPlatform(
             "food-golden-carrot",
         ).associateWith { TEXT_CONTRACT }
 
-        fun loadConfiguration(dataRoot: Path): PaperMenuConfiguration {
+        fun prepare(dataRoot: Path): Prepared {
             val config = Config(dataRoot, "config.yml")
+            val mode = config.stringOrNull("ui.menu-presentation") ?: "DIALOG"
+            require(mode in setOf("DIALOG", "INVENTORY")) { "ui.menu-presentation must be DIALOG or INVENTORY" }
+            return Prepared(config, mode == "DIALOG")
+        }
+
+        fun loadConfiguration(dataRoot: Path): PaperMenuConfiguration = parse(prepare(dataRoot).config)
+
+        fun parse(config: Config): PaperMenuConfiguration {
             val loaded = PaperMenuConfigurationParser.require(
                 config,
                 "ui.menus.layouts",

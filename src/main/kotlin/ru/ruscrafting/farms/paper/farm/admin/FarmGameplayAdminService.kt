@@ -100,6 +100,53 @@ internal class FarmGameplayAdminService(
     private val persistAsync: () -> CompletableFuture<Unit>,
     private val clock: () -> Long,
 ) {
+    fun setStageAsync(player: Player, zoneId: String, stage: String): CompletableFuture<Boolean> {
+        val type = CARE_STAGES[stage.lowercase()]
+            ?: return CompletableFuture.completedFuture(setStage(player, zoneId, stage))
+        val runtime = runtime(zoneId, player) ?: return CompletableFuture.completedFuture(false)
+        orderCycle.resumeInMemory(zoneId)
+        if (!ensureShift(runtime, player) || !clearActiveObjective(runtime, player) || currentOrder(runtime) == null) {
+            return CompletableFuture.completedFuture(false)
+        }
+        return careStageAsync(player, runtime, stage.lowercase(), type)
+    }
+
+    private fun careStageAsync(player: Player, runtime: FarmRuntime, stage: String, type: FarmCareType): CompletableFuture<Boolean> {
+        val seeder = type == FarmCareType.SEEDER
+        if (type in BED_PATCH_CARE_TYPES && !reselectPatch(runtime, player, seeder)) {
+            port.sendChat(player, MessageKey.FARM_PATCH_UNAVAILABLE)
+            return CompletableFuture.completedFuture(false)
+        }
+        if (!seeder) preparePatch(runtime, plant = true, mature = true)
+        val prepared = if (seeder) runtime.state else FarmAdminStageProgress.completed(runtime.state, planted = true)
+        runtime.state = prepared.copy(
+            phase = if (seeder) FarmPhase.PREPARATION else FarmPhase.HARVESTING,
+            preparationReleased = !seeder,
+            tilledPlots = if (seeder) emptySet() else prepared.tilledPlots,
+            plantedPlots = if (seeder) emptySet() else prepared.plantedPlots,
+            preparationProgress = if (seeder) 0 else prepared.preparationProgress,
+            plantingProgress = if (seeder) 0 else prepared.plantingProgress,
+            careType = null, careTargets = emptyList(), careGoal = null, incidentType = null,
+        )
+        val sequence = runtime.state.sequence
+        val placement = runtime.state.placementSequence
+        return care.initializeAsync(runtime, player, type).thenApply { accepted ->
+            if (!runtimes().any { it === runtime } || runtime.state.sequence != sequence) return@thenApply false
+            if (!accepted) {
+                if (runtime.state.placementSequence != placement) return@thenApply false
+                runtime.state = runtime.state.copy(placementSequence = runtime.state.nextPlacementSequence())
+                persistAsync()
+                if (player.isOnline) port.sendChat(player,
+                    if (type == FarmCareType.MOLES) MessageKey.ADMIN_MOLES_UNAVAILABLE else MessageKey.ADMIN_CARE_UNAVAILABLE)
+                false
+            } else {
+                persistAsync()
+                if (player.isOnline) port.sendChat(player, MessageKey.ADMIN_STAGE_SET, mapOf("stage" to locale.renderPath("admin.stage.$stage", player)))
+                true
+            }
+        }
+    }
+
     fun setStage(player: Player, zoneId: String, stage: String): Boolean {
         val startedAt = System.nanoTime()
         var succeeded = false
@@ -216,6 +263,22 @@ internal class FarmGameplayAdminService(
             "inside" to runtime.region.contains(player.location),
         )
         return true
+    }
+
+    fun advanceAsync(player: Player, zoneId: String): CompletableFuture<Boolean> {
+        val runtime = runtime(zoneId, player) ?: return CompletableFuture.completedFuture(false)
+        val next = when (runtime.state.phase) {
+            FarmPhase.IDLE, FarmPhase.COOLDOWN -> "preparation"
+            FarmPhase.PREPARATION -> "planting"
+            FarmPhase.PLANTING -> currentOrder(runtime)?.careTypes?.let { types ->
+                care.adminStageName(types[Math.floorMod(runtime.state.sequence.toInt(), types.size)])
+            } ?: "harvesting"
+            FarmPhase.CARE -> "harvesting"
+            FarmPhase.HARVESTING -> currentOrder(runtime)?.let { special.id(harvest.plannedIncident(runtime, it)) } ?: "pests"
+            FarmPhase.INCIDENT -> if (runtime.state.incidentType == FarmIncidentType.FOOD_DELIVERY) "complete" else "harvesting"
+            FarmPhase.DELIVERY -> "food-delivery"
+        }
+        return setStageAsync(player, zoneId, next)
     }
 
     fun advance(player: Player, zoneId: String): Boolean {

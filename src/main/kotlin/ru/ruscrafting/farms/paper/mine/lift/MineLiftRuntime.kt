@@ -40,6 +40,8 @@ import ru.ruscrafting.farms.config.ArcFarmsLocale
 import ru.ruscrafting.farms.domain.mine.lift.MineLiftMotion
 import ru.ruscrafting.farms.paper.FarmDialogScreens
 import java.util.UUID
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.CancellationException
 import java.util.logging.Level
 import kotlin.math.abs
 import kotlin.math.floor
@@ -73,17 +75,25 @@ internal class MineLiftRuntime(
     private val claimRider: (UUID, String) -> Boolean = { _, _ -> true },
     private val releaseRider: (UUID, String) -> Unit = { _, _ -> },
     private val hasRecovery: (UUID) -> Boolean = { false },
+    private val recovery: MineLiftRecovery = MineLiftRecovery(plugin.dataFolder.toPath(), settings.id),
+    private val capture: ((() -> Boolean), (() -> Boolean)) -> CompletableFuture<Unit> = { current, step ->
+        while (current() && !step()) Unit
+        CompletableFuture.completedFuture(Unit)
+    },
 ) :
     AutoCloseable, Listener, CommandExecutor, TabCompleter, MineLiftAccess {
-    private val recovery = MineLiftRecovery(plugin.dataFolder.toPath(), settings.id)
     private val tasks = LifecycleTaskScope()
     private val dialogs = PaperDialogRuntime(plugin)
     private val teleports = ScopedTeleportAuthorizer()
     private var scene: MineLiftScene? = null
     private var motion: MineLiftMotion? = null
     private val riders = linkedMapOf<UUID, Int>()
+    private val boarding = mutableMapOf<UUID, Int>()
+    private val acknowledging = mutableSetOf<UUID>()
     private val chunks = mutableListOf<org.bukkit.Chunk>()
     private var closed = false
+    private var preparing = false
+    private var preparationEpoch = 0L
     private var tickNumber = 0L
     private var movementTask: ScheduledTask? = null
     private val exiting = mutableSetOf<UUID>()
@@ -98,38 +108,102 @@ internal class MineLiftRuntime(
 
     private fun tryStart() {
         val config = settings
-        if (closed || scene != null) return
+        if (closed || scene != null || preparing) return
         val world = Bukkit.getWorld(config.world) ?: return
-        try {
-            val requested = (config.floors.flatMap { listOf(it.exit.location(world), it.panel.location(world)) } +
-                Location(world, config.x, config.floors.first().y, config.z)).map { it.chunk }.distinct()
-            requested.forEach { if (it.addPluginChunkTicket(plugin)) chunks += it }
-            require(config.floors.all { safe(it.exit.location(world)) }) { "Mine lift landing is obstructed" }
-            val minX = floor(config.x - config.width / 2).toInt()
-            val maxX = floor(config.x + config.width / 2).toInt()
-            val minZ = floor(config.z - config.depth / 2).toInt()
-            val maxZ = floor(config.z + config.depth / 2).toInt()
-            for (x in minX..maxX) for (z in minZ..maxZ) {
-                for (y in floor(config.floors.last().y).toInt()..
-                    floor(config.floors.first().y + config.theme.shaftClearanceAboveStop).toInt()) {
+        preparing = true
+        val epoch = ++preparationEpoch
+        val token = tasks.token()
+        fun current() = !closed && epoch == preparationEpoch && Bukkit.getWorld(config.world) === world
+        val minX = floor(config.x - config.width / 2).toInt()
+        val maxX = floor(config.x + config.width / 2).toInt()
+        val minZ = floor(config.z - config.depth / 2).toInt()
+        val maxZ = floor(config.z + config.depth / 2).toInt()
+        val minY = floor(config.floors.last().y).toInt()
+        val maxY = floor(config.floors.first().y + config.theme.shaftClearanceAboveStop).toInt()
+        if (minY < world.minHeight || maxY >= world.maxHeight) {
+            preparing = false
+            plugin.logger.severe("Mine lift closed; shaft is outside world height")
+            return
+        }
+        val requested = linkedSetOf<Pair<Int, Int>>()
+        config.floors.forEach { level ->
+            listOf(level.exit, level.panel).forEach { point ->
+                requested += floor(point.x).toInt() shr 4 to (floor(point.z).toInt() shr 4)
+            }
+        }
+        for (cx in (minX shr 4)..(maxX shr 4)) for (cz in (minZ shr 4)..(maxZ shr 4)) requested += cx to cz
+        var loads = CompletableFuture.completedFuture(Unit)
+        requested.forEach { (cx, cz) ->
+            loads = loads.thenCompose {
+                tasks.callSync(token) {
+                    check(current()) { "Mine lift preparation superseded" }
+                    world.getChunkAtAsync(cx, cz, true)
+                }.thenCompose { it }.thenCompose { chunk ->
+                    tasks.callSync(token) {
+                        check(current()) { "Mine lift preparation superseded" }
+                        if (chunk.addPluginChunkTicket(plugin)) chunks += chunk
+                    }
+                }
+            }
+        }
+        loads.thenCompose {
+            tasks.callSync(token) {
+                check(current()) { "Mine lift preparation superseded" }
+                require(config.floors.all { safe(it.exit.location(world)) }) { "Mine lift landing is obstructed" }
+                var x = minX
+                var z = minZ
+                var y = minY
+                capture(::current) {
+                    require(world.isChunkLoaded(x shr 4, z shr 4)) { "Mine lift shaft chunk unloaded" }
                     require(world.getBlockAt(x, y, z).type.isAir) { "Mine lift shaft obstructed at $x,$y,$z" }
+                    y++
+                    if (y > maxY) { y = minY; z++ }
+                    if (z > maxZ) { z = minZ; x++ }
+                    x > maxX
                 }
-            }
-            val next = MineLiftScene(plugin, config, world)
-            scene = next
-            requested.forEach(next::cleanOrphans)
-            motion = MineLiftMotion(config.floors.map { it.y }, config.speed)
-            next.spawn(config.floors.first().y) { label(it) }
-            movementTask = tasks.runTimer(1, 1) {
-                try { tick() } catch (failure: Exception) {
-                    plugin.logger.log(Level.SEVERE, "Mine lift stopped; recovering passengers", failure)
+            }.thenCompose { it }
+        }.thenCompose {
+            tasks.callSync(token) {
+                check(current()) { "Mine lift preparation superseded" }
+                val next = MineLiftScene(plugin, config, world)
+                scene = next
+                var chunkIndex = 0
+                var entities = emptyArray<org.bukkit.entity.Entity>()
+                var entityIndex = 0
+                capture(::current) {
+                    if (entityIndex < entities.size) {
+                        next.cleanOrphan(entities[entityIndex++])
+                        false
+                    } else if (chunkIndex < chunks.size) {
+                        entities = chunks[chunkIndex++].entities
+                        entityIndex = 0
+                        false
+                    } else true
+                }.thenCompose {
+                    tasks.callSync(token) {
+                        check(current() && scene === next) { "Mine lift preparation superseded" }
+                        motion = MineLiftMotion(config.floors.map { it.y }, config.speed)
+                        next.spawn(config.floors.first().y, { label(it) }) { step -> capture(::current, step) }
+                    }.thenCompose { it }
+                }
+            }.thenCompose { it }
+        }.whenComplete { _, failure ->
+            tasks.runSync(token) {
+                if (!current()) return@runSync
+                preparing = false
+                if (failure != null) {
+                    plugin.logger.log(Level.SEVERE, "Mine lift closed; inspect shaft and landing configuration", failure)
                     stopCabin()
+                } else {
+                    movementTask = tasks.runTimer(1, 1) {
+                        try { tick() } catch (problem: Exception) {
+                            plugin.logger.log(Level.SEVERE, "Mine lift stopped; recovering passengers", problem)
+                            stopCabin()
+                        }
+                    }
+                    plugin.logger.info("MINE_LIFT ready world=${config.world} floors=${config.floors.size} seats=${scene?.seats?.size}")
                 }
             }
-            plugin.logger.info("MINE_LIFT ready world=${config.world} floors=${config.floors.size} seats=${next.seats.size}")
-        } catch (failure: Exception) {
-            plugin.logger.log(Level.SEVERE, "Mine lift closed; inspect shaft and landing configuration", failure)
-            stopCabin()
         }
     }
 
@@ -240,34 +314,47 @@ internal class MineLiftRuntime(
         val state = motion ?: return
         val cabin = scene ?: return
         if (maintenance.ownsAny() || !player.hasPermission("arcfarms.mine") || !near(player, source, allowCabin) || state.floor != source ||
-            player.isInsideVehicle || player.isDead || hasRecovery(player.uniqueId) ||
+            player.isInsideVehicle || player.isDead || player.uniqueId in boarding || hasRecovery(player.uniqueId) ||
             state.phase == MineLiftMotion.Phase.MOVING ||
             (state.phase == MineLiftMotion.Phase.BOARDING && state.target != destination)) {
             player.sendMessage(text("unavailable", player)); return
         }
-        val slot = cabin.seats.indices.firstOrNull { it !in riders.values && cabin.seats[it].passengers.isEmpty() }
+        val slot = cabin.seats.indices.firstOrNull { it !in riders.values && it !in boarding.values && cabin.seats[it].passengers.isEmpty() }
             ?: run { player.sendMessage(text("full", player)); return }
         val returnPoint = config.floors[source].exit.location(player.world)
         if (!safe(returnPoint)) { player.sendMessage(text("unavailable", player)); return }
         if (!claimRider(player.uniqueId, settings.id)) { player.sendMessage(text("unavailable", player)); return }
-        try {
-            recovery.capture(player, returnPoint)
-        } catch (failure: Exception) {
-            releaseRider(player.uniqueId, settings.id)
-            plugin.logger.log(Level.SEVERE, "Mine lift passenger escrow rejected for ${player.uniqueId}", failure)
-            player.sendMessage(text("unavailable", player))
-            return
+        boarding[player.uniqueId] = slot
+        val token = tasks.token()
+        recovery.capture(player, returnPoint).whenComplete { _, failure ->
+            tasks.runSync(token) {
+                boarding.remove(player.uniqueId)
+                if (failure != null) {
+                    releaseRider(player.uniqueId, settings.id)
+                    plugin.logger.log(Level.SEVERE, "Mine lift passenger escrow rejected for ${player.uniqueId}", failure)
+                    if (player.isOnline) player.sendMessage(text("unavailable", player))
+                    return@runSync
+                }
+                if (!player.isOnline) { releaseRider(player.uniqueId, settings.id); return@runSync }
+                val stillBoardable = scene === cabin && motion === state && !closed && !maintenance.ownsAny() &&
+                    near(player, source, allowCabin) && !player.isDead && !player.isInsideVehicle &&
+                    state.floor == source && state.phase != MineLiftMotion.Phase.MOVING &&
+                    (state.phase != MineLiftMotion.Phase.BOARDING || state.target == destination) &&
+                    cabin.seats[slot].passengers.isEmpty()
+                if (!stillBoardable || !cabin.seats[slot].addPassenger(player)) {
+                    recover(player)
+                    player.sendMessage(text("unavailable", player))
+                    return@runSync
+                }
+                riders[player.uniqueId] = slot
+                check(state.board(destination))
+                if (config.theme == MineLiftTheme.CASINO) {
+                    player.playSound(player, CASINO_LIFT_MUSIC, SoundCategory.RECORDS, .65f, 1f)
+                }
+                interactionGate.clearWalkIn(player.uniqueId)
+                player.sendMessage(text("boarding", player, mapOf("floor" to floorName(destination, player))))
+            }
         }
-        if (!cabin.seats[slot].addPassenger(player)) {
-            recover(player); player.sendMessage(text("unavailable", player)); return
-        }
-        riders[player.uniqueId] = slot
-        check(state.board(destination))
-        if (config.theme == MineLiftTheme.CASINO) {
-            player.playSound(player, CASINO_LIFT_MUSIC, SoundCategory.RECORDS, .65f, 1f)
-        }
-        interactionGate.clearWalkIn(player.uniqueId)
-        player.sendMessage(text("boarding", player, mapOf("floor" to floorName(destination, player))))
     }
 
     private fun safe(at: Location): Boolean = !at.block.isLiquid && at.block.isPassable &&
@@ -275,14 +362,19 @@ internal class MineLiftRuntime(
 
     private fun unload(player: Player, destination: Location): Boolean {
         stopMusic(player)
-        if (!safe(destination)) return false
+        if (player.uniqueId in acknowledging || !safe(destination)) return false
         exiting += player.uniqueId
         try {
             if (player.isInsideVehicle && !player.leaveVehicle()) return false
             if (!teleports.authorize(player.uniqueId, destination) { player.teleport(destination, PlayerTeleportEvent.TeleportCause.PLUGIN) }) return false
             if (player.world != destination.world || player.location.distanceSquared(destination) > .25) return false
             player.fallDistance = 0f
-            recovery.acknowledge(player)
+            val playerId = player.uniqueId
+            acknowledging += playerId
+            recovery.acknowledge(player).whenComplete { _, failure ->
+                if (failure != null) plugin.logger.log(Level.SEVERE, "Mine lift recovery acknowledgement remains pending for $playerId", failure)
+                tasks.runSync { acknowledging -= playerId }
+            }
             riders.remove(player.uniqueId)
             releaseRider(player.uniqueId, settings.id)
             return true
@@ -424,7 +516,14 @@ internal class MineLiftRuntime(
         Bukkit.getOnlinePlayers().filter { recovery.contains(it.uniqueId) }.forEach(::recover)
         if (event.world.name == settings.world) tryStart()
     }
-    @EventHandler fun chunkLoad(event: ChunkLoadEvent) { scene?.cleanOrphans(event.chunk) }
+    @EventHandler fun chunkLoad(event: ChunkLoadEvent) {
+        val currentScene = scene ?: return
+        val chunk = event.chunk
+        val entities = chunk.entities.iterator()
+        capture({ !closed && scene === currentScene && chunk.isLoaded }) {
+            if (!entities.hasNext()) true else { currentScene.cleanOrphan(entities.next()); !entities.hasNext() }
+        }
+    }
 
     fun isNearAuthorized(player: Player): Boolean = !closed && scene != null &&
         player.hasPermission("arcfarms.mine") && nearFloor(player) != null
@@ -476,6 +575,8 @@ internal class MineLiftRuntime(
     }
 
     private fun stopCabin() {
+        preparationEpoch++
+        preparing = false
         movementTask?.cancel()
         movementTask = null
         riders.keys.toList().mapNotNull(Bukkit::getPlayer).forEach { player ->

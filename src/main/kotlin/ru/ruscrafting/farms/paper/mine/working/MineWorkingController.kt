@@ -20,6 +20,7 @@ import ru.ruscrafting.farms.paper.mine.incident.MineIncidentCoordinator
 import ru.ruscrafting.farms.paper.mine.incident.MineIncidentPlacementReport
 import ru.ruscrafting.farms.paper.worksite.*
 import java.util.UUID
+import java.util.concurrent.CompletableFuture
 import java.util.logging.Level
 
 /** Owns one foreground lateral-working journey; mining orders and rewards stay in their existing owners. */
@@ -40,6 +41,7 @@ internal class MineWorkingController(
     private val railService: MineRailDriveService? = null,
 ) {
     private val pendingSaves = mutableSetOf<String>()
+    private val pendingStarts = mutableMapOf<String, CompletableFuture<Boolean>>()
     private val retiring = mutableSetOf<String>()
     private val drillOperators = mutableMapOf<String, UUID>()
     private val completionGrace = mutableMapOf<String, CompletionGrace>()
@@ -66,9 +68,39 @@ internal class MineWorkingController(
         return incidents.start(runtime, type, total(type, plan), now, working = working).also { if (!it) world.startRestore(runtime) }
     }
 
+    fun startAsync(runtime: MineRuntime, type: MineIncidentType, now: Long): CompletableFuture<Boolean> {
+        pendingStarts[runtime.settings.id]?.let { return it }
+        if (transitioning(runtime)) return CompletableFuture.completedFuture(false)
+        val chosen = preparedPlacements[runtime.settings.id to type] ?: return CompletableFuture.completedFuture(false)
+        val sequence = runtime.state.sequence
+        val cursor = runtime.state.incidentCursor
+        val nonce = cursor.toLong() + 1
+        val token = tasks.lifecycleToken()
+        val result = CompletableFuture<Boolean>()
+        pendingStarts[runtime.settings.id] = result
+        world.prepareAsync(runtime, type, chosen, nonce).thenCompose { prepared -> tasks.callSync(token) {
+            val current = pendingStarts[runtime.settings.id] === result && registry.byId(runtime.settings.id) === runtime &&
+                runtime.state.sequence == sequence && runtime.state.incidentCursor == cursor && runtime.state.incident == null
+            if (!prepared || !current) {
+                if (prepared) world.startRestore(runtime)
+                false
+            } else {
+                val plan = requireNotNull(world.retainedScene(runtime.settings.id, sequence)).plan
+                incidents.start(runtime, type, total(type, plan), now, working = MineWorkingEngine.initial(type, chosen))
+                    .also { if (!it) world.startRestore(runtime) }
+            }
+        } }.whenComplete { started, failure -> tasks.callSync(token) {
+            pendingStarts.remove(runtime.settings.id, result)
+            if (failure != null && runtime.state.sequence == sequence) world.startRestore(runtime)
+            if (failure == null) result.complete(started) else result.completeExceptionally(failure)
+        }.exceptionally { result.completeExceptionally(it); null } }
+        return result
+    }
+
     fun diagnostics(runtime: MineRuntime, type: MineIncidentType): MineIncidentPlacementReport = placement.diagnostics(runtime, type)
 
     fun tick(runtime: MineRuntime, now: Long) {
+        if (runtime.settings.id in pendingStarts) return
         if (runtime.settings.id in retiring) { retire(runtime); return }
         completionGrace[runtime.settings.id]?.let { grace ->
             tickCompletionGrace(runtime, grace, now)
@@ -120,17 +152,26 @@ internal class MineWorkingController(
         registry.snapshot().filter { isDrive(it) &&
             it.settings.id !in retiring && it.settings.id !in completionGrace }.forEach { runtime ->
             val working = runtime.state.incident?.working ?: return@forEach
-            if (!MineDriveLayout.enabled(working.placement) || !world.isReady(runtime)) return@forEach
+            if (!MineDriveLayout.enabled(working.placement) || !world.isReady(runtime) || runtime.settings.id in pendingSaves) return@forEach
             val scene = world.scene(runtime) ?: return@forEach
             railService?.tick(runtime,now)
             drive.tick(runtime, scene, now, { participant(runtime, it) }) { player, final ->
                 val incident = runtime.state.incident ?: return@tick
                 val sequence = runtime.state.sequence
-                world.project(runtime, incident.type, final)
-                incidents.work(runtime, player, amount = (incident.required - incident.progress).coerceAtLeast(1))
-                beginCompletionGrace(runtime, sequence)
-                presentation.feedback(player, if(incident.type==MineIncidentType.RAIL_EXTENSION) "rail-complete" else "drive-complete")
-                player.playSound(player.location, Sound.BLOCK_BELL_USE, .8f, 1.3f)
+                if (!pendingSaves.add(runtime.settings.id)) return@tick
+                val token = tasks.lifecycleToken()
+                world.projectAsync(runtime, incident.type, final).whenComplete { _, failure -> tasks.callSync(token) {
+                    pendingSaves.remove(runtime.settings.id)
+                    if (runtime.state.sequence != sequence || runtime.state.incident?.objectiveNonce != incident.objectiveNonce) return@callSync
+                    if (failure != null) {
+                        state.log(Level.SEVERE, "Mine drive projection failed zone=${runtime.settings.id}", failure)
+                        return@callSync
+                    }
+                    incidents.work(runtime, player, amount = (incident.required - incident.progress).coerceAtLeast(1))
+                    beginCompletionGrace(runtime, sequence)
+                    presentation.feedback(player, if(incident.type==MineIncidentType.RAIL_EXTENSION) "rail-complete" else "drive-complete")
+                    player.playSound(player.location, Sound.BLOCK_BELL_USE, .8f, 1.3f)
+                } }
             }
         }
     }
@@ -299,38 +340,29 @@ internal class MineWorkingController(
         }
         if (!step.accepted || !pendingSaves.add(runtime.settings.id)) return
         if (step.finished || step.state.stage != working.stage) equipment.clear(runtime)
-        val current = runtime.state.incident ?: run { pendingSaves.remove(runtime.settings.id); return }
-        val next = runtime.state.copy(incident = current.copy(working = step.state))
-        incidents.work(runtime, player, amount = amount, state = next)
         val sequence = runtime.state.sequence
         val nonce = incident.objectiveNonce
-        if (step.finished) {
-            // The coordinator clears the incident on the final action. Project
-            // that last state before the incident lookup disappears.
-            world.project(runtime, incident.type, step.state)
-            beginCompletionGrace(runtime, sequence)
-        }
         val token = tasks.lifecycleToken()
-        state.persistAsync().whenComplete { _, failure ->
+        world.projectAsync(runtime, incident.type, step.state).thenCompose { tasks.callSync(token) {
+            check(runtime.state.sequence == sequence && runtime.state.incident?.objectiveNonce == nonce) { "Working progress superseded" }
+            val current = requireNotNull(runtime.state.incident)
+            incidents.work(runtime, player, amount = amount, state = runtime.state.copy(incident = current.copy(working = step.state)))
+            if (step.finished) beginCompletionGrace(runtime, sequence)
+            state.persistAsync()
+        }.thenCompose { it } }.whenComplete { _, failure ->
             tasks.runSync(token) {
                 pendingSaves.remove(runtime.settings.id)
                 val currentNonce = runtime.state.incident?.objectiveNonce
-                val stale = when {
-                    runtime.state.sequence != sequence -> true
-                    step.finished -> currentNonce != null && currentNonce != nonce
-                    else -> currentNonce != nonce
-                }
+                val stale = runtime.state.sequence != sequence ||
+                    (if (step.finished) currentNonce != null && currentNonce != nonce else currentNonce != nonce)
                 if (stale) return@runSync
                 if (failure != null) {
-                    state.log(Level.SEVERE, "Mine working progress persistence failed zone=${runtime.settings.id} sequence=$sequence stage=${working.stage}", failure)
+                    state.log(Level.SEVERE, "Mine working progress persistence/projection failed zone=${runtime.settings.id} sequence=$sequence stage=${working.stage}", failure)
                     forceCleanup(runtime)
                     if (!step.finished) incidents.abort(runtime)
                     return@runSync
                 }
-                if (!step.finished) {
-                    world.project(runtime)
-                    world.scene(runtime)?.let { presentation.reconcile(runtime, it) }
-                }
+                if (!step.finished) world.scene(runtime)?.let { presentation.reconcile(runtime, it) }
                 player.playSound(player.location, if (working.stage == MineWorkingStage.HEAT) Sound.BLOCK_FIRE_EXTINGUISH
                     else Sound.BLOCK_ANVIL_USE, 0.5f, 1.2f)
             }
@@ -443,7 +475,7 @@ internal class MineWorkingController(
     fun isActive(identity: ServiceItemIdentity): Boolean = equipment.isActive(identity)
     fun release(playerId: UUID, identity: ServiceItemIdentity, reason: WorksitePlayerReleaseReason) = equipment.release(playerId, identity, reason)
 
-    fun transitioning(runtime: MineRuntime): Boolean = runtime.settings.id in pendingSaves || drive.busy(runtime.settings.id) ||
+    fun transitioning(runtime: MineRuntime): Boolean = runtime.settings.id in pendingStarts || runtime.settings.id in pendingSaves || drive.busy(runtime.settings.id) ||
         runtime.settings.id in retiring || runtime.settings.id in completionGrace || world.isRestoring(runtime)
 
     /** Used by admin replacement to end a completed scene without waiting for grace. */
@@ -454,7 +486,10 @@ internal class MineWorkingController(
 
     fun blocksOreSupply(runtime: MineRuntime): Boolean = world.hasScene(runtime) || transitioning(runtime)
 
-    fun cancelPending(zone: String) = placement.cancel(zone)
+    fun cancelPending(zone: String) {
+        pendingStarts.remove(zone)?.completeExceptionally(java.util.concurrent.CancellationException("Working start cancelled"))
+        placement.cancel(zone)
+    }
     fun retire(runtime: MineRuntime) {
         val grace = completionGrace.remove(runtime.settings.id)
         retire(runtime, grace?.scene)

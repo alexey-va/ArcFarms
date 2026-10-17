@@ -31,6 +31,36 @@ import java.util.concurrent.CompletableFuture
 import java.util.random.RandomGenerator
 
 class FarmShiftStartServiceTest : FunSpec({
+    test("planning admission does not reserve or persist a shift until the actual patch is ready") {
+        val planning = CompletableFuture<List<FarmPlotPosition>>()
+        val persistence = CompletableFuture<Unit>()
+        val fixture = fixture(persistence, planning = planning)
+        fixture.service.start(fixture.runtime, fixture.player, 1_000L, fixture.order).shouldBeTrue()
+        fixture.service.isPending("farm").shouldBeTrue()
+        fixture.runtime.state.phase shouldBe FarmPhase.IDLE
+        fixture.lifecycle shouldBe emptyList()
+        fixture.service.start(fixture.runtime, fixture.player, 1_000L, fixture.order) shouldBe false
+        planning.complete(listOf(FarmPlotPosition("farm", 1, 64, 1)))
+        fixture.runtime.state.phase shouldBe FarmPhase.PREPARATION
+        fixture.lifecycle shouldBe listOf("reserve", "persist")
+        verify(exactly = 0) { fixture.transitions.apply(any(), any(), any()) }
+        persistence.complete(Unit)
+        verify(exactly = 1) { fixture.transitions.apply(any(), any(), any()) }
+    }
+
+    test("a changed source or cleared generation cannot start a late planned patch") {
+        for (clear in listOf(false, true)) {
+            val planning = CompletableFuture<List<FarmPlotPosition>>()
+            val fixture = fixture(planning = planning)
+            fixture.service.start(fixture.runtime, fixture.player, 1_000L, fixture.order).shouldBeTrue()
+            if (clear) fixture.service.clearPending() else fixture.runtime.state = fixture.runtime.state.copy(sequence = 9)
+            planning.complete(listOf(FarmPlotPosition("farm", 1, 64, 1)))
+            fixture.lifecycle shouldBe emptyList()
+            fixture.service.isPending("farm") shouldBe false
+            fixture.runtime.state.phase shouldBe FarmPhase.IDLE
+        }
+    }
+
     test("does not apply the field transition before the shift snapshot is durable") {
         val persistence = CompletableFuture<Unit>()
         val fixture = fixture(persistence)
@@ -139,6 +169,7 @@ private data class ShiftStartFixture(
 private fun fixture(
     vararg persistenceAttempts: CompletableFuture<Unit>,
     retrySettings: () -> ShiftStartPersistenceSettings = { ShiftStartPersistenceSettings(1, 4, 5) },
+    planning: CompletableFuture<List<FarmPlotPosition>>? = null,
 ): ShiftStartFixture {
     val retryTasks = mutableListOf<() -> Unit>()
     val retryDelays = mutableListOf<Long>()
@@ -159,7 +190,10 @@ private fun fixture(
     val worldAdmin = mockk<FarmWorldAdminService> { every { anyEditing() } returns false }
     val registry = mockk<FarmBlockRegistry>(relaxed = true) { every { isReindexing(any()) } returns false }
     val patch = listOf(FarmPlotPosition("farm", 1, 64, 1), FarmPlotPosition("farm", 2, 64, 1))
-    val field = mockk<FarmFieldController> { every { selectPatch(any(), any(), any(), any()) } returns patch }
+    val field = mockk<FarmFieldController> {
+        every { selectPatchAsync(any(), any(), any(), any(), any(), any()) } returns
+            (planning ?: CompletableFuture.completedFuture(patch))
+    }
     val carePlans = mockk<FarmCarePlanService> { every { isSeederSequence(any(), any()) } returns false }
     val lifecycle = mutableListOf<String>()
     val attempts = ArrayDeque(persistenceAttempts.toList())

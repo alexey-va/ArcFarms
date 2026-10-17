@@ -102,7 +102,15 @@ internal interface WorksiteStatePort {
 }
 
 internal interface WorksiteTaskPort {
+    /** Retain nested durable writers until the owning plugin generation finishes draining. */
+    fun ownStorage(close: () -> CompletableFuture<Unit>) = Unit
     fun guarded(scope: String, task: () -> Unit)
+    fun capture(token: RuntimeTaskSupervisor.Token, isCurrent: () -> Boolean, step: () -> Boolean): CompletableFuture<Unit>
+    /** Production adapters use the lifecycle-aware core future and owned bounded worker. */
+    fun <T> callSync(token: RuntimeTaskSupervisor.Token, task: () -> T): CompletableFuture<T> =
+        runCatching(task).fold({ CompletableFuture.completedFuture(it) }, { CompletableFuture.failedFuture(it) })
+    fun <T> compute(task: () -> T): CompletableFuture<T> =
+        runCatching(task).fold({ CompletableFuture.completedFuture(it) }, { CompletableFuture.failedFuture(it) })
     fun lifecycleToken(): RuntimeTaskSupervisor.Token
     fun runSync(token: RuntimeTaskSupervisor.Token, task: () -> Unit): Boolean
     fun runAsync(token: RuntimeTaskSupervisor.Token, task: () -> Unit): Boolean

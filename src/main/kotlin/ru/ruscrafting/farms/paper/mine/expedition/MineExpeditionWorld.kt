@@ -85,6 +85,7 @@ internal class MineExpeditionWorld(
         var inFlight = 0
     }
 
+    init { tasks.ownStorage(receipts::flushAndClose) }
     private val scanner = WorksiteAsyncBlockScanner(tasks)
     private val prepared = WorksitePreparedSceneOwner(
         plugin = plugin,
@@ -95,6 +96,7 @@ internal class MineExpeditionWorld(
             AutoCloseable { tickets.release(chunk) }
         },
         blockDataDecoder = blockDataDecoder,
+        tasks = tasks,
         preserveEdits = { record -> receipts.findJournal(record.sequence)?.let { it.siteBuilt && it.placement.geometryVersion >= 3 && !it.restoring } == true },
     )
     private val scenes = linkedMapOf<Long, MineExpeditionScene>()
@@ -107,6 +109,7 @@ internal class MineExpeditionWorld(
     private var prewarm = false
     private val pending = ConcurrentHashMap<Long, Pending>()
     private val restoringLeases = ConcurrentHashMap<Long, MutableList<AutoCloseable>>()
+    private val pendingRepairs = mutableMapOf<Long, Any>()
     private val baselineRepairs = ConcurrentHashMap<Long, ArrayDeque<Pair<ExpeditionPoint, String>>>()
     private data class FactoryFloorRepair(
         val point: ExpeditionPoint,
@@ -184,14 +187,16 @@ internal class MineExpeditionWorld(
     fun retainedScenes(): Collection<MineExpeditionScene> = scenes.values.filterNot { it.reserved }
 
     /** Journal-first bounded block projection for controller-owned machine feedback. */
-    fun project(scene: MineExpeditionScene, changes: Map<ExpeditionPoint, String>): Boolean {
+    fun project(scene: MineExpeditionScene, changes: Map<ExpeditionPoint, String>,
+        isCurrent: () -> Boolean = { scenes[scene.journalSequence] === scene }): java.util.concurrent.CompletableFuture<Boolean> {
         require(changes.size <= 1_024) { "Expedition projection is too large" }
         require(changes.keys.all(scene.plan.bounds::contains)) { "Expedition projection escapes the scene" }
         val worldChanges = changes.mapKeys { (point, _) ->
             Triple(scene.placement.originX + point.x, scene.placement.originY + point.y, scene.placement.originZ + point.z)
         }
-        return prepared.project(scene.prepared, worldChanges).also {
+        return prepared.projectAsync(scene.prepared, worldChanges, isCurrent).thenApply { applied ->
             refreshReady(scene)
+            applied
         }
     }
 
@@ -466,7 +471,7 @@ internal class MineExpeditionWorld(
         var remaining = limit
         var processed = 0
         baselineRepairs.entries.toList().forEach { (key, queue) ->
-            if (remaining == 0) return@forEach
+            if (remaining == 0 || key in pendingRepairs) return@forEach
             val scene = scenes[key] ?: return@forEach
             val batch = buildList {
                 repeat(minOf(remaining, queue.size)) { add(queue.removeFirst()) }
@@ -475,12 +480,19 @@ internal class MineExpeditionWorld(
                 baselineRepairs.remove(key, queue)
                 return@forEach
             }
-            if (project(scene, batch.toMap())) {
-                processed += batch.size
-                remaining -= batch.size
-                if (queue.isEmpty()) baselineRepairs.remove(key, queue)
-            } else {
-                batch.asReversed().forEach(queue::addFirst)
+            processed += batch.size
+            remaining -= batch.size
+            val lease = Any()
+            val token = tasks.lifecycleToken()
+            pendingRepairs[key] = lease
+            project(scene, batch.toMap(), { scenes[key] === scene && baselineRepairs[key] === queue }).whenComplete { applied, failure ->
+                tasks.callSync(token) {
+                    pendingRepairs.remove(key, lease)
+                    if (scenes[key] === scene && baselineRepairs[key] === queue) {
+                        if (failure != null || applied != true) batch.asReversed().forEach(queue::addFirst)
+                        else if (queue.isEmpty()) baselineRepairs.remove(key, queue)
+                    }
+                }
             }
         }
         return processed
@@ -497,7 +509,7 @@ internal class MineExpeditionWorld(
         var remaining = limit
         var processed = 0
         factoryFloorRepairs.entries.toList().forEach { (key, queue) ->
-            if (remaining == 0) return@forEach
+            if (remaining == 0 || key in pendingRepairs) return@forEach
             val scene = scenes[key] ?: return@forEach
             val batch = mutableListOf<FactoryFloorRepair>()
             while (remaining > 0 && queue.isNotEmpty()) {
@@ -519,9 +531,20 @@ internal class MineExpeditionWorld(
                 }
             }
             // One journal rewrite per affected chunk, not one full rewrite per floor block.
-            if (batch.isNotEmpty() && !project(scene, batch.associate { it.point to it.desired }))
-                batch.asReversed().forEach(queue::addFirst)
-            if (queue.isEmpty()) factoryFloorRepairs.remove(key, queue)
+            if (batch.isNotEmpty()) {
+                val lease = Any()
+                val token = tasks.lifecycleToken()
+                pendingRepairs[key] = lease
+                project(scene, batch.associate { it.point to it.desired }, { scenes[key] === scene && factoryFloorRepairs[key] === queue }).whenComplete { applied, failure ->
+                    tasks.callSync(token) {
+                        pendingRepairs.remove(key, lease)
+                        if (scenes[key] === scene && factoryFloorRepairs[key] === queue) {
+                            if (failure != null || applied != true) batch.asReversed().forEach(queue::addFirst)
+                            else if (queue.isEmpty()) factoryFloorRepairs.remove(key, queue)
+                        }
+                    }
+                }
+            } else if (queue.isEmpty()) factoryFloorRepairs.remove(key, queue)
         }
         return processed
     }

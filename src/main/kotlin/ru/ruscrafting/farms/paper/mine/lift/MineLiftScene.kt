@@ -16,6 +16,7 @@ import org.bukkit.util.Transformation
 import org.joml.Quaternionf
 import org.joml.Vector3f
 import java.util.UUID
+import java.util.concurrent.CompletableFuture
 import kotlin.math.ceil
 import kotlin.math.floor
 
@@ -51,7 +52,11 @@ internal class MineLiftScene(private val plugin: Plugin, private val settings: M
     fun owns(entity: Entity) = entity.persistentDataContainer.has(key, PersistentDataType.BYTE) ||
         (legacyKey != null && entity.persistentDataContainer.has(legacyKey, PersistentDataType.BYTE))
     fun cleanOrphans(chunk: org.bukkit.Chunk) {
-        chunk.entities.filter { owns(it) && it !in entities }.forEach(Entity::remove)
+        chunk.entities.forEach(::cleanOrphan)
+    }
+
+    fun cleanOrphan(entity: Entity) {
+        if (owns(entity) && entity !in entities) entity.remove()
     }
 
     /** BlockDisplay is visual only; this padded interaction AABB is the click target for the visible cabin. */
@@ -62,7 +67,16 @@ internal class MineLiftScene(private val plugin: Plugin, private val settings: M
     fun isDoorOpenAt(index: Int): Boolean = index in settings.floors.indices &&
         doorOpening == 1.0 && openDoorSide == settings.openingSide(index)
 
-    fun spawn(y: Double, floorText: (Int) -> Component) {
+    fun spawn(y: Double, floorText: (Int) -> Component): CompletableFuture<Unit> = spawn(y, floorText) { step ->
+        while (!step()) Unit
+        CompletableFuture.completedFuture(Unit)
+    }
+
+    fun spawn(
+        y: Double,
+        floorText: (Int) -> Component,
+        capture: ((() -> Boolean) -> CompletableFuture<Unit>),
+    ): CompletableFuture<Unit> {
         val halfX = settings.width / 2
         val halfZ = settings.depth / 2
         val theme = settings.theme
@@ -106,11 +120,17 @@ internal class MineLiftScene(private val plugin: Plugin, private val settings: M
             }
         }
         val anchorY = settings.floors.first().y + 3
-        repeat(kotlin.math.ceil(anchorY - settings.floors.last().y).toInt()) {
-            chain += display(origin(anchorY), theme.chainMaterial).also { entity ->
-                entity.transformation = transform(.0, .0, .0, 1.0, .0, 1.0)
+        val chainSize = kotlin.math.ceil(anchorY - settings.floors.last().y).toInt()
+        var chainIndex = 0
+        return capture {
+            if (chainIndex == chainSize) true else {
+                val bottom = y + 2.83 + chainIndex++
+                chain += display(Location(world, settings.x - .5, bottom, settings.z - .5), theme.chainMaterial).also { entity ->
+                    entity.transformation = transform(0.0, 0.0, 0.0, 1.0, (anchorY - bottom).coerceIn(0.0, 1.0), 1.0)
+                }
+                chainIndex == chainSize
             }
-        }
+        }.thenApply {
         settings.floors.forEachIndexed { index, floor ->
             val panel = world.spawn(floor.panel.location(world), Interaction::class.java) {
                 mark(it); it.interactionWidth = .85f; it.interactionHeight = 1.3f; it.isResponsive = true
@@ -151,7 +171,10 @@ internal class MineLiftScene(private val plugin: Plugin, private val settings: M
                 it.backgroundColor = org.bukkit.Color.fromARGB(150, 25, 21, 17)
             }.also(entities::add)
         }
+        previousY = y // Each chain link was initialized at this exact height in its capture step.
         move(y, open = true)
+        Unit
+        }
     }
 
     fun move(y: Double, open: Boolean): Boolean {

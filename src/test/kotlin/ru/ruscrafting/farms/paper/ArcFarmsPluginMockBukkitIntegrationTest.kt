@@ -20,6 +20,9 @@ import org.bukkit.inventory.EquipmentSlot
 import org.bukkit.inventory.Inventory
 import org.bukkit.inventory.ItemStack
 import ru.arc.paper.testing.MockBukkitTestRuntime
+import ru.ruscrafting.farms.paper.fixtures.awaitFarmsReady
+import ru.ruscrafting.farms.paper.fixtures.awaitFarmsReload
+import ru.ruscrafting.farms.paper.fixtures.drainFarmsPlugin
 import java.io.InputStreamReader
 import java.nio.file.Files
 import java.nio.file.Path
@@ -34,6 +37,7 @@ class ArcFarmsPluginMockBukkitIntegrationTest : FunSpec({
             val plugin = paper.server.pluginManager.loadPlugin(ArcFarmsPlugin::class.java) as ArcFarmsPlugin
             preparePluginData(plugin.dataFolder.toPath())
             paper.server.pluginManager.enablePlugin(plugin)
+            paper.awaitFarmsReady(plugin)
             val operator = paper.addPlayer("MenuOperator")
             operator.isOp = true
 
@@ -45,10 +49,12 @@ class ArcFarmsPluginMockBukkitIntegrationTest : FunSpec({
                 "ui.menus.templates.farm.name" to "<name> <dark_gray>· Core API</dark_gray>",
             )
             operator.performCommand("arcfarms reload") shouldBe true
+            paper.awaitFarmsReload(plugin)
 
             operator.openInventory.topInventory.getItem(3).plainName() shouldBe "Ферма · Core API"
             paper.server.pluginManager.disablePlugin(plugin)
         } finally {
+            paper.drainFarmsPlugin()
             paper.close()
         }
     }
@@ -62,6 +68,7 @@ class ArcFarmsPluginMockBukkitIntegrationTest : FunSpec({
             val plugin = paper.server.pluginManager.loadPlugin(ArcFarmsPlugin::class.java) as ArcFarmsPlugin
             preparePluginData(plugin.dataFolder.toPath())
             paper.server.pluginManager.enablePlugin(plugin)
+            paper.awaitFarmsReady(plugin)
             plugin.isEnabled shouldBe true
             paper.server.getPluginCommand("arcfarms")?.plugin shouldBe plugin
 
@@ -162,6 +169,7 @@ class ArcFarmsPluginMockBukkitIntegrationTest : FunSpec({
                 "ui.menus.templates.enterprise-market.material" to "IRON_INGOT",
             )
             operator.performCommand("arcfarms reload") shouldBe true
+            paper.awaitFarmsReload(plugin)
             val reloadedRoot = operator.openInventory.topInventory
             reloadedRoot.getItem(3)?.type shouldBe Material.BEETROOT
             reloadedRoot.getItem(3)?.itemMeta?.customModelData shouldBe 31_099
@@ -177,6 +185,7 @@ class ArcFarmsPluginMockBukkitIntegrationTest : FunSpec({
                 "ui.menus.templates.enterprise-report.custom-model-data" to 31_100,
             )
             operator.performCommand("arcfarms reload") shouldBe true
+            paper.awaitFarmsReload(plugin)
             val reloadedCompany = operator.openInventory.topInventory
             reloadedCompany.size shouldBe 45
             reloadedCompany.getItem(10)?.itemMeta?.customModelData shouldBe 31_100
@@ -193,6 +202,7 @@ class ArcFarmsPluginMockBukkitIntegrationTest : FunSpec({
                 "ui.menus.templates.enterprise-market.material" to "AIR",
             )
             operator.performCommand("arcfarms reload") shouldBe true
+            paper.awaitFarmsReload(plugin)
             clickTopInventory(paper, operator, 36)
             paper.performTicks(1)
             clickTopInventory(paper, operator, 3)
@@ -210,6 +220,7 @@ class ArcFarmsPluginMockBukkitIntegrationTest : FunSpec({
                 originalMarketLocale,
             )
             operator.performCommand("arcfarms reload") shouldBe true
+            paper.awaitFarmsReload(plugin)
 
             updatePluginConfig(
                 plugin.dataFolder.toPath(),
@@ -222,6 +233,7 @@ class ArcFarmsPluginMockBukkitIntegrationTest : FunSpec({
                 "<color:#ff5555>REJECTED COMPANY GENERATION</color>",
             )
             operator.performCommand("arcfarms reload") shouldBe true
+            paper.awaitFarmsReload(plugin)
             clickTopInventory(paper, operator, 36)
             paper.performTicks(1)
             clickTopInventory(paper, operator, 3)
@@ -263,6 +275,7 @@ class ArcFarmsPluginMockBukkitIntegrationTest : FunSpec({
             plugin.isEnabled shouldBe false
             world.entities.count { it !is Player } shouldBe 0
         } finally {
+            paper.drainFarmsPlugin()
             paper.close()
         }
     }

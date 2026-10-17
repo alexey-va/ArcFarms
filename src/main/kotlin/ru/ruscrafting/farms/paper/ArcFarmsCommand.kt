@@ -19,7 +19,7 @@ class ArcFarmsCommand(
     private val service: ArcFarmsService,
     private val locale: ArcFarmsLocale,
     private val menu: ArcFarmsMenu,
-    private val reload: () -> Result<Unit>,
+    private val reload: () -> java.util.concurrent.CompletableFuture<Unit>,
 ) : CommandExecutor, TabCompleter {
     override fun onCommand(sender: CommandSender, command: Command, label: String, args: Array<out String>): Boolean {
         return try {
@@ -141,18 +141,13 @@ class ArcFarmsCommand(
             sender.sendMessage(locale.render(MessageKey.NO_PERMISSION, sender))
             return
         }
-        reload().fold(
-            onSuccess = { sender.sendMessage(locale.render(MessageKey.RELOAD_OK, sender)) },
-            onFailure = { failure ->
-                sender.sendMessage(
-                    locale.render(
-                        MessageKey.RELOAD_FAILED,
-                        sender,
-                        mapOf("reason" to locale.text(failure.message ?: "unknown")),
-                    ),
-                )
-            },
-        )
+        reload().whenComplete { _, failure ->
+            // The plugin completes admitted reloads on Paper. Cancellation after disable is silent.
+            if (!org.bukkit.Bukkit.isPrimaryThread()) return@whenComplete
+            if (failure == null) sender.sendMessage(locale.render(MessageKey.RELOAD_OK, sender))
+            else sender.sendMessage(locale.render(MessageKey.RELOAD_FAILED, sender,
+                mapOf("reason" to locale.text(failure.cause?.message ?: failure.message ?: "unknown"))))
+        }
     }
 
     private fun admin(sender: CommandSender, args: List<String>) {
@@ -278,17 +273,17 @@ class ArcFarmsCommand(
                     sender.sendMessage(locale.render(MessageKey.ADMIN_HELP, sender))
                     return
                 }
-                service.adminSetFarmStage(player, zone, stage)
+                service.adminSetFarmStageAsync(player, zone, stage)
             }
             "next" -> {
                 val zone = args.getOrNull(1)
                 if (zone == null) sender.sendMessage(locale.render(MessageKey.ADMIN_HELP, sender))
-                else service.adminAdvanceFarm(player, zone)
+                else service.adminAdvanceFarmAsync(player, zone)
             }
             "finish" -> {
                 val zone = args.getOrNull(1)
                 if (zone == null) sender.sendMessage(locale.render(MessageKey.ADMIN_HELP, sender))
-                else service.adminSetFarmStage(player, zone, "complete")
+                else service.adminSetFarmStageAsync(player, zone, "complete")
             }
             "event" -> {
                 val zone = args.getOrNull(1)
@@ -310,27 +305,21 @@ class ArcFarmsCommand(
                         "zone" to locale.text(zone),
                         "incident" to locale.renderPath("mine.incident-name.${event.lowercase()}", sender),
                     )
-                    val started = service.adminSetMineIncident(player,
-                        service.mineZoneIds().first { it.equals(zone, ignoreCase = true) }, event)
-                    sender.sendMessage(
-                        locale.renderPath(
-                            if (started) {
-                                "admin.worksite.incident-started"
-                            } else {
-                                "admin.worksite.incident-rejected"
-                            },
-                            sender,
-                            values,
-                        ),
-                    )
-                    if (!started) sendMinePlacementFailure(sender, zone, event)
+                    service.adminSetMineIncidentAsync(player,
+                        service.mineZoneIds().first { it.equals(zone, ignoreCase = true) }, event).whenComplete { result, failure ->
+                        if (!Bukkit.isPrimaryThread() || !player.isOnline) return@whenComplete
+                        val started = failure == null && result == true
+                        sender.sendMessage(locale.renderPath(
+                            if (started) "admin.worksite.incident-started" else "admin.worksite.incident-rejected", sender, values))
+                        if (!started) sendMinePlacementFailure(sender, zone, event)
+                    }
                 } else {
                     val event = rawEvent?.lowercase()
                     if (zone == null || event !in EVENT_STAGES) {
                         sender.sendMessage(locale.render(MessageKey.ADMIN_HELP, sender))
                         return
                     }
-                    service.adminSetFarmStage(player, zone, requireNotNull(event))
+                    service.adminSetFarmStageAsync(player, zone, requireNotNull(event))
                 }
             }
             "route" -> {
@@ -350,7 +339,7 @@ class ArcFarmsCommand(
                     else -> sender.sendMessage(locale.render(MessageKey.ADMIN_HELP_ROUTE, sender))
                 }
             }
-            "reset-farm" -> args.getOrNull(1)?.let { service.adminSetFarmStage(player, it, "reset") }
+            "reset-farm" -> args.getOrNull(1)?.let { service.adminSetFarmStageAsync(player, it, "reset") }
                 ?: sendShortcutHelp(sender, action)
             "stop-order-cycle" -> args.getOrNull(1)?.let { service.adminStopFarmOrderCycle(player, it) }
                 ?: sendShortcutHelp(sender, action)
@@ -397,9 +386,9 @@ class ArcFarmsCommand(
                 sender.sendMessage(locale.render(MessageKey.ADMIN_ZONE_UNKNOWN, sender, mapOf("zone" to locale.text(zone))))
             }
             "show", "markers" -> service.adminShowFarmGuidance(player, zone)
-            "next", "resolve" -> service.adminAdvanceFarm(player, zone)
-            "finish" -> service.adminSetFarmStage(player, zone, "complete")
-            "reset" -> service.adminSetFarmStage(player, zone, "reset")
+            "next", "resolve" -> service.adminAdvanceFarmAsync(player, zone)
+            "finish" -> service.adminSetFarmStageAsync(player, zone, "complete")
+            "reset" -> service.adminSetFarmStageAsync(player, zone, "reset")
             "contract" -> {
                 val orderId = args.getOrNull(2)
                 if (orderId == null) sender.sendMessage(locale.render(MessageKey.ADMIN_DEBUG_HELP, sender))
@@ -408,14 +397,14 @@ class ArcFarmsCommand(
             "stage" -> {
                 val stage = args.getOrNull(2)
                 if (stage == null) sender.sendMessage(locale.render(MessageKey.ADMIN_DEBUG_HELP, sender))
-                else service.adminSetFarmStage(player, zone, stage)
+                else service.adminSetFarmStageAsync(player, zone, stage)
             }
             "event" -> {
                 val event = args.getOrNull(2)?.lowercase()
                 if (event !in EVENT_STAGES) {
                     sender.sendMessage(locale.render(MessageKey.ADMIN_DEBUG_HELP, sender))
                 } else {
-                    service.adminSetFarmStage(player, zone, requireNotNull(event))
+                    service.adminSetFarmStageAsync(player, zone, requireNotNull(event))
                 }
             }
             "give" -> {
@@ -681,14 +670,13 @@ class ArcFarmsCommand(
                 if (player == null) {
                     sender.sendMessage(locale.render(MessageKey.PLAYER_ONLY, sender))
                 } else {
-                    val accepted = incident != null && admin.forceIncident(zone, incident, System.currentTimeMillis())
-                    sender.sendMessage(
-                        locale.renderPath(
-                            if (accepted) "admin.worksite.incident-started" else "admin.worksite.incident-rejected",
-                            sender,
-                            values,
-                        ),
-                    )
+                    val result = incident?.let { admin.forceIncidentAsync(zone, it, System.currentTimeMillis()) }
+                        ?: java.util.concurrent.CompletableFuture.completedFuture(false)
+                    result.whenComplete { accepted, failure ->
+                        if (!Bukkit.isPrimaryThread() || !player.isOnline) return@whenComplete
+                        sender.sendMessage(locale.renderPath(
+                            if (failure == null && accepted == true) "admin.worksite.incident-started" else "admin.worksite.incident-rejected", sender, values))
+                    }
                 }
             }
             "reindex" -> when (args.getOrNull(3)?.lowercase() ?: "start") {

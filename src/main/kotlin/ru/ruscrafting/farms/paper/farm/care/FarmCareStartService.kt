@@ -6,12 +6,18 @@ import ru.ruscrafting.farms.paper.FarmRuntime
 import ru.ruscrafting.farms.paper.worksite.WorksiteStatePort
 import ru.ruscrafting.farms.paper.farm.care.mole.FarmMoleBurrowController
 import java.util.logging.Level
+import java.util.concurrent.CompletableFuture
 
 /** Prepares and rolls back world-backed care resources around the state transition. */
 internal class FarmCareStartService(
     private val port: WorksiteStatePort,
     private val moles: FarmMoleBurrowController,
 ) {
+    fun prepareAsync(runtime: FarmRuntime, plan: FarmCarePlan): CompletableFuture<Boolean> {
+        if (plan.type != FarmCareType.MOLES) return CompletableFuture.completedFuture(true)
+        return moles.prepareAsync(runtime, plan.targets, runtime.state.nextPlacementSequence())
+    }
+
     fun prepare(runtime: FarmRuntime, plan: FarmCarePlan): Boolean {
         if (plan.type != FarmCareType.MOLES) return true
         val prepared = moles.prepare(runtime, plan.targets, runtime.state.nextPlacementSequence())

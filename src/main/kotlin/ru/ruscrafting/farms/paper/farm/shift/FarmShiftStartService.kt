@@ -61,16 +61,19 @@ internal class FarmShiftStartService(
     )
 
     private val pendingStarts = mutableMapOf<String, PendingStart>()
+    private val pendingPlanning = mutableMapOf<String, Any>()
 
     fun clearPending() {
         pendingStarts.clear()
+        pendingPlanning.clear()
     }
 
-    fun isPending(zoneId: String): Boolean = zoneId in pendingStarts
+    fun isPending(zoneId: String): Boolean = zoneId in pendingStarts || zoneId in pendingPlanning
 
+    /** True acknowledges admission; field selection and the durable start finish asynchronously. */
     fun start(runtime: FarmRuntime, player: Player, now: Long, forcedOrder: FarmOrder? = null): Boolean {
         if (runtime.state.phase != FarmPhase.IDLE) return false
-        if (runtime.settings.id in pendingStarts) return false
+        if (isPending(runtime.settings.id)) return false
         if (orderCycle.isPaused(runtime.settings.id) || registry.isReindexing(runtime.settings.id)) return false
         if (worldAdmin.anyEditing()) return false
         if (!access.allowInteraction("farm-patch-scan:${runtime.settings.id}", 5_000)) return false
@@ -82,7 +85,39 @@ internal class FarmShiftStartService(
         )
         val seederShift = carePlans.isSeederSequence(runtime, runtime.state.sequence + 1L)
         val targetSize = if (seederShift) runtime.settings.seederPatchSize else runtime.settings.preparationPatchSize
-        val patch = field.selectPatch(runtime, player.location, seederShift, runtime.state.sequence)
+        val source = runtime.state
+        val rules = runtime.settings
+        val region = runtime.region
+        val world = player.world
+        val request = Any()
+        val token = tasks.lifecycleToken()
+        pendingPlanning[rules.id] = request
+        fun current() = pendingPlanning[rules.id] === request && runtime.state === source && runtime.settings === rules &&
+            runtime.region === region && player.isOnline && player.world === world &&
+            !orderCycle.isPaused(rules.id) && !registry.isReindexing(rules.id) && !worldAdmin.anyEditing()
+        runCatching {
+            field.selectPatchAsync(runtime, player.location, seederShift, source.sequence, isCurrent = ::current)
+        }.getOrElse { CompletableFuture.failedFuture(it) }.whenComplete { patch, failure ->
+            tasks.runSync(token) {
+                val accepted = current()
+                if (pendingPlanning[rules.id] !== request) return@runSync
+                pendingPlanning.remove(rules.id, request)
+                if (!accepted) return@runSync
+                if (failure != null) {
+                    state.log(Level.WARNING, "Could not select farm patch for ${rules.id}; shift remains idle", failure)
+                    audience.sendActionBar(player, MessageKey.FARM_PATCH_UNAVAILABLE)
+                    return@runSync
+                }
+                stage(runtime, player, now, order, seederShift, targetSize, patch, token)
+            }
+        }
+        return true
+    }
+
+    private fun stage(
+        runtime: FarmRuntime, player: Player, now: Long, order: FarmOrder, seederShift: Boolean,
+        targetSize: Int, patch: List<FarmPlotPosition>, token: RuntimeTaskSupervisor.Token,
+    ) {
         if (patch.isEmpty()) {
             state.log(
                 Level.WARNING,
@@ -101,7 +136,7 @@ internal class FarmShiftStartService(
                     "search_radius" to runtime.settings.preparationSearchRadius,
                 )
             }
-            return false
+            return
         }
         val preparationCrop = order.required.filterKeys {
             MaterialRules.isPlantableCrop(MaterialRules.material(it))
@@ -125,11 +160,10 @@ internal class FarmShiftStartService(
             patch = patch,
             targetSize = targetSize,
             seederShift = seederShift,
-            token = tasks.lifecycleToken(),
+            token = token,
         )
         pendingStarts[runtime.settings.id] = pending
         persistUntilStable(pending, failedAttempts = 0)
-        return true
     }
 
     private fun persistUntilStable(pending: PendingStart, failedAttempts: Int) {

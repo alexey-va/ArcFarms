@@ -97,4 +97,6 @@ object FarmMoleBurrowDecorationPlanner {
     private val WALL = listOf("TUFF", "DRIPSTONE_BLOCK", "DEEPSLATE", "ROOTED_DIRT", "PACKED_MUD")
     private val CEILING = listOf("TUFF", "DRIPSTONE_BLOCK", "DEEPSLATE", "MOSS_BLOCK")
     private val ROOM_ACCENTS = listOf("BROWN_MUSHROOM", "RED_MUSHROOM", "POINTED_DRIPSTONE")
+    val materials: Set<String> = (ENTRANCE_FLOOR + PASSAGE_FLOOR + LAIR_FLOOR + WALL + CEILING + ROOM_ACCENTS +
+        listOf("HANGING_ROOTS", "SPORE_BLOSSOM", "AMETHYST_BLOCK", "CALCITE", "MOSS_CARPET")).toSet()
 }

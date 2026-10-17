@@ -25,17 +25,17 @@ class ArcFarmsCommandAdminCoverageTest : FunSpec({
         }
         val service = mockk<ArcFarmsService>(relaxed = true) {
             every { adminSetFarmPoint(any(), any(), any()) } returns true
-            every { adminSetFarmStage(any(), any(), any()) } returns true
+            every { adminSetFarmStageAsync(any(), any(), any()) } returns java.util.concurrent.CompletableFuture.completedFuture(true)
             every { mineZoneIds() } returns listOf("old_shafts")
             every { mineIncidentIds() } returns listOf("GAS_LEAK")
-            every { adminSetMineIncident(any(), any(), any()) } returns true
+            every { adminSetMineIncidentAsync(any(), any(), any()) } returns java.util.concurrent.CompletableFuture.completedFuture(true)
         }
         val command = mockk<Command>(relaxed = true)
         val handler = ArcFarmsCommand(
             service,
             mockk<ArcFarmsLocale>(relaxed = true),
             mockk<ArcFarmsMenu>(relaxed = true),
-        ) { Result.success(Unit) }
+        ) { java.util.concurrent.CompletableFuture.completedFuture(Unit) }
 
         handler.onCommand(
             player,
@@ -57,8 +57,8 @@ class ArcFarmsCommandAdminCoverageTest : FunSpec({
         )
 
         verify(exactly = 1) { service.adminSetFarmPoint(player, "communal_farm", FarmPointKind.FIREWOOD) }
-        verify(exactly = 1) { service.adminSetFarmStage(player, "communal_farm", "frost") }
-        verify(exactly = 1) { service.adminSetMineIncident(player, "old_shafts", "GAS_LEAK") }
+        verify(exactly = 1) { service.adminSetFarmStageAsync(player, "communal_farm", "frost") }
+        verify(exactly = 1) { service.adminSetMineIncidentAsync(player, "old_shafts", "GAS_LEAK") }
         handler.onTabComplete(
             player,
             command,
@@ -94,7 +94,7 @@ class ArcFarmsCommandAdminCoverageTest : FunSpec({
         }
         val locale = mockk<ArcFarmsLocale>(relaxed = true)
         val command = mockk<Command>(relaxed = true)
-        val handler = ArcFarmsCommand(service, locale, mockk<ArcFarmsMenu>(relaxed = true)) { Result.success(Unit) }
+        val handler = ArcFarmsCommand(service, locale, mockk<ArcFarmsMenu>(relaxed = true)) { java.util.concurrent.CompletableFuture.completedFuture(Unit) }
 
         handler.onCommand(console, command, "arcfarms", arrayOf("admin", "worksite", "mine", "old_shafts", "status"))
         handler.onCommand(console, command, "arcfarms", arrayOf("admin", "worksite", "mine", "old_shafts", "reindex", "start"))
@@ -112,9 +112,8 @@ class ArcFarmsCommandAdminCoverageTest : FunSpec({
     }
 
     test("rejected mine event reports exact automatic placement requirement without a point command") {
-        val player = mockk<Player>(relaxed = true) {
-            every { hasPermission("arcfarms.admin") } returns true
-        }
+        ru.arc.paper.testing.MockBukkitTestRuntime.open().use { paper ->
+        val player = paper.server.addPlayer().apply { isOp = true }
         val report = MineIncidentPlacementReport(
             MineIncidentType.CAVE_IN, required = 1, usable = 0, considered = 17,
             rejected = mapOf("missing_stone_or_ore_ceiling" to 12, "footprint_occupied" to 5),
@@ -122,14 +121,14 @@ class ArcFarmsCommandAdminCoverageTest : FunSpec({
         val service = mockk<ArcFarmsService>(relaxed = true) {
             every { mineZoneIds() } returns listOf("old_shafts")
             every { mineIncidentIds() } returns listOf("CAVE_IN")
-            every { adminSetMineIncident(any(), any(), any()) } returns false
+            every { adminSetMineIncidentAsync(any(), any(), any()) } returns java.util.concurrent.CompletableFuture.completedFuture(false)
             every { mineIncidentDiagnostics("old_shafts", MineIncidentType.CAVE_IN) } returns report
         }
         val locale = mockk<ArcFarmsLocale>(relaxed = true) {
             every { text(any()) } returns Component.empty()
             every { renderPath(any(), any(), any()) } returns Component.empty()
         }
-        val handler = ArcFarmsCommand(service, locale, mockk<ArcFarmsMenu>(relaxed = true)) { Result.success(Unit) }
+        val handler = ArcFarmsCommand(service, locale, mockk<ArcFarmsMenu>(relaxed = true)) { java.util.concurrent.CompletableFuture.completedFuture(Unit) }
 
         handler.onCommand(player, mockk(relaxed = true), "arcfarms", arrayOf("admin", "event", "old_shafts", "CAVE_IN"))
 
@@ -140,6 +139,7 @@ class ArcFarmsCommandAdminCoverageTest : FunSpec({
         verify(exactly = 1) { service.mineIncidentDiagnostics("old_shafts", MineIncidentType.CAVE_IN) }
         verify(exactly = 0) { service.mineIncidentDiagnostics("old_shafts") }
         verify(exactly = 0) { locale.renderPath("admin.mine-point.help", any(), any()) }
+    }
     }
 
     test("factory preset validates the configured zone and queues only the next dead factory") {
@@ -153,7 +153,7 @@ class ArcFarmsCommandAdminCoverageTest : FunSpec({
         val locale = mockk<ArcFarmsLocale>(relaxed = true) {
             every { renderPath(any(), any(), any()) } returns Component.empty()
         }
-        val handler = ArcFarmsCommand(service, locale, mockk<ArcFarmsMenu>(relaxed = true)) { Result.success(Unit) }
+        val handler = ArcFarmsCommand(service, locale, mockk<ArcFarmsMenu>(relaxed = true)) { java.util.concurrent.CompletableFuture.completedFuture(Unit) }
 
         handler.onCommand(
             player, mockk(relaxed = true), "arcfarms",

@@ -66,6 +66,8 @@ class MineFurnishingEditorLifecycleTest : FunSpec({
 })
 
 private class EditorTestTasks(private val supervisor: RuntimeTaskSupervisor) : WorksiteTaskPort {
+    override fun capture(token: RuntimeTaskSupervisor.Token, isCurrent: () -> Boolean, step: () -> Boolean) =
+        supervisor.capture(token, isCurrent, step)
     var tokenRequests = 0
     override fun lifecycleToken(): RuntimeTaskSupervisor.Token { tokenRequests++; return supervisor.token() }
     override fun guarded(scope: String, task: () -> Unit) = task()

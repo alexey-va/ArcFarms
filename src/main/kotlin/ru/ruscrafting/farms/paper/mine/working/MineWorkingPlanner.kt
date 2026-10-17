@@ -26,23 +26,23 @@ internal object MineWorkingPlanner {
                 if (depth <= ENTRY_AIR_DEPTH) {
                     val overheadLamp = position.y >= plan.entrance.y + 3 &&
                         material in setOf(Material.LANTERN, Material.IRON_CHAIN)
-                    if (!material.isAir && !overheadLamp) return "entry_not_clear"
-                } else if (!isGeological(material) && !material.isAir) {
+                    if (!isAir(material) && !overheadLamp) return "entry_not_clear"
+                } else if (!isGeological(material) && !isAir(material)) {
                     return "new_volume_not_geological"
                 }
             }
         plan.cartRoute.forEach { position ->
             val material = typeAt(position) ?: return "unknown_track_volume"
             if (distanceAlong(plan.placement, position) <= ENTRY_AIR_DEPTH) {
-                if (!material.isAir) return "track_entry_not_clear"
-            } else if (!isGeological(material) && !material.isAir) {
+                if (!isAir(material)) return "track_entry_not_clear"
+            } else if (!isGeological(material) && !isAir(material)) {
                 return "track_volume_not_geological"
             }
         }
         if (plan.type == MineIncidentType.TUNNEL_DRIVE) {
             plan.excavation.forEach { position ->
                 val material = typeAt(position) ?: return "unknown_excavation"
-                if (!isGeological(material) && !material.isAir) return "excavation_not_geological"
+                if (!isGeological(material) && !isAir(material)) return "excavation_not_geological"
             }
         }
         plan.stations.values.forEach { position ->
@@ -54,7 +54,7 @@ internal object MineWorkingPlanner {
         if (!isGeological(surfaceGround)) return "surface_not_geological"
         (1..3).forEach { up ->
             val material = typeAt(surface.copy(y = surface.y + up)) ?: return "unknown_surface_clearance"
-            if (!material.isAir) return "surface_not_clear"
+            if (!isAir(material)) return "surface_not_clear"
         }
         return null
     }
@@ -69,6 +69,9 @@ internal object MineWorkingPlanner {
     fun validateSnapshot(plan: MineWorkingPlan, snapshot: Map<WorksitePosition, Material>): String? =
         rejection(plan) { snapshot[it] }
 
+    // Paper 1.21's three air enum constants; equality is detached and never calls a native registry.
+    private fun isAir(material: Material): Boolean = material == Material.AIR || material == Material.CAVE_AIR || material == Material.VOID_AIR
+
     private fun isGeological(material: Material): Boolean = material in GEOLOGICAL
 
     /**
@@ -77,7 +80,7 @@ internal object MineWorkingPlanner {
      * containers and arbitrary decorative blocks still reject placement.
      */
     private fun isNaturalVolume(material: Material): Boolean =
-        isGeological(material) || material.isAir || material in EXISTING_DRESSING
+        isGeological(material) || isAir(material) || material in EXISTING_DRESSING
 
     // Authored compact-mine stubs expose the entrance block and one forward
     // block; the first rock block is the drill face at distance two.

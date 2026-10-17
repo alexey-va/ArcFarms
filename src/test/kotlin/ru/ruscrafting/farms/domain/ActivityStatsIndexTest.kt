@@ -8,6 +8,44 @@ import java.util.UUID
 import java.util.concurrent.CompletableFuture
 
 class ActivityStatsIndexTest : FunSpec({
+    test("immutable roots stay stable while deferred ranking publishes one captured revision") {
+        val work = ArrayDeque<() -> Unit>()
+        val first = UUID(0, 1)
+        val second = UUID(0, 2)
+        val index = ActivityStatsIndex(calculate = { task ->
+            CompletableFuture<Unit>().also { completion -> work += {
+                runCatching(task).fold({ completion.complete(Unit) }, completion::completeExceptionally)
+            } }
+        })
+        index.contribute(first, ActivityKind.FARM, 7)
+        val snapshot = index.snapshot()
+        index.contribute(second, ActivityKind.FARM, 12)
+        snapshot.keys shouldBe setOf(first)
+        index.leaderboard(ActivityKind.FARM) shouldBe emptyList()
+        work.size shouldBe 1
+        work.removeFirst().invoke()
+        index.leaderboard(ActivityKind.FARM) shouldBe listOf(first to 7L)
+        work.size shouldBe 1
+        work.removeFirst().invoke()
+        index.leaderboard(ActivityKind.FARM) shouldBe listOf(second to 12L, first to 7L)
+        snapshot[first]?.contributions?.get(ActivityKind.FARM) shouldBe 7L
+    }
+
+    test("restored replacement fences a ranking that was already computing") {
+        val work = ArrayDeque<() -> Unit>()
+        val first = UUID(0, 1)
+        val second = UUID(0, 2)
+        val index = ActivityStatsIndex(calculate = { task ->
+            CompletableFuture<Unit>().also { completion -> work += { task(); completion.complete(Unit) } }
+        })
+        index.contribute(first, ActivityKind.FARM, 7)
+        index.replace(mapOf(second to PlayerActivityStats(contributions = mapOf(ActivityKind.FARM to 12))))
+        work.removeFirst().invoke()
+        index.leaderboard(ActivityKind.FARM) shouldBe emptyList()
+        work.removeFirst().invoke()
+        index.leaderboard(ActivityKind.FARM) shouldBe listOf(second to 12L)
+    }
+
     test("concurrent placeholder reads cannot race gameplay statistic writes") {
         val index = ActivityStatsIndex()
         val player = UUID(0, 42)

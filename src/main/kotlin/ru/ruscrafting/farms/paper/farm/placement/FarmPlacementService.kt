@@ -15,6 +15,9 @@ import ru.ruscrafting.farms.paper.FarmRuntime
 import ru.ruscrafting.farms.paper.farm.FarmPointProvider
 import ru.ruscrafting.farms.paper.platform.FarmBlockPassability
 import ru.ruscrafting.farms.paper.platform.PaperFarmBlockPassability
+import java.util.concurrent.CompletableFuture
+import ru.ruscrafting.farms.domain.FarmPointPosition
+import ru.ruscrafting.farms.paper.worksite.WorksiteTaskPort
 import java.util.random.RandomGenerator
 
 /** Loaded-column guard shared by every procedurally placed outdoor farm scene. */
@@ -61,7 +64,125 @@ internal class FarmPlacementService(
     private val points: FarmPointProvider,
     private val debug: ArcFarmsDebug,
     private val random: RandomGenerator,
+    private val tasks: WorksiteTaskPort? = null,
 ) {
+    fun sourcesAsync(runtime: FarmRuntime, preferred: Location?, current: () -> Boolean): CompletableFuture<List<FarmPointPosition>> {
+        val work = tasks ?: return CompletableFuture.completedFuture(sources(runtime, preferred).map { FarmPointPosition(it.world.name, it.x, it.y, it.z) })
+        val token = work.lifecycleToken()
+        val world = runtime.region.world
+        val worldName = world.name
+        val players = world.players.iterator()
+        val found = linkedMapOf<Triple<Int, Int, Int>, FarmPointPosition>()
+        fun add(location: Location) {
+            if (location.world === world && runtime.region.contains(location)) found.putIfAbsent(
+                Triple(location.blockX, location.blockY, location.blockZ), FarmPointPosition(worldName, location.x, location.y, location.z),
+            )
+        }
+        preferred?.let(::add)
+        val patch = runtime.state.preparationPatch
+        return work.capture(token, current) {
+            if (found.size >= MAX_SOURCES || !players.hasNext()) return@capture true
+            add(players.next().location)
+            found.size >= MAX_SOURCES || !players.hasNext()
+        }.thenCompose {
+            if (found.isNotEmpty()) return@thenCompose CompletableFuture.completedFuture(found.values.toList())
+            if (patch.isEmpty()) return@thenCompose CompletableFuture.completedFuture(listOf(points.resolve(runtime, FarmPointKind.RECEIVING)))
+            work.compute { listOf(FarmPointPosition(worldName, patch.sumOf { it.x }.toDouble() / patch.size,
+                patch.sumOf { it.y }.toDouble() / patch.size, patch.sumOf { it.z }.toDouble() / patch.size)) }
+        }
+    }
+
+    fun bedCandidatesAsync(
+        runtime: FarmRuntime, sources: Collection<FarmPointPosition>, radius: Int, current: () -> Boolean,
+    ): CompletableFuture<List<FarmDeliveryPosition>> {
+        val work = tasks ?: return CompletableFuture.completedFuture(bedCandidates(runtime, sources.map { Location(runtime.region.world, it.x, it.y, it.z) }, radius))
+        val token = work.lifecycleToken()
+        val world = runtime.region.world
+        val worldName = world.name
+        val sourcePoints = sources.filter { it.world == worldName }.take(MAX_SOURCES)
+        val roots = blockRegistry.beds(runtime.settings.id)
+        val crops = runtime.settings.crops
+        val radiusSquared = radius.toDouble() * radius
+        return work.compute {
+            roots.filter { bed -> bed.world == worldName && sourcePoints.any { source ->
+                val dx = bed.x + 0.5 - source.x; val dz = bed.z + 0.5 - source.z
+                dx * dx + dz * dz <= radiusSquared
+            } }
+        }.thenCompose { candidates ->
+            work.callSync(token) {
+                val iterator = candidates.iterator()
+                val valid = mutableListOf<FarmDeliveryPosition>()
+                work.capture(token, current) {
+                    if (!iterator.hasNext()) return@capture true
+                    val bed = iterator.next()
+                    if (world.isChunkLoaded(bed.x shr 4, bed.z shr 4)) {
+                        val soil = world.getBlockAt(bed.x, bed.y, bed.z)
+                        val crop = soil.getRelative(org.bukkit.block.BlockFace.UP)
+                        val overhead = crop.getRelative(org.bukkit.block.BlockFace.UP)
+                        if (FarmBlockPolicy.isSelectableBed(soil.type, crop.type, crops) && crop.type.name in crops &&
+                            overhead.type.isAir && runtime.region.contains(crop.location) && FarmSurfacePolicy.isOutdoorBed(soil)) {
+                            valid += FarmDeliveryPosition(worldName, bed.x + 0.5, bed.y + 1.05, bed.z + 0.5)
+                        }
+                    }
+                    !iterator.hasNext()
+                }.thenCompose { work.compute { valid.distinct() } }
+            }.thenCompose { it }
+        }
+    }
+
+    fun safeGroundCandidatesAsync(
+        runtime: FarmRuntime, sources: Collection<FarmPointPosition>, radius: Int, current: () -> Boolean,
+    ): CompletableFuture<List<FarmDeliveryPosition>> {
+        val work = tasks ?: return CompletableFuture.completedFuture(safeGroundCandidates(runtime, sources.map { Location(runtime.region.world, it.x, it.y, it.z) }, radius))
+        val token = work.lifecycleToken()
+        val world = runtime.region.world
+        val worldName = world.name
+        val receiving = points.resolve(runtime, FarmPointKind.RECEIVING)
+        val exclusion = runtime.settings.delivery.radius + runtime.settings.placementReceivingExclusionPadding
+        val patch = runtime.state.preparationPatch
+        return work.compute {
+            val columns = patch.mapTo(hashSetOf()) { it.x to it.z }
+            buildList {
+                sources.take(MAX_SOURCES).filter { it.world == worldName }.forEach { source ->
+                    val cx = kotlin.math.floor(source.x).toInt(); val cy = kotlin.math.floor(source.y).toInt(); val cz = kotlin.math.floor(source.z).toInt()
+                    for (x in cx - radius..cx + radius) for (z in cz - radius..cz + radius) {
+                        val dx = x - cx; val dz = z - cz
+                        val rdx = x + 0.5 - receiving.x; val rdz = z + 0.5 - receiving.z
+                        if (dx * dx + dz * dz <= radius * radius && (x to z) !in columns &&
+                            rdx * rdx + rdz * rdz >= exclusion * exclusion) add(Triple(x, cy, z))
+                    }
+                }
+            }
+        }.thenCompose { columns ->
+            work.callSync(token) {
+                val iterator = columns.iterator()
+                val found = mutableListOf<FarmDeliveryPosition>()
+                val offsets = listOf(0, -1, 1, -2, 2)
+                var column: Triple<Int, Int, Int>? = null
+                var offset = 0
+                work.capture(token, current) {
+                    if (column == null) { if (!iterator.hasNext()) return@capture true; column = iterator.next(); offset = 0 }
+                    val (x, y, z) = requireNotNull(column)
+                    val feetY = y + offsets[offset++]
+                    if (world.isChunkLoaded(x shr 4, z shr 4) && feetY in world.minHeight + 1 until world.maxHeight - 1) {
+                        val location = Location(world, x + 0.5, feetY.toDouble(), z + 0.5)
+                        if (runtime.region.contains(location)) {
+                            val floor = world.getBlockAt(x, feetY - 1, z)
+                            val feet = world.getBlockAt(x, feetY, z)
+                            val head = world.getBlockAt(x, feetY + 1, z)
+                            if (floor.type.isSolid && feet.type.isAir && head.type.isAir && FarmSurfacePolicy.isSurfaceSpawn(location)) {
+                                found += FarmDeliveryPosition(worldName, location.x, location.y, location.z)
+                                column = null
+                            }
+                        }
+                    }
+                    if (offset == offsets.size) column = null
+                    column == null && !iterator.hasNext()
+                }.thenCompose { work.compute { found.distinct() } }
+            }.thenCompose { it }
+        }
+    }
+
     fun selectDeliveryAnchor(runtime: FarmRuntime, preferred: Location?): FarmDeliveryPosition {
         val sources = sources(runtime, preferred)
         val candidates = bedCandidates(runtime, sources, runtime.settings.placementSearchRadius)

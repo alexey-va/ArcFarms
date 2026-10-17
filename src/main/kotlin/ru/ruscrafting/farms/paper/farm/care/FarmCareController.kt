@@ -1,5 +1,8 @@
 package ru.ruscrafting.farms.paper.farm.care
 
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.CancellationException
+import ru.ruscrafting.farms.paper.worksite.WorksiteTaskPort
 import org.bukkit.Bukkit
 import org.bukkit.Color
 import org.bukkit.Location
@@ -79,6 +82,7 @@ internal class FarmCareController(
     private val runtimes: () -> Collection<FarmRuntime>,
     private val clock: () -> Long,
     private val entityLookup: FarmEntityLookup = BukkitFarmEntityLookup,
+    private val tasks: WorksiteTaskPort? = null,
 ) {
     private val presentation = FarmCarePresentation(settings)
     private val disease = FarmDiseaseController(
@@ -109,6 +113,7 @@ internal class FarmCareController(
     private val animalFollowers = mutableMapOf<FarmCareEntityKey, UUID>()
     private val reconciledSequences = mutableMapOf<String, Long>()
     private val pollenCharges = FarmPollenCharges()
+    private val pendingStarts = mutableMapOf<String, CompletableFuture<Boolean>>()
     private val starts = FarmCareStartService(state, moles)
     private val ditchWorld = FarmDitchRescueWorld(ledger, state, debug)
     private val zoneKey = NamespacedKey(plugin, "farm_care_zone")
@@ -218,6 +223,7 @@ internal class FarmCareController(
         pollenCharges.remaining(player.uniqueId, runtime.settings.id, runtime.state.sequence) > 0
 
     fun cleanup(reason: String) {
+        pendingStarts.values.forEach { it.completeExceptionally(CancellationException(reason)) }; pendingStarts.clear()
         runtimes().filter { it.state.careType == FarmCareType.DITCH_RESCUE }.forEach(ditchWorld::restore)
         moles.cleanup(reason)
         scarecrows.cleanup(reason)
@@ -229,6 +235,58 @@ internal class FarmCareController(
         reconciledSequences.clear()
         pollenCharges.clearAll()
         debug.event("farm_care_cleanup", "reason" to reason)
+    }
+
+    fun initializeAsync(
+        runtime: FarmRuntime, actor: Player?, preferredType: FarmCareType? = null,
+    ): CompletableFuture<Boolean> {
+        val work = tasks ?: return CompletableFuture.completedFuture(initialize(runtime, actor, preferredType))
+        pendingStarts[runtime.settings.id]?.let { return it }
+        val source = runtime.state
+        val zoneSettings = runtime.settings
+        val ready = if (preferredType == FarmCareType.SEEDER) source.phase == FarmPhase.PREPARATION else source.phase == FarmPhase.HARVESTING
+        if (!ready || source.careType != null) return CompletableFuture.completedFuture(false)
+        val token = work.lifecycleToken()
+        val result = CompletableFuture<Boolean>()
+        pendingStarts[zoneSettings.id] = result
+        fun current() = pendingStarts[zoneSettings.id] === result && runtime.settings === zoneSettings &&
+            runtimes().any { it === runtime } && runtime.state.sequence == source.sequence &&
+            runtime.state.placementSequence == source.placementSequence && runtime.state.phase == source.phase &&
+            runtime.state.careType == null && runtime.state.orderId == source.orderId &&
+            runtime.state.preparationPatch === source.preparationPatch
+        var preparedPlan: FarmCarePlan? = null
+        plans.selectAsync(runtime, preferredType, actor).thenCompose { selected ->
+            work.callSync(token) {
+                if (!current() || selected == null) return@callSync CompletableFuture.completedFuture(false)
+                preparedPlan = selected
+                starts.prepareAsync(runtime, selected).thenCompose { prepared ->
+                    work.callSync(token) {
+                        if (!prepared || !current()) {
+                            if (prepared) starts.rollback(runtime, selected)
+                            return@callSync false
+                        }
+                        val transition = FarmShiftEngine.startCare(runtime.state, selected.type, selected.targets, selected.goal)
+                        if (!transition.accepted) { starts.rollback(runtime, selected); return@callSync false }
+                        transitions.apply(runtime, transition, actor)
+                        if (selected.type == FarmCareType.DISEASE) disease.start(runtime, clock())
+                        ensure(runtime)
+                        state.persistAsync()
+                        true
+                    }
+                }
+            }.thenCompose { it }
+        }.whenComplete { accepted, failure ->
+            // Native completion/rollback is itself lifecycle fenced. A disabled runtime retains
+            // committed scene journals for the next generation's existing recovery path.
+            work.callSync(token) {
+                if (pendingStarts[zoneSettings.id] === result) {
+                    pendingStarts.remove(zoneSettings.id)
+                    if (failure != null) preparedPlan?.let { starts.rollback(runtime, it) }
+                }
+                if (failure == null) result.complete(accepted == true) else result.completeExceptionally(failure)
+            }.whenComplete { _, dispatchFailure -> if (dispatchFailure != null) result.completeExceptionally(dispatchFailure) }
+        }
+        return result
     }
 
     fun initialize(
@@ -899,6 +957,7 @@ internal class FarmCareController(
     }
 
     fun clear(runtime: FarmRuntime, reason: String) {
+        pendingStarts.remove(runtime.settings.id)?.completeExceptionally(CancellationException(reason))
         if (runtime.state.careType == FarmCareType.DITCH_RESCUE) ditchWorld.restore(runtime)
         if (runtime.state.careType == FarmCareType.MOLES) moles.clear(runtime, reason)
         scarecrows.clear(runtime, reason)

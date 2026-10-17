@@ -83,6 +83,7 @@ internal interface MineExpeditionLedgerStorage {
     fun load(): CompletableFuture<MineExpeditionSceneLedger>
     fun save(ledger: MineExpeditionSceneLedger): CompletableFuture<Unit>
     fun shutdown()
+    fun closeAsync(): CompletableFuture<Unit> { shutdown(); return CompletableFuture.completedFuture(Unit) }
 }
 
 private class JsonMineExpeditionLedgerStorage(dataRoot: Path) : MineExpeditionLedgerStorage {
@@ -95,6 +96,7 @@ private class JsonMineExpeditionLedgerStorage(dataRoot: Path) : MineExpeditionLe
     override fun load() = store.loadAsync()
     override fun save(ledger: MineExpeditionSceneLedger) = store.saveAsync(ledger)
     override fun shutdown() = store.shutdown()
+    override fun closeAsync() = store.closeAsync()
 }
 
 /** Serial durable commits. Callers continue world work only after the returned future succeeds. */
@@ -189,11 +191,16 @@ class MineExpeditionSceneRepository internal constructor(private val store: Mine
         return next
     }
 
-    /** Only the validated plugin shutdown boundary may wait for the durable writer. */
-    fun flushAndClose() {
+    /** Retires the producer immediately; all accepted records drain before storage closes. */
+    fun flushAndClose(): CompletableFuture<Unit> {
         val pending = synchronized(this) { closed = true; tail }
-        try { pending.get(10, java.util.concurrent.TimeUnit.SECONDS) }
-        finally { store.shutdown() }
+        return pending.handle { _, failure -> failure }.thenCompose { failure ->
+            store.closeAsync().handle { _, closeFailure ->
+                if (failure != null) { closeFailure?.let(failure::addSuppressed); throw failure }
+                closeFailure?.let { throw it }
+                Unit
+            }
+        }
     }
 
     @Synchronized override fun close() {

@@ -1,5 +1,7 @@
 package ru.ruscrafting.farms.paper.mine.working
 
+import ru.ruscrafting.farms.paper.worksite.WorksiteTaskPort
+import ru.ruscrafting.farms.paper.worksite.captureLoadedEntities
 import org.bukkit.Bukkit
 import org.bukkit.Color
 import org.bukkit.Material
@@ -15,7 +17,9 @@ import ru.ruscrafting.farms.paper.worksite.WorksiteBlockGlow
 import java.util.UUID
 
 /** Outlines actual blocks and the exact shape of the next support or rail. */
-internal class MineWorkingBlockHighlights(plugin: Plugin) {
+internal class MineWorkingBlockHighlights(plugin: Plugin, private val tasks: WorksiteTaskPort? = null) {
+    private val generationKey = NamespacedKey(plugin, "mineworkingblockhighlights_generation")
+    private var generation = java.util.UUID.randomUUID().toString()
     private val tag = NamespacedKey(plugin, "mine_working_block_glow")
     private val displays = mutableMapOf<String, MutableMap<WorksitePosition, UUID>>()
 
@@ -53,7 +57,7 @@ internal class MineWorkingBlockHighlights(plugin: Plugin) {
         expected.forEach { (position, data) ->
             val display = (current[position]?.let(Bukkit::getEntity) as? BlockDisplay)?.takeIf { it.isValid }
                 ?: world.spawn(org.bukkit.Location(world, position.x.toDouble(), position.y.toDouble(), position.z.toDouble()), BlockDisplay::class.java)
-                    .also { current[position] = it.uniqueId; it.persistentDataContainer.set(tag, PersistentDataType.STRING, runtime.settings.id) }
+                    .also { current[position] = it.uniqueId; it.persistentDataContainer.set(tag, PersistentDataType.STRING, runtime.settings.id); it.persistentDataContainer.set(generationKey, PersistentDataType.STRING, generation) }
             WorksiteBlockGlow.apply(display, data, if (drive) Color.fromRGB(80, 235, 255) else Color.fromRGB(255, 194, 84))
         }
     }
@@ -61,9 +65,13 @@ internal class MineWorkingBlockHighlights(plugin: Plugin) {
     fun cleanup(zone: String) { displays.remove(zone)?.values?.forEach { Bukkit.getEntity(it)?.remove() } }
 
     fun reconcileLoaded() {
-        Bukkit.getWorlds().forEach { world -> world.loadedChunks.forEach { chunk ->
-            chunk.entities.filter { it.persistentDataContainer.has(tag, PersistentDataType.STRING) }.forEach { it.remove() }
-        } }
+        generation = java.util.UUID.randomUUID().toString()
         displays.clear()
+        val remove: (org.bukkit.entity.Entity) -> Unit = { entity ->
+            if (entity.persistentDataContainer.has(tag, PersistentDataType.STRING) &&
+                entity.persistentDataContainer.get(generationKey, PersistentDataType.STRING) != generation) entity.remove()
+        }
+        if (tasks != null) tasks.captureLoadedEntities(remove)
+        else Bukkit.getWorlds().forEach { world -> world.loadedChunks.forEach { chunk -> chunk.entities.forEach(remove) } }
     }
 }

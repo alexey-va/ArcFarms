@@ -1,3 +1,5 @@
+import java.security.MessageDigest
+
 plugins {
     kotlin("jvm") version "2.3.0"
     id("com.gradleup.shadow") version "9.3.0"
@@ -5,7 +7,7 @@ plugins {
     jacoco
 }
 group = "ru.ruscrafting"
-version = "0.45.32"
+version = "0.45.33"
 description = "Shared farm, lumbermill, and mine activities for RusCrafting"
 
 val integrationTestSourceSet = sourceSets.create("integrationTest") {
@@ -27,7 +29,7 @@ repositories {
 java { toolchain { languageVersion.set(JavaLanguageVersion.of(25)) } }
 kotlin { jvmToolchain(25) }
 
-val arcCoreVersion = "2.7.33"
+val arcCoreVersion = "2.7.38"
 
 dependencies {
     implementation(kotlin("stdlib"))
@@ -39,6 +41,7 @@ dependencies {
     compileOnly("ru.ruscrafting.arc:arc-core-paper-api:$arcCoreVersion")
     implementation("com.google.code.gson:gson:2.11.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
+    implementation("org.jetbrains.kotlinx:kotlinx-collections-immutable-jvm:0.4.0")
 
     compileOnly("io.papermc.paper:paper-api:1.21.11-R0.1-SNAPSHOT")
     compileOnly("com.sk89q.worldguard:worldguard-bukkit:7.0.16")
@@ -131,6 +134,7 @@ tasks {
         exclude("ru/arc/paper/redis/PaperRedisServiceProvider*.class")
         exclude("ru/arc/paper/redis/SharedPaperRedisService*.class")
         exclude("ru/arc/paper/metrics/PaperArcMetricsProvider*.class")
+        exclude("ru/arc/paper/runtime/PaperNativeCleanupServiceProvider*.class")
         exclude("ru/arc/paper/inspection/**")
     }
     check { dependsOn(shadowJar, "integrationTest") }
@@ -140,6 +144,25 @@ tasks {
 // CI supplies a matching ARC shadow jar; local unit/integration tasks remain
 // independent of an ARC checkout.
 val e2eArcJar = providers.gradleProperty("e2eArcJar").map { file(it) }
+val e2eArcCoreJar = providers.gradleProperty("e2eArcCoreJar").map { file(it) }
+val verifyE2eProvider = tasks.register("verifyE2eProvider") {
+    description = "Verifies the standalone provider used by the isolated Paper fixture."
+    inputs.file(e2eArcCoreJar).optional()
+    doLast {
+        val provider = requireNotNull(e2eArcCoreJar.orNull) {
+            "Supply -Pe2eArcCoreJar=/absolute/path/ArcCore-0.1.12.jar for the real Paper fixture"
+        }
+        val digest = MessageDigest.getInstance("SHA-256")
+            .digest(provider.readBytes()).joinToString("") { "%02x".format(it) }
+        require(digest == "93158072f30ad3d7d5201acdf9036324841c4455844b4f1b650cfea0d8540502") {
+            "ArcCore 0.1.12 fixture checksum mismatch: $digest"
+        }
+    }
+}
+tasks.withType<me.drownek.plugwright.AbstractPlugwrightTask>().configureEach {
+    dependsOn(verifyE2eProvider)
+}
+
 
 // Real Paper coverage, with a one-bed order and a short mounted delivery route.
 plugwright {
@@ -156,6 +179,7 @@ plugwright {
     jvmArgs.set(listOf("-Xms512M", "-Xmx2G", "-XX:ActiveProcessorCount=2"))
     writeFiles {
         e2eArcJar.orNull?.let { file("plugins/ARC.jar", it) }
+        e2eArcCoreJar.orNull?.let { file("plugins/ArcCore.jar", it) }
         file("server.properties", projectDir.resolve("src/test/e2e/fixtures/server.properties"))
         file("plugins/ARC/modules/runtime.yml", projectDir.resolve("src/test/e2e/fixtures/arc-runtime.yml"))
         file("plugins/ARC/modules/redis.yml", projectDir.resolve("src/test/e2e/fixtures/arc-redis.yml"))

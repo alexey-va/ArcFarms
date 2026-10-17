@@ -29,6 +29,8 @@ internal interface WorksiteAdminHandler {
     fun status(zoneId: String): WorksiteAdminStatus?
     fun start(zoneId: String, player: Player): Boolean
     fun forceIncident(zoneId: String, incidentId: String, now: Long): Boolean
+    fun forceIncidentAsync(zoneId: String, incidentId: String, now: Long): java.util.concurrent.CompletableFuture<Boolean> =
+        java.util.concurrent.CompletableFuture.completedFuture(forceIncident(zoneId, incidentId, now))
     fun startReindex(zoneId: String): Boolean
     fun tickReindex(zoneId: String, budget: Int): WorksiteAdminReindexTick?
     fun cancelReindex(zoneId: String): Boolean

@@ -13,7 +13,9 @@ import ru.ruscrafting.farms.paper.mine.incident.power.MinePowerFailureIncident
 import ru.ruscrafting.farms.paper.mine.incident.rescue.MineLostMinerIncident
 import ru.ruscrafting.farms.paper.mine.incident.track.MineTrackDamageIncident
 import ru.ruscrafting.farms.paper.worksite.WorksiteStatePort
+import ru.ruscrafting.farms.paper.worksite.WorksiteTaskPort
 import java.util.logging.Level
+import java.util.concurrent.CompletableFuture
 
 internal class MineIncidentScheduler(
     private val caveIn: MineCaveInIncident,
@@ -29,9 +31,11 @@ internal class MineIncidentScheduler(
     private val state: WorksiteStatePort,
     private val workshop: ru.ruscrafting.farms.paper.mine.workshop.MineOreWorkshopController,
     private val expeditions: ru.ruscrafting.farms.paper.mine.expedition.MineExpeditionController? = null,
+    private val tasks: WorksiteTaskPort? = null,
 ) {
     private val retryAfter = mutableMapOf<String, Long>()
     private val diagnosed = mutableSetOf<String>()
+    private val pending = mutableSetOf<String>()
 
     fun tick(runtime: MineRuntime, now: Long, onlineParticipants: Int): Boolean {
         if (onlineParticipants <= 0 || runtime.state.phase == MinePhase.INCIDENT) return false
@@ -48,13 +52,18 @@ internal class MineIncidentScheduler(
         } else if ((PHASE_RANK[runtime.state.phase] ?: return false) < (INCIDENT_RANK[type] ?: 0)) return false
         val key = "${runtime.settings.id}:${runtime.state.sequence}:${runtime.state.incidentCursor}"
         if (now < (retryAfter[key] ?: 0L)) return false
-        val started = force(runtime, type, now)
-        if (started) {
-            retryAfter.remove(key)
-        } else {
-            retryAfter[key] = now + RETRY_MILLIS
+        if (!pending.add(key)) return false
+        val token = tasks?.lifecycleToken()
+        forceAsync(runtime, type, now).whenComplete { started, failure ->
+            val finish = {
+                pending.remove(key)
+                if (failure == null && started == true) retryAfter.remove(key)
+                else retryAfter[key] = now + RETRY_MILLIS
+                Unit
+            }
+            if (token != null) tasks?.runSync(token, finish) else finish()
         }
-        return started
+        return runtime.state.incident?.type == type
     }
 
     fun force(runtime: MineRuntime, type: MineIncidentType, now: Long): Boolean {
@@ -86,6 +95,19 @@ internal class MineIncidentScheduler(
         return started
     }
 
+    fun forceAsync(runtime: MineRuntime, type: MineIncidentType, now: Long): CompletableFuture<Boolean> {
+        if (type !in setOf(MineIncidentType.TRACK_DAMAGE, MineIncidentType.TUNNEL_DRIVE, MineIncidentType.RAIL_EXTENSION)) {
+            return CompletableFuture.completedFuture(force(runtime, type, now))
+        }
+        if (stateBlocker(runtime, type) != null) return CompletableFuture.completedFuture(false)
+        val key = "${runtime.settings.id}:${runtime.state.sequence}:${runtime.state.incidentCursor}:$type"
+        return workings.startAsync(runtime, type, now).thenApply { started ->
+            if (started) diagnosed.remove(key)
+            else if (diagnosed.add(key)) logFailure(runtime, type)
+            started
+        }
+    }
+
     fun diagnostics(runtime: MineRuntime): List<MineIncidentPlacementReport> = SUPPORTED_TYPES.map { type -> diagnostics(runtime, type) }
 
     fun diagnostics(runtime: MineRuntime, type: MineIncidentType): MineIncidentPlacementReport {
@@ -108,6 +130,7 @@ internal class MineIncidentScheduler(
     fun cleanup() {
         retryAfter.clear()
         diagnosed.clear()
+        pending.clear()
     }
 
     private fun logFailure(runtime: MineRuntime, type: MineIncidentType) {

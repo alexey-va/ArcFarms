@@ -16,6 +16,7 @@ import ru.ruscrafting.farms.domain.FarmCareRole
 import ru.ruscrafting.farms.domain.FarmCareType
 import ru.ruscrafting.farms.domain.FarmIncidentType
 import ru.ruscrafting.farms.domain.FarmEventTypeRegistry
+import ru.ruscrafting.farms.domain.FarmPhase
 import ru.ruscrafting.farms.domain.FarmOrder
 import ru.ruscrafting.farms.domain.FarmPointKind
 import ru.ruscrafting.farms.domain.FarmSeederStage
@@ -194,10 +195,18 @@ internal class FarmShiftCoordinator(
     }
 
     private fun plantingStarted(runtime: FarmRuntime, actor: Player?) {
-        if (carePlans.shouldUseSeeder(runtime) && care.initialize(runtime, actor, FarmCareType.SEEDER)) {
-            state.persistAsync()
+        if (carePlans.shouldUseSeeder(runtime)) {
+            val sequence = runtime.state.sequence
+            care.initializeAsync(runtime, actor, FarmCareType.SEEDER).thenAccept { accepted ->
+                if (runtime.state.sequence != sequence) return@thenAccept
+                if (accepted) state.persistAsync() else announcePlanting(runtime)
+            }
             return
         }
+        announcePlanting(runtime)
+    }
+
+    private fun announcePlanting(runtime: FarmRuntime) {
         val crop = MaterialRules.material(requireNotNull(runtime.state.preparationCrop))
         port.broadcast(
             listOf(runtime.region),
@@ -231,15 +240,13 @@ internal class FarmShiftCoordinator(
     private fun preparationCompleted(runtime: FarmRuntime, actor: Player?) {
         port.successBurst(runtime.region)
         hud.playStageFanfare(runtime, 1.05f)
-        if (!care.initialize(runtime, actor)) {
-            port.broadcast(
-                listOf(runtime.region),
-                MessageKey.FARM_PREPARATION_COMPLETED,
-                sound = Sound.ENTITY_VILLAGER_YES,
-                title = true,
-            )
+        val sequence = runtime.state.sequence
+        care.initializeAsync(runtime, actor).thenAccept { accepted ->
+            if (runtime.state.sequence != sequence) return@thenAccept
+            if (!accepted) port.broadcast(listOf(runtime.region), MessageKey.FARM_PREPARATION_COMPLETED,
+                sound = Sound.ENTITY_VILLAGER_YES, title = true)
+            state.persistAsync()
         }
-        state.persistAsync()
     }
 
     private fun careStarted(runtime: FarmRuntime, type: FarmCareType) {
@@ -337,7 +344,7 @@ internal class FarmShiftCoordinator(
         port.successBurst(runtime.region)
         hud.playStageFanfare(runtime, 1.1f)
         debug.event("farm_care_resolved", "zone" to runtime.settings.id, "sequence" to runtime.state.sequence, "type" to type)
-        if (type == FarmCareType.SEEDER) care.initialize(runtime, actor)
+        if (type == FarmCareType.SEEDER) care.initializeAsync(runtime, actor)
         state.persistAsync()
     }
 
@@ -425,11 +432,15 @@ internal class FarmShiftCoordinator(
                 barnFire.ensure(runtime)
             }
             FarmIncidentType.HELL_GREENHOUSE -> {
-                if (!greenhouse.initialize(runtime, actor)) {
-                    if (!runtime.preparationChunksLoaded()) return
-                    apply(runtime, FarmShiftEngine.skipUnavailableIncident(runtime.state, type), null)
-                    return
+                val sequence = runtime.state.sequence
+                val placement = runtime.state.placementSequence
+                greenhouse.initializeAsync(runtime, actor).thenAccept { initialized ->
+                    if (runtime.state.sequence != sequence || runtime.state.placementSequence != placement ||
+                        runtime.state.phase != FarmPhase.INCIDENT || runtime.state.incidentType != type) return@thenAccept
+                    if (initialized) announceIncident(runtime, type, actor)
+                    else if (runtime.preparationChunksLoaded()) apply(runtime, FarmShiftEngine.skipUnavailableIncident(runtime.state, type), null)
                 }
+                return
             }
             FarmIncidentType.TORNADO -> { tornadoStarted(runtime); return }
             FarmIncidentType.FROST -> {
@@ -462,6 +473,10 @@ internal class FarmShiftCoordinator(
                 special.ensure(runtime)
             }
         }
+        announceIncident(runtime, announcedType, actor)
+    }
+
+    private fun announceIncident(runtime: FarmRuntime, announcedType: FarmIncidentType, actor: Player?) {
         announceEvent(runtime, announcedType)
         issueRequiredSupply(runtime)
         port.warningBurst(runtime.region)

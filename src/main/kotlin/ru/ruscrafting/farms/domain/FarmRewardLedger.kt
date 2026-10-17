@@ -1,6 +1,12 @@
 package ru.ruscrafting.farms.domain
 
 import java.util.UUID
+import kotlinx.collections.immutable.persistentMapOf
+import kotlinx.collections.immutable.persistentListOf
+import kotlinx.collections.immutable.toPersistentMap
+import kotlinx.collections.immutable.toPersistentList
+import kotlinx.collections.immutable.PersistentMap
+import kotlinx.collections.immutable.plus
 
 internal data class FarmRewardLedgerSnapshot(
     val pending: List<PendingFarmReward>,
@@ -14,21 +20,19 @@ internal data class FarmRewardClaimResult(
 
 /** Owns durable farm-reward deduplication and the claim-before-delivery transaction. */
 internal class FarmRewardLedger {
-    private val pending = mutableListOf<PendingFarmReward>()
-    private val claimed = mutableMapOf<String, Long>()
+    private var pending = persistentListOf<PendingFarmReward>()
+    private var claimed = persistentMapOf<String, Long>()
 
     fun replace(pendingRewards: Collection<PendingFarmReward>, claimedSequences: Map<String, Long>) {
         require(pendingRewards.map(PendingFarmReward::id).distinct().size == pendingRewards.size) {
             "Duplicate pending farm reward id"
         }
-        require(claimedSequences.values.all { it >= 0L }) { "Invalid claimed farm reward sequence" }
-        pending.clear()
-        pending += pendingRewards
-        claimed.clear()
-        claimed += claimedSequences
+        require(claimedSequences is PersistentMap || claimedSequences.values.all { it >= 0L }) { "Invalid claimed farm reward sequence" }
+        pending = pendingRewards.toPersistentList()
+        claimed = claimedSequences.toPersistentMap()
     }
 
-    fun snapshot(): FarmRewardLedgerSnapshot = FarmRewardLedgerSnapshot(pending.toList(), claimed.toMap())
+    fun snapshot(): FarmRewardLedgerSnapshot = FarmRewardLedgerSnapshot(pending, claimed)
 
     fun contains(grantId: String): Boolean = pending.any { it.id == grantId }
 
@@ -54,9 +58,9 @@ internal class FarmRewardLedger {
         val deliverable = candidates.filterNot { isClaimed(it.claimKey, it.sequence) }
             .sortedWith(compareBy(PendingFarmReward::sequence, PendingFarmReward::id))
         val before = snapshot()
-        pending.removeAll(candidates.toSet())
+        pending = pending.removeAll(candidates.toSet())
         deliverable.groupBy(PendingFarmReward::claimKey).forEach { (claimKey, rewards) ->
-            claimed[claimKey] = maxOf(claimed[claimKey] ?: -1L, rewards.maxOf(PendingFarmReward::sequence))
+            claimed = claimed.put(claimKey, maxOf(claimed[claimKey] ?: -1L, rewards.maxOf(PendingFarmReward::sequence)))
         }
         return try {
             persist()

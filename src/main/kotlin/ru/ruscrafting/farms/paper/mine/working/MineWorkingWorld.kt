@@ -3,6 +3,8 @@ package ru.ruscrafting.farms.paper.mine.working
 import org.bukkit.Chunk
 import org.bukkit.Location
 import org.bukkit.Material
+import ru.ruscrafting.farms.paper.worksite.WorksiteTaskPort
+import java.util.concurrent.CompletableFuture
 import ru.ruscrafting.farms.domain.MineIncidentType
 import ru.ruscrafting.farms.domain.MineWorkingPlacement
 import ru.ruscrafting.farms.domain.MineWorkingStage
@@ -15,9 +17,11 @@ import ru.ruscrafting.farms.paper.worksite.scene.WorksitePreparedScene
 import ru.ruscrafting.farms.paper.worksite.scene.WorksitePreparedSceneOwner
 import ru.ruscrafting.farms.paper.worksite.scene.WorksitePreparedSceneRecord
 
-internal data class MineWorkingScene(val plan: MineWorkingPlan, val blocks: WorksitePreparedScene) {
+internal data class MineWorkingScene(val plan: MineWorkingPlan, val blocks: WorksitePreparedScene,
+    private val ceiling: Int = plan.blocks.keys.maxOf(WorksitePosition::y),
+    val chunks: Set<Pair<Int, Int>> = plan.blocks.keys.mapTo(linkedSetOf()) { it.x shr 4 to (it.z shr 4) },
+) {
     val floor: Int get() = plan.entrance.y
-    private val ceiling = plan.blocks.keys.maxOf(WorksitePosition::y)
     fun inside(location: Location): Boolean = location.world === blocks.world &&
         location.blockY in floor + 1..ceiling &&
         WorksitePosition(location.world.name, location.blockX, floor + 1, location.blockZ) in plan.blocks
@@ -31,6 +35,7 @@ internal class MineWorkingWorld(
     private val owner: WorksitePreparedSceneOwner,
     private val decoder: FarmBlockDataDecoder,
     private val occupiedByRecovery: (WorksitePosition) -> Boolean = { false },
+    private val tasks: WorksiteTaskPort? = null,
 ) {
     private val scenes = mutableMapOf<String, MineWorkingScene>()
     private val ready = mutableSetOf<String>()
@@ -46,12 +51,109 @@ internal class MineWorkingWorld(
     private val captured = mutableMapOf<Pair<String,MineIncidentType>,Pair<MineWorkingPlacement,WorksitePreparedScene>>()
     private val capturedPlans = mutableMapOf<Pair<String,MineIncidentType>,MineWorkingPlan>()
     private val captureData = mutableMapOf<String,String>()
+    private var epoch = 0L
+    private val captureRequests = mutableMapOf<Pair<String, MineIncidentType>, Any>()
+    private val recoveryPlans = mutableMapOf<String, MineWorkingPlan>()
+    private val planRequests = mutableSetOf<String>()
+    private val pendingPreparations = mutableMapOf<String, CompletableFuture<Boolean>>()
+    private data class ProjectionRequest(val type: MineIncidentType, val working: MineWorkingState,
+        val completion: CompletableFuture<Unit> = CompletableFuture())
+    private val projecting = mutableMapOf<String, ProjectionRequest>()
+    private val pendingProjection = mutableMapOf<String, ProjectionRequest>()
 
     fun prewarm(runtime: MineRuntime, type: MineIncidentType, placement: MineWorkingPlacement) {
+        if (tasks != null) { prewarmAsync(runtime, type, placement); return }
         val key=runtime.settings.id to type
         if(key in captures || captured[key]?.first==placement) return
         val plan=MineWorkingLayout.plan(type,placement)
         captures[key]=Capture(runtime,runtime.state.sequence,plan,placement,plan.blocks.entries.toList())
+    }
+
+    private fun prewarmAsync(runtime: MineRuntime, type: MineIncidentType, placement: MineWorkingPlacement) {
+        val work = requireNotNull(tasks)
+        val key = runtime.settings.id to type
+        if (key in captureRequests || captured[key]?.let { it.first == placement && it.second.sequence == runtime.state.sequence } == true) return
+        val request = Any()
+        captureRequests[key] = request
+        val token = work.lifecycleToken()
+        val source = epoch
+        val sequence = runtime.state.sequence
+        val world = runtime.region.world
+        val worldName = world.name
+        val zoneId = runtime.settings.id
+        val minimum = world.minHeight
+        val maximum = world.maxHeight
+        fun current() = epoch == source && captureRequests[key] === request && runtime.state.sequence == sequence &&
+            registry.byId(zoneId) === runtime && org.bukkit.Bukkit.getWorld(worldName) === world
+        work.compute {
+            val plan = MineWorkingLayout.plan(type, placement)
+            val points = linkedSetOf<WorksitePosition>().apply {
+                addAll(plan.blocks.keys)
+                val surface = placement.position(0, 0, -1)
+                add(surface)
+                (1..3).forEach { add(surface.copy(y = surface.y + it)) }
+            }
+            Triple(plan, points.iterator(), plan.blocks.mapValues { (p, data) -> initialActiveData(plan, p, data) })
+        }.thenCompose { (plan, points, active) -> work.callSync(token) {
+            val types = mutableMapOf<WorksitePosition, Material>()
+            val records = mutableListOf<WorksitePreparedSceneRecord>()
+            work.capture(token, ::current) {
+                if (points.hasNext()) {
+                    val p = points.next()
+                    check(p.y in minimum until maximum && world.isChunkLoaded(p.x shr 4, p.z shr 4) && !occupiedByRecovery(p))
+                    val block = world.getBlockAt(p.x, p.y, p.z)
+                    types[p] = block.type
+                    active[p]?.let { raw ->
+                        check(block.state !is org.bukkit.block.TileState)
+                        records += WorksitePreparedSceneRecord(worldName, zoneId, sequence, 0, p.x, p.y, p.z,
+                            block.blockData.asString, captureData.getOrPut(raw) { decoder.decode(raw).asString }, "NONE", plan.blocks.size)
+                    }
+                }
+                !points.hasNext()
+            }.thenCompose { work.compute {
+                require(MineWorkingPlanner.rejection(plan) { types[it] } == null)
+                plan to records.toList()
+            } }
+        }.thenCompose { it } }.thenCompose { (plan, records) -> work.callSync(token) {
+            check(current())
+            captured[key] = placement to WorksitePreparedScene(world, zoneId, sequence, 0,
+                placement.position(0, 1, -1).location(world), placement.position(0, 1, 1).location(world),
+                placement.position(0, 1, 3).location(world), records)
+            capturedPlans[key] = plan
+        } }.whenComplete { _, _ -> work.callSync(token) { captureRequests.remove(key, request) } }
+    }
+
+    fun prepareAsync(runtime: MineRuntime, type: MineIncidentType, placement: MineWorkingPlacement, nonce: Long): CompletableFuture<Boolean> {
+        val work = tasks ?: return CompletableFuture.completedFuture(prepare(runtime, type, placement, nonce))
+        val sceneKey = key(runtime)
+        pendingPreparations[sceneKey]?.let { return it }
+        if (owner.restoring(runtime.settings.id) || sceneKey in retiring) return CompletableFuture.completedFuture(false)
+        val key = runtime.settings.id to type
+        val reserve = captured.remove(key)?.takeIf { it.first == placement && it.second.sequence == runtime.state.sequence }
+            ?: return CompletableFuture.completedFuture(false)
+        val plan = capturedPlans.remove(key) ?: return CompletableFuture.completedFuture(false)
+        val old = reserve.second
+        val source = epoch
+        val token = work.lifecycleToken()
+        val result = CompletableFuture<Boolean>()
+        pendingPreparations[sceneKey] = result
+        work.compute {
+            Triple(old.records.map { it.copy(sceneId = sceneId(nonce)) }, plan.blocks.keys.maxOf(WorksitePosition::y),
+                plan.blocks.keys.mapTo(linkedSetOf()) { it.x shr 4 to (it.z shr 4) })
+        }.thenCompose { (records, ceiling, chunks) -> work.callSync(token) {
+            check(epoch == source && runtime.state.sequence == old.sequence && sceneKey !in retiring)
+            val prepared = WorksitePreparedScene(old.world, old.zoneId, old.sequence, sceneId(nonce), old.surface, old.start, old.end, records)
+            scenes[sceneKey] = MineWorkingScene(plan, prepared, ceiling, chunks)
+            owner.prepareAllAsync(listOf(prepared))
+        }.thenCompose { it } }.whenComplete { success, failure -> work.callSync(token) {
+            pendingPreparations.remove(sceneKey, result)
+            if (failure != null || success != true) {
+                scenes.remove(sceneKey)
+                owner.beginRestore(old.world, old.zoneId, old.sequence, sceneId(nonce))
+            }
+            if (failure == null) result.complete(success) else result.completeExceptionally(failure)
+        }.exceptionally { result.completeExceptionally(it); null } }
+        return result
     }
 
     private fun captureSlice() {
@@ -105,14 +207,31 @@ internal class MineWorkingWorld(
         val working = incident.working ?: return null
         val placement = working.placement
         val world = runtime.region.world
-        val plan = MineWorkingLayout.plan(incident.type, placement)
-        val (_, stored) = owner.ensurePreparedScene(
+        val sceneKey = key(runtime)
+        val plan = if (tasks == null) MineWorkingLayout.plan(incident.type, placement) else recoveryPlans[sceneKey] ?: run {
+            if (planRequests.add(sceneKey)) {
+                val work = requireNotNull(tasks)
+                val token = work.lifecycleToken()
+                val source = epoch
+                work.compute { MineWorkingLayout.plan(incident.type, placement) }.thenCompose { value -> work.callSync(token) {
+                    if (epoch == source && runtime.state.incident?.objectiveNonce == incident.objectiveNonce) recoveryPlans[sceneKey] = value
+                    planRequests.remove(sceneKey)
+                } }
+            }
+            return null
+        }
+        val (status, stored) = owner.ensurePreparedScene(
             world, runtime.settings.id, runtime.state.sequence, sceneId(incident.objectiveNonce),
             placement.position(0, 1, -1).location(world), RECOVERY_RADIUS,
             prepare = { if (owner.restoring(runtime.settings.id)) null
-                else prepareScene(runtime, plan, placement, incident.objectiveNonce) },
+                else if (tasks == null) prepareScene(runtime, plan, placement, incident.objectiveNonce)
+                else { prewarm(runtime, incident.type, placement); null } },
             start = placement.position(0, 1, 1).location(world), end = placement.position(0, 1, 3).location(world),
         )
+        if (tasks != null && stored == null && status == ru.ruscrafting.farms.paper.worksite.scene.WorksitePreparedSceneEnsureResult.UNAVAILABLE &&
+            (runtime.settings.id to incident.type) in captured) {
+            prepareAsync(runtime, incident.type, placement, incident.objectiveNonce)
+        }
         return stored?.let { MineWorkingScene(plan, it) }?.also { scenes[key(runtime)] = it }
     }
 
@@ -141,13 +260,13 @@ internal class MineWorkingWorld(
 
     fun isReady(runtime: MineRuntime): Boolean {
         val key = key(runtime)
-        if (key in ready) return true
+        if (key in ready) return key !in projecting
         val scene = scene(runtime) ?: return false
         if (owner.isBuilding(runtime.settings.id, runtime.state.sequence, scene.blocks.sceneId) ||
-            scene.blocks.records.any { !scene.blocks.world.isChunkLoaded(it.x shr 4, it.z shr 4) }) return false
+            scene.chunks.any { (x, z) -> !scene.blocks.world.isChunkLoaded(x, z) }) return false
         ready += key
         project(runtime)
-        return true
+        return tasks == null || key !in projecting
     }
 
     fun project(
@@ -155,6 +274,7 @@ internal class MineWorkingWorld(
         typeOverride: MineIncidentType? = null,
         workingOverride: MineWorkingState? = null,
     ) {
+        if (tasks != null) { projectAsync(runtime, typeOverride, workingOverride); return }
         if (key(runtime) !in ready) return
         val incident = runtime.state.incident
         val type = incident?.type ?: typeOverride ?: return
@@ -212,6 +332,62 @@ internal class MineWorkingWorld(
             val desired = decoder.decode(data)
             if (block.blockData.asString != desired.asString) block.setBlockData(desired, false)
         }
+    }
+
+    fun projectAsync(runtime: MineRuntime, typeOverride: MineIncidentType? = null,
+        workingOverride: MineWorkingState? = null): CompletableFuture<Unit> {
+        val work = tasks ?: return runCatching { project(runtime, typeOverride, workingOverride) }.fold(
+            { CompletableFuture.completedFuture(Unit) }, CompletableFuture<Unit>::failedFuture)
+        val sceneKey = key(runtime)
+        val incident = runtime.state.incident
+        val type = typeOverride ?: incident?.type ?: return CompletableFuture.completedFuture(Unit)
+        val working = workingOverride ?: incident?.working ?: return CompletableFuture.completedFuture(Unit)
+        if (sceneKey !in ready) return CompletableFuture.completedFuture(Unit)
+        val requested = ProjectionRequest(type, working)
+        projecting[sceneKey]?.let { active ->
+            if (active.type == type && active.working == working) return active.completion
+            pendingProjection.put(sceneKey, requested)?.completion?.completeExceptionally(java.util.concurrent.CancellationException("Projection coalesced"))
+            return requested.completion
+        }
+        startProjection(runtime, requested, work)
+        return requested.completion
+    }
+
+    private fun startProjection(runtime: MineRuntime, request: ProjectionRequest, work: WorksiteTaskPort) {
+        val sceneKey = key(runtime)
+        val scene = scenes[sceneKey] ?: run { request.completion.completeExceptionally(IllegalStateException("Working scene is unavailable")); return }
+        val world = runtime.region.world
+        val worldName = world.name
+        val source = epoch
+        val token = work.lifecycleToken()
+        val previous = projectedDrive[sceneKey]
+        projecting[sceneKey] = request
+        fun current() = epoch == source && scenes[sceneKey] === scene && sceneKey !in retiring &&
+            org.bukkit.Bukkit.getWorld(worldName) === world && key(runtime) == sceneKey
+        work.compute { workingProjection(scene.plan, request.type, request.working, previous) }.thenCompose { changes -> work.callSync(token) {
+            val entries = changes.iterator()
+            val drive = MineDriveLayout.machine(request.type, scene.plan.placement) ||
+                (request.type == MineIncidentType.TUNNEL_DRIVE && MineDriveLayout.enabled(scene.plan.placement))
+            work.capture(token, ::current) {
+                if (entries.hasNext()) {
+                    val (position, data) = entries.next()
+                    check(world.isChunkLoaded(position.x shr 4, position.z shr 4)) { "Working projection chunk is unloaded" }
+                    val block = world.getBlockAt(position.x, position.y, position.z)
+                    if (!drive || block.type != Material.BEDROCK) {
+                        val desired = decoder.decode(data)
+                        if (block.blockData.asString != desired.asString) block.setBlockData(desired, false)
+                    }
+                }
+                !entries.hasNext()
+            }
+        }.thenCompose { it } }.whenComplete { _, failure -> work.callSync(token) {
+            if (projecting[sceneKey] === request) projecting.remove(sceneKey)
+            if (failure == null) { request.working.drive?.let { projectedDrive[sceneKey] = it }; request.completion.complete(Unit) }
+            else request.completion.completeExceptionally(failure)
+            pendingProjection.remove(sceneKey)?.let { next ->
+                if (current()) startProjection(runtime, next, work) else next.completion.completeExceptionally(java.util.concurrent.CancellationException("Working scene superseded"))
+            }
+        }.exceptionally { request.completion.completeExceptionally(it); null } }
     }
 
     private fun projectDrive(runtime: MineRuntime, plan: MineWorkingPlan, working: MineWorkingState) {
@@ -297,7 +473,7 @@ internal class MineWorkingWorld(
     fun protects(location: Location): Boolean = owner.protects(location)
 
     fun process(): Int {
-        captureSlice()
+        if (tasks == null) captureSlice()
         val result = owner.process(BLOCK_BUDGET) { record ->
             val scene = scenes["${record.zoneId}:${record.sequence}"]
             // Never seal a player into a restored wall, including an admin who bypassed normal entry.
@@ -337,7 +513,12 @@ internal class MineWorkingWorld(
         "${record.zoneId}:${record.sequence}" in retained ||
             it.state.incident?.let { incident -> incident.working != null && sceneId(incident.objectiveNonce) == record.sceneId } == true
     } == true
-    fun clearQueues() { projectedDrive.clear(); captures.clear(); captured.clear(); capturedPlans.clear(); captureData.clear(); owner.clearQueues(); scenes.clear(); ready.clear(); retiring.clear(); retained.clear() }
+    fun clearQueues() {
+        epoch++
+        projecting.values.forEach { it.completion.completeExceptionally(java.util.concurrent.CancellationException("Working owner closed")) }
+        pendingProjection.values.forEach { it.completion.completeExceptionally(java.util.concurrent.CancellationException("Working owner closed")) }
+        projecting.clear(); pendingProjection.clear(); pendingPreparations.clear(); recoveryPlans.clear(); planRequests.clear(); captureRequests.clear()
+        projectedDrive.clear(); captures.clear(); captured.clear(); capturedPlans.clear(); captureData.clear(); owner.clearQueues(); scenes.clear(); ready.clear(); retiring.clear(); retained.clear() }
 
     private fun active(zoneId: String, sequence: Long): Boolean = registry.byId(zoneId)?.let {
         ("$zoneId:$sequence" in retained ||

@@ -1,6 +1,7 @@
 package ru.ruscrafting.farms.paper.farm.recovery
 
 import org.bukkit.Bukkit
+import ru.ruscrafting.farms.paper.worksite.captureLoadedChunks
 import org.bukkit.Location
 import org.bukkit.Material
 import org.bukkit.block.Block
@@ -43,56 +44,59 @@ internal class FarmFixedCropRecoveryController(
 ) {
     private val queue = FarmBlockRestoreQueue()
 
-    fun reconcileLoaded() {
-        Bukkit.getWorlds().asSequence()
-            .flatMap { it.loadedChunks.asSequence() }
-            .forEach(::reconcileChunk)
-    }
+    fun reconcileLoaded() { tasks.captureLoadedChunks(::reconcileChunk) }
 
     fun reconcileChunk(chunk: org.bukkit.Chunk) {
+        val token = tasks.lifecycleToken()
+        val world = chunk.world
+        val current = { chunk.isLoaded && Bukkit.getWorld(world.uid) === world }
         val now = clock()
-        ledger.fixedCropRecords(chunk).forEach { record ->
-            val runtime = runtimes().firstOrNull { it.settings.id == record.zoneId && it.region.world == chunk.world }
-                ?: return@forEach
-            val block = chunk.world.getBlockAt(record.x, record.y, record.z)
-            if (!runtime.region.contains(block.location)) return@forEach
-            val original = runCatching { Bukkit.createBlockData(record.originalBlockData) }.getOrNull()
-                ?: return@forEach
-            if (!MaterialRules.isFixedBlockCrop(original.material) || original.material.name !in runtime.settings.crops) {
-                return@forEach
+        val saved = ledger.fixedCropRecords(chunk).iterator()
+        val pendingRecords = journal.recordsInChunk(world.name, chunk.x, chunk.z).iterator()
+        tasks.capture(token, current) {
+            if (saved.hasNext()) {
+                val record = saved.next()
+                val runtime = runtimes().firstOrNull { it.settings.id == record.zoneId && it.region.world == world }
+                    ?: return@capture false
+                val block = world.getBlockAt(record.x, record.y, record.z)
+                if (!runtime.region.contains(block.location)) return@capture false
+                val original = runCatching { Bukkit.createBlockData(record.originalBlockData) }.getOrNull()
+                    ?: return@capture false
+                if (!MaterialRules.isFixedBlockCrop(original.material) || original.material.name !in runtime.settings.crops) {
+                    return@capture false
+                }
+                val restoreAt = when {
+                    record.restoreAt != null -> record.restoreAt
+                    block.type.isAir || block.isReplaceable -> now
+                    else -> null
+                } ?: return@capture false
+                if (record.restoreAt == null) ledger.scheduleExistingFixedCropRestore(block, restoreAt)
+                queue.schedule(FarmFixedCropRestore(record.position(world.name), restoreAt))
+            } else if (pendingRecords.hasNext()) {
+                val pending = pendingRecords.next()
+                val runtime = runtimes().firstOrNull { it.settings.id == pending.zoneId && it.region.world == world }
+                    ?: return@capture false
+                val block = world.getBlockAt(pending.x, pending.y, pending.z)
+                if (!runtime.region.contains(block.location)) return@capture false
+                val original = runCatching { Bukkit.createBlockData(pending.originalBlockData) }.getOrNull()
+                    ?: return@capture false
+                if (!MaterialRules.isFixedBlockCrop(original.material) || original.material.name !in runtime.settings.crops) {
+                    return@capture false
+                }
+                if (block.type == original.material) {
+                    ledger.reconcileFixedCrop(block, pending.zoneId, pending.originalBlockData, null)
+                    retire(pending.positionKey, "block_already_present")
+                    return@capture false
+                }
+                ledger.reconcileFixedCrop(block, pending.zoneId, pending.originalBlockData, pending.restoreAt)
+                queue.schedule(
+                    FarmFixedCropRestore(
+                        FarmFixedCropPosition(pending.world, pending.x, pending.y, pending.z),
+                        pending.restoreAt,
+                    ),
+                )
             }
-            val restoreAt = when {
-                record.restoreAt != null -> record.restoreAt
-                block.type.isAir || block.isReplaceable -> now
-                else -> null
-            } ?: return@forEach
-            if (record.restoreAt == null) ledger.scheduleExistingFixedCropRestore(block, restoreAt)
-            queue.schedule(FarmFixedCropRestore(record.position(chunk.world.name), restoreAt))
-        }
-        journal.records().asSequence().filter { pending ->
-            pending.world == chunk.world.name && (pending.x shr 4) == chunk.x && (pending.z shr 4) == chunk.z
-        }.forEach { pending ->
-            val runtime = runtimes().firstOrNull { it.settings.id == pending.zoneId && it.region.world == chunk.world }
-                ?: return@forEach
-            val block = chunk.world.getBlockAt(pending.x, pending.y, pending.z)
-            if (!runtime.region.contains(block.location)) return@forEach
-            val original = runCatching { Bukkit.createBlockData(pending.originalBlockData) }.getOrNull()
-                ?: return@forEach
-            if (!MaterialRules.isFixedBlockCrop(original.material) || original.material.name !in runtime.settings.crops) {
-                return@forEach
-            }
-            if (block.type == original.material) {
-                ledger.reconcileFixedCrop(block, pending.zoneId, pending.originalBlockData, null)
-                retire(pending.positionKey, "block_already_present")
-                return@forEach
-            }
-            ledger.reconcileFixedCrop(block, pending.zoneId, pending.originalBlockData, pending.restoreAt)
-            queue.schedule(
-                FarmFixedCropRestore(
-                    FarmFixedCropPosition(pending.world, pending.x, pending.y, pending.z),
-                    pending.restoreAt,
-                ),
-            )
+            !saved.hasNext() && !pendingRecords.hasNext()
         }
     }
 

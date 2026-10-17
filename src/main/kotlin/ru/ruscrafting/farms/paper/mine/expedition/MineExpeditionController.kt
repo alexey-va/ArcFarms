@@ -1,6 +1,7 @@
 package ru.ruscrafting.farms.paper.mine.expedition
 
 import net.kyori.adventure.text.Component
+import ru.ruscrafting.farms.paper.worksite.captureLoadedEntities
 import org.bukkit.Bukkit
 import org.bukkit.Chunk
 import org.bukkit.Color
@@ -43,7 +44,7 @@ internal class MineExpeditionController(
     private val statePort: WorksiteStatePort,
     private val locale: ArcFarmsLocale?,
     private val clock: () -> Long,
-    tasks: WorksiteTaskPort? = null,
+    private val tasks: WorksiteTaskPort? = null,
     private val dieselGeneratorEnabled: () -> Boolean = { true },
 ) {
     private data class Driver(val playerId: UUID, val stage: MineExpeditionStage, var nextStepAt: Long, var started: Boolean = false)
@@ -54,7 +55,7 @@ internal class MineExpeditionController(
     private val actions = MineExpeditionActions(plugin, locale)
     private val experiments = MineFactoryExperimentsController(plugin, markers, locale, ::fixturePosition)
     private val descentPresentation = MineDescentPresentation(plugin, markers)
-    private val machinery = MineExpeditionMachinery(plugin, world::project) { scene,id,p ->
+    private val machinery = MineExpeditionMachinery(plugin, { scene, changes -> world.project(scene, changes) }) { scene,id,p ->
         editor?.position(scene,id,p) ?: p
     }
     private val drivers = mutableMapOf<String, Driver>()
@@ -108,10 +109,16 @@ internal class MineExpeditionController(
 
     private fun reconcileScene(runtime: MineRuntime, scene: MineExpeditionScene, now: Long) {
         val current = runtime.state.incident?.expedition ?: return
+        markers.reconcile("exit:${scene.journalSequence}", exitMarkers(scene))
+        machinery.sync(scene, current).thenAccept { ready ->
+            if (ready && world.scene(runtime) === scene && runtime.state.incident?.expedition == current)
+                reconcileReadyScene(runtime, scene, current, now)
+        }
+    }
+
+    private fun reconcileReadyScene(runtime: MineRuntime, scene: MineExpeditionScene, current: MineExpeditionState, now: Long) {
         val scope = scope(scene)
         val players = scene.world.players.filter { participant(runtime, scene, it) }
-        markers.reconcile("exit:${scene.journalSequence}", exitMarkers(scene))
-        if (!machinery.sync(scene, current)) return
         experiments.tick(scope, scene, current, players, now) { player, step -> commit(runtime, scene, player, current, step) }
         if (runtime.state.incident?.expedition != current) return
         machinery.manualCrane(scene, experiments.cranePosition(scope))
@@ -148,11 +155,13 @@ internal class MineExpeditionController(
             } else {
                 driver.nextStepAt = now + MOTION_STEP_MILLIS
                 val step = MineExpeditionEngine.advanceMotion(current, machinery.motionSteps(scene, current))
-                if (step.accepted && machinery.advance(scene, current, step.state, players)) {
-                    driver.started = true
-                    if (!commit(runtime, scene, player, current, step)) {
-                        machinery.rollback(scene, current)
-                        drivers.remove(scope)
+                if (step.accepted) machinery.advance(scene, current, step.state, players).thenAccept { moved ->
+                    if (moved) {
+                        driver.started = true
+                        if (!commit(runtime, scene, player, current, step)) {
+                            machinery.rollback(scene, current)
+                            drivers.remove(scope)
+                        }
                     }
                 }
             }
@@ -339,8 +348,10 @@ internal class MineExpeditionController(
             it.position == scene.local(event.block.location) } ?: return true
         if (!near(event.player, event.block.location, 6.0)) return true
         val original = event.block.blockData.asString
-        if (world.project(scene, mapOf(target.position to "minecraft:air"))) {
-            if (!commit(runtime, scene, event.player, current, MineExpeditionEngine.completeTarget(current, target.target, clock()))) {
+        world.project(scene, mapOf(target.position to "minecraft:air"), isCurrent = {
+            world.scene(runtime) === scene && runtime.state.incident?.expedition == current && event.player.isOnline
+        }).thenAccept { applied ->
+            if (applied && !commit(runtime, scene, event.player, current, MineExpeditionEngine.completeTarget(current, target.target, clock()))) {
                 world.project(scene, mapOf(target.position to original))
                 projectedStage.remove(scope(scene))
             }
@@ -417,17 +428,18 @@ internal class MineExpeditionController(
     private fun projectStage(scene: MineExpeditionScene, current: MineExpeditionState) {
         if (projectedStage[scope(scene)] == current.stage) return
         val center = machinery.localCenter(scene, current)
+        val changes = linkedMapOf<ExpeditionPoint, String>()
         if (scene.kind == MineExpeditionKind.DRILLING_ARK) {
-            val blocks = (0..2).associate { index -> center.offset(index - 1, 1, 8) to
+            (0..2).forEach { index -> changes[center.offset(index - 1, 1, 8)] =
                 if (current.stage == MineExpeditionStage.ARK_JAM && index !in current.completed) "minecraft:tuff" else "minecraft:air" }
-            if (!world.project(scene, blocks)) return
         }
         if (modernDescent(scene) && current.stage == MineExpeditionStage.DESCENT_COUNTERWEIGHTS) {
-            val brake = scene.plan.stations.getValue("counterweight_0").offset(dz = -2)
-            val block = if (0 in current.completed) "minecraft:air" else "minecraft:stone"
-            if (!world.project(scene, mapOf(brake to block))) return
+            changes[scene.plan.stations.getValue("counterweight_0").offset(dz = -2)] =
+                if (0 in current.completed) "minecraft:air" else "minecraft:stone"
         }
-        projectedStage[scope(scene)] = current.stage
+        world.project(scene, changes, isCurrent = {
+            registry.byId(scene.zoneId)?.let { world.scene(it) === scene && it.state.incident?.expedition == current } == true
+        }).thenAccept { applied -> if (applied) projectedStage[scope(scene)] = current.stage }
     }
 
     fun participants(): Collection<Player> = world.retainedScenes().flatMap { scene ->
@@ -566,7 +578,8 @@ internal class MineExpeditionController(
     fun protects(entity: org.bukkit.entity.Entity) = actions.owns(entity)
     fun reconcileLoaded() {
         editor?.initialize()
-        actions.removeOrphans(Bukkit.getWorlds().flatMap { it.entities })
+        if (tasks != null) tasks.captureLoadedEntities { actions.removeOrphans(listOf(it)) }
+        else actions.removeOrphans(Bukkit.getWorlds().flatMap { it.entities })
         val runtime = registry.snapshot().firstOrNull(::configured)
         runtime?.let { world.configure(it, requireNotNull(surfacePoint(it))) }
         world.initialize(runtime != null)

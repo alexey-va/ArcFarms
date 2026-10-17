@@ -3,6 +3,7 @@ package ru.ruscrafting.farms.paper
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
+import io.kotest.assertions.withClue
 import io.mockk.Runs
 import io.mockk.every
 import io.mockk.just
@@ -17,6 +18,9 @@ import org.bukkit.event.player.PlayerInteractEntityEvent
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer
 import ru.arc.config.Config
 import ru.arc.paper.testing.MockBukkitTestRuntime
+import ru.ruscrafting.farms.paper.fixtures.awaitFarmsReady
+import ru.ruscrafting.farms.paper.fixtures.awaitFarmsReload
+import ru.ruscrafting.farms.paper.fixtures.drainFarmsPlugin
 import ru.ruscrafting.farms.config.ArcFarmsLocale
 import ru.ruscrafting.farms.config.MessageKey
 import ru.ruscrafting.farms.domain.ArcFarmsState
@@ -55,9 +59,11 @@ class ArcFarmsReloadMockBukkitIntegrationTest : FunSpec({
             every { PaperFarmMobDespawnPolicy.setRemoveWhenFarAway(any(), any()) } just Runs
             mockkObject(PaperFarmRouteChunkLoader)
             every { PaperFarmRouteChunkLoader.retain(any(), any()) } returns true
+            every { PaperFarmRouteChunkLoader.release(any(), any()) } just Runs
             mockkObject(PaperFarmTextDisplayRenderer)
             every { PaperFarmTextDisplayRenderer.render(any(), any(), any()) } just Runs
             paper.server.pluginManager.enablePlugin(plugin)
+            paper.awaitFarmsReady(plugin)
 
             val participant = paper.addPlayer("RouteDriver")
             participant.isOp = true
@@ -84,9 +90,8 @@ class ArcFarmsReloadMockBukkitIntegrationTest : FunSpec({
             val periodicBefore = (privateProperty(service, "periodicTaskSupervisor") as RuntimeTaskSupervisor).trackedCount()
             var staleLifecycleCallbackRan = false
             var activeGameplayDelayRan = false
-            (privateProperty(service, "lifecycleTaskSupervisor") as RuntimeTaskSupervisor).runLater(10L) {
-                staleLifecycleCallbackRan = true
-            }
+            val lifecycleSupervisor = privateProperty(service, "lifecycleTaskSupervisor") as RuntimeTaskSupervisor
+            val predecessorToken = lifecycleSupervisor.token()
             (privateProperty(service, "gameplayTaskSupervisor") as RuntimeTaskSupervisor).runLater(10L) {
                 activeGameplayDelayRan = true
             }
@@ -95,9 +100,19 @@ class ArcFarmsReloadMockBukkitIntegrationTest : FunSpec({
             val config = YamlConfiguration.loadConfiguration(configPath.toFile())
             config.set("farm-zones.communal_farm.route-delivery.horse-speed", 0.31)
             config.save(configPath.toFile())
+            // ServerMock leaves an unopened view without a top inventory. Paper always
+            // supplies one; use an unrelated open inventory for the redraw traversal.
+            participant.openInventory(paper.server.createInventory(null, 9))
             setLocaleValue(plugin.dataFolder.toPath(), "scoreboard.title", "<green>Reloaded farm</green>")
+            Config(plugin.dataFolder.toPath(), "lang/ru.yml").stringOrNull("scoreboard.title") shouldBe "<green>Reloaded farm</green>"
             participant.performCommand("arcfarms reload") shouldBe true
+            paper.awaitFarmsReload(plugin)
             paper.performTicks(22)
+            val reloadMessages = generateSequence { participant.nextComponentMessage() }
+                .map(PlainTextComponentSerializer.plainText()::serialize).toList()
+            val expectedReloadMessage = PlainTextComponentSerializer.plainText()
+                .serialize((privateProperty(plugin, "locale") as ArcFarmsLocale).render(MessageKey.RELOAD_OK))
+            withClue(reloadMessages) { reloadMessages.contains(expectedReloadMessage) shouldBe true }
 
             val runtimeAfter = runtime(service)
             runtimeAfter shouldBe runtimeBefore
@@ -110,6 +125,9 @@ class ArcFarmsReloadMockBukkitIntegrationTest : FunSpec({
             horseAfter.uniqueId shouldBe horseId
             horseAfter.passengers.singleOrNull() shouldBe participant
             participant.inventory.contents.map { it?.clone() } shouldBe gearBefore
+            // Disk preparation may take more than ten ticks while the old generation
+            // remains valid. Deliver its captured callback after the actual swap.
+            lifecycleSupervisor.runSync(predecessorToken) { staleLifecycleCallbackRan = true } shouldBe null
             staleLifecycleCallbackRan shouldBe false
             activeGameplayDelayRan shouldBe true
             privateProperty(runtimeAfter, "settings").let { zoneSettings ->
@@ -119,6 +137,9 @@ class ArcFarmsReloadMockBukkitIntegrationTest : FunSpec({
             horseAfter.getAttribute(org.bukkit.attribute.Attribute.MOVEMENT_SPEED)?.baseValue shouldNotBe speedBefore
             horseAfter.getAttribute(org.bukkit.attribute.Attribute.MOVEMENT_SPEED)?.baseValue shouldBe 0.31
             (privateProperty(service, "periodicTaskSupervisor") as RuntimeTaskSupervisor).trackedCount() shouldBe periodicBefore
+            val publishedLocale = privateProperty(plugin, "locale") as ArcFarmsLocale
+            Config(plugin.dataFolder.toPath(), "lang/ru.yml").stringOrNull("scoreboard.title") shouldBe "<green>Reloaded farm</green>"
+            PlainTextComponentSerializer.plainText().serialize(publishedLocale.render(MessageKey.FARM_SCOREBOARD_TITLE)) shouldBe "Reloaded farm"
             service.farmScoreboardTitle(participant.uniqueId) shouldBe "§aReloaded farm"
 
             val locale = privateProperty(plugin, "locale") as ArcFarmsLocale
@@ -135,6 +156,7 @@ class ArcFarmsReloadMockBukkitIntegrationTest : FunSpec({
             }
 
             participant.performCommand("arcfarms reload") shouldBe true
+            paper.awaitFarmsReload(plugin)
             paper.performTicks(2)
 
             plain.serialize(locale.render(MessageKey.RELOAD_OK)) shouldBe acceptedLocale
@@ -143,6 +165,7 @@ class ArcFarmsReloadMockBukkitIntegrationTest : FunSpec({
             horseAfter.passengers.singleOrNull() shouldBe participant
             service.farmScoreboardTitle(participant.uniqueId) shouldBe "§aReloaded farm"
         } finally {
+            paper.drainFarmsPlugin()
             unmockkAll()
             paper.close()
         }

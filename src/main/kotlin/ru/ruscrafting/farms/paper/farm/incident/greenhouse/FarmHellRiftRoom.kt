@@ -14,10 +14,16 @@ internal object FarmHellRiftRoom {
     const val BURROW_ID = 2
     val bedOffsets = listOf(-5 to -6, 5 to -6, -5 to 6, 5 to 6)
 
-    fun blocks(x: Int, y: Int, z: Int): Map<Triple<Int, Int, Int>, Pair<String, FarmMoleBurrowMarker>> {
+    val materials = setOf(Material.POLISHED_BLACKSTONE_BRICKS, Material.CRACKED_POLISHED_BLACKSTONE_BRICKS,
+        Material.NETHER_BRICKS, Material.POLISHED_BASALT, Material.AIR, Material.SOUL_SAND, Material.FURNACE,
+        Material.MAGMA_BLOCK, Material.TINTED_GLASS, Material.BASALT, Material.SHROOMLIGHT)
+
+    fun blocks(x: Int, y: Int, z: Int,
+        data: (Material) -> String = { it.createBlockData().asString },
+    ): Map<Triple<Int, Int, Int>, Pair<String, FarmMoleBurrowMarker>> {
         val result = linkedMapOf<Triple<Int, Int, Int>, Pair<String, FarmMoleBurrowMarker>>()
         fun place(dx: Int, dy: Int, dz: Int, material: Material, marker: FarmMoleBurrowMarker = FarmMoleBurrowMarker.NONE) {
-            result[Triple(x + dx, y + dy, z + dz)] = material.createBlockData().asString to marker
+            result[Triple(x + dx, y + dy, z + dz)] = data(material) to marker
         }
 
         // Full native envelope: solid floor, Nether brick walls, and a low ceiling.

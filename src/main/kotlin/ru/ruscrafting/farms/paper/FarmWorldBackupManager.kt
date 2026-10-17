@@ -151,8 +151,9 @@ internal class FarmWorldBackupManager(
         if (!isValidId(backupId)) return FarmBackupStart.Rejected(FarmBackupRejection.UNKNOWN_BACKUP)
         val pending = PendingJob(FarmBackupStatus(zoneId, FarmBackupPhase.READING, 0, 1, backupId))
         active = pending
+        val worldName = region.world.name
         executor.execute {
-            runCatching { readBackup(zoneId, backupId, region.world, maxBlocks) }.fold(
+            runCatching { readBackup(zoneId, backupId, worldName, maxBlocks) }.fold(
                 onSuccess = { loaded -> onMain {
                     if (closed || active !== pending) return@onMain
                     val safetyStart = startCapture(
@@ -521,9 +522,9 @@ internal class FarmWorldBackupManager(
         }
     }
 
-    private fun readBackup(zoneId: String, id: String, world: World, maxBlocks: Int): LoadedBackup {
+    private fun readBackup(zoneId: String, id: String, worldName: String, maxBlocks: Int): LoadedBackup {
         val manifest = readManifest(manifestPath(zoneId, id))
-        require(manifest.id == id && manifest.zoneId == zoneId && manifest.world == world.name) { "Farm backup target mismatch" }
+        require(manifest.id == id && manifest.zoneId == zoneId && manifest.world == worldName) { "Farm backup target mismatch" }
         val geometry = BackupGeometry(manifest.minimum(), manifest.maximum())
         require(geometry.volume == manifest.volume && geometry.volume <= maxBlocks) { "Farm backup bounds are invalid" }
         val schematic = schematicPath(zoneId, id)

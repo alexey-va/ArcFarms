@@ -15,19 +15,11 @@ internal fun interface MoleBurrowChunkRetention {
 internal class PaperMoleBurrowChunkRetention(
     private val plugin: Plugin,
 ) : MoleBurrowChunkRetention {
+    private val registry = ru.arc.paper.chunk.PaperChunkTicketRegistry(plugin)
     override fun retain(chunk: Chunk): MoleBurrowChunkLease {
-        val owned = chunk.addPluginChunkTicket(plugin)
-        return object : MoleBurrowChunkLease {
-            private var closed = false
-
-            @Synchronized
-            override fun close() {
-                if (closed) return
-                if (owned) chunk.removePluginChunkTicket(plugin)
-                // Mark the lease closed only after Paper accepted the release. If
-                // the API throws, the caller can retain the lease and retry.
-                closed = true
-            }
-        }
+        val acquired = registry.acquire(chunk)
+        val lease = (acquired as? ru.arc.paper.chunk.PaperChunkTicketAcquireResult.Acquired)?.lease
+            ?: error("Could not retain farm tunnel chunk: $acquired")
+        return MoleBurrowChunkLease { lease.close() }
     }
 }

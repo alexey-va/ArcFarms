@@ -39,7 +39,7 @@ internal class MineFurnishingEditor(
         lateinit var view: Inventory
         override fun getInventory() = view
     }
-    private val repository = MineFurnishingRepository(plugin.dataFolder.toPath())
+    private val repository = MineFurnishingRepository(plugin.dataFolder.toPath()).also { tasks.ownStorage(it::closeAsync) }
     private var state = MineFurnishingState()
     private var ready = false
     private data class PendingSave(val player:UUID,val session:Session,val state:MineFurnishingState,

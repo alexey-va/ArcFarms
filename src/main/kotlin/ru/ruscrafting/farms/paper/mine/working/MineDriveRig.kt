@@ -1,5 +1,7 @@
 package ru.ruscrafting.farms.paper.mine.working
 
+import ru.ruscrafting.farms.paper.worksite.WorksiteTaskPort
+import ru.ruscrafting.farms.paper.worksite.captureLoadedEntities
 import org.bukkit.Bukkit
 import org.bukkit.Color
 import org.bukkit.Location
@@ -21,9 +23,11 @@ import ru.ruscrafting.farms.paper.mine.expedition.MineDisplayBlueprints
 import ru.ruscrafting.farms.paper.mine.expedition.MineDisplayLighting
 
 /** Native carrier owns rider motion. Client-only body parts follow its observed pose. */
-internal class MineDriveRig(private val plugin: Plugin) {
+internal class MineDriveRig(private val plugin: Plugin, private val tasks: WorksiteTaskPort? = null) {
     data class Rig(val cart: Minecart, val body: List<PacketBlockDisplay>, var heading: Float,
         var phase: Float = 0f, var effectAt: Long = 0, var hintAt: Long = 0, val hitbox: Interaction? = null, var speed: Double = 0.0, var soundAt: Long = 0, var railSoundAt: Long = 0, val rail: Boolean = false, var maintenance: Boolean = false)
+    private val generationKey = NamespacedKey(plugin, "minedriverig_generation")
+    private var generation = java.util.UUID.randomUUID().toString()
     private val tag = NamespacedKey(plugin, "mine_drive_carrier")
     private val rigs = mutableMapOf<String, Rig>()
     private var renderer: PaperPacketDisplays? = null
@@ -46,6 +50,7 @@ internal class MineDriveRig(private val plugin: Plugin) {
             it.derailedVelocityMod = Vector(1.0,1.0,1.0)
             it.flyingVelocityMod = Vector(1.0,1.0,1.0)
             it.persistentDataContainer.set(tag, PersistentDataType.STRING, runtime.settings.id)
+            it.persistentDataContainer.set(generationKey, PersistentDataType.STRING, generation)
         }
         val hitbox = at.world.spawn(at, Interaction::class.java) {
             // Rail service points sit one block off either side. Keep the
@@ -56,6 +61,7 @@ internal class MineDriveRig(private val plugin: Plugin) {
             it.interactionHeight = if (rail) 1.35f else 2.1f
             it.isResponsive = true
             it.persistentDataContainer.set(tag, PersistentDataType.STRING, runtime.settings.id)
+            it.persistentDataContainer.set(generationKey, PersistentDataType.STRING, generation)
         }
         val body = (if(rail) MineRailDriveModel.parts else MineDriveModel.parts).map { part -> renderer().spawnBlock(at, part.material.createBlockData()).apply {
             brightness = MineDisplayLighting.brightness(part.material)
@@ -99,8 +105,13 @@ internal class MineDriveRig(private val plugin: Plugin) {
     fun cleanup() { rigs.keys.toList().forEach(::cleanup); renderer?.close(); renderer = null }
     fun reconcileLoaded() {
         cleanup()
-        Bukkit.getWorlds().forEach { world -> world.loadedChunks.forEach { chunk ->
-            chunk.entities.filter { zone(it) != null }.forEach { it.eject(); it.remove() }
-        } }
+        generation = java.util.UUID.randomUUID().toString()
+        val remove: (Entity) -> Unit = { entity ->
+            if (zone(entity) != null && entity.persistentDataContainer.get(generationKey, PersistentDataType.STRING) != generation) {
+                entity.eject(); entity.remove()
+            }
+        }
+        if (tasks != null) tasks.captureLoadedEntities(remove)
+        else Bukkit.getWorlds().forEach { world -> world.loadedChunks.forEach { chunk -> chunk.entities.forEach(remove) } }
     }
 }

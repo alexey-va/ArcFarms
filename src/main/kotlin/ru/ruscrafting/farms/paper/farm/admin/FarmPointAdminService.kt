@@ -126,36 +126,43 @@ internal class FarmPointAdminService(
                 return false
             }
         }
-        try {
-            pointService.save(zoneId, kind, position) { candidate -> validator.validateLocations(settings(), candidate) }
-        } catch (failure: Exception) {
-            state.log(Level.SEVERE, "Could not save farm point $zoneId/$kind", failure)
-            port.sendChat(player, MessageKey.GENERIC_ERROR)
-            return false
+        val operation = runCatching { pointService.saveAsync(zoneId, kind, position) { candidate -> validator.validateLocations(settings(), candidate) } }
+            .getOrElse { failure ->
+                state.log(Level.SEVERE, "Could not prepare farm point mutation $zoneId/$kind", failure)
+                port.sendChat(player, MessageKey.GENERIC_ERROR)
+                return false
+            }
+        operation.whenComplete { _, failure ->
+            if (!org.bukkit.Bukkit.isPrimaryThread()) return@whenComplete
+            if (failure != null) {
+                state.log(Level.SEVERE, "Could not persist farm point mutation $zoneId/$kind", failure)
+                if (player.isOnline) port.sendChat(player, MessageKey.GENERIC_ERROR)
+            } else if (player.isOnline) {
+                refresh(runtime, kind, player, "admin_point_changed")
+                port.sendChat(
+                    player,
+                    MessageKey.ADMIN_POINT_SAVED,
+                    mapOf(
+                        "point" to locale.renderPath("admin.point.${kind.name.lowercase()}", player),
+                        "zone" to locale.text(zoneId),
+                    ),
+                )
+                if (kind in PROCESSING_POINTS) {
+                    processing.preview(runtime, player)
+                    port.sendChat(player, MessageKey.ADMIN_POINT_PROCESSING_SAVED)
+                }
+                debug.event(
+                    "farm_admin_point_saved",
+                    "player" to player.name,
+                    "zone" to zoneId,
+                    "point" to kind,
+                    "world" to position.world,
+                    "x" to position.x,
+                    "y" to position.y,
+                    "z" to position.z,
+                )
+            }
         }
-        refresh(runtime, kind, player, "admin_point_changed")
-        port.sendChat(
-            player,
-            MessageKey.ADMIN_POINT_SAVED,
-            mapOf(
-                "point" to locale.renderPath("admin.point.${kind.name.lowercase()}", player),
-                "zone" to locale.text(zoneId),
-            ),
-        )
-        if (kind in PROCESSING_POINTS) {
-            processing.preview(runtime, player)
-            port.sendChat(player, MessageKey.ADMIN_POINT_PROCESSING_SAVED)
-        }
-        debug.event(
-            "farm_admin_point_saved",
-            "player" to player.name,
-            "zone" to zoneId,
-            "point" to kind,
-            "world" to position.world,
-            "x" to position.x,
-            "y" to position.y,
-            "z" to position.z,
-        )
         return true
     }
 
@@ -169,23 +176,30 @@ internal class FarmPointAdminService(
             )
             return false
         }
-        try {
-            pointService.clear(zoneId, kind) { candidate -> validator.validateLocations(settings(), candidate) }
-        } catch (failure: Exception) {
-            state.log(Level.SEVERE, "Could not clear farm point $zoneId/$kind", failure)
-            port.sendChat(player, MessageKey.GENERIC_ERROR)
-            return false
+        val operation = runCatching { pointService.clearAsync(zoneId, kind) { candidate -> validator.validateLocations(settings(), candidate) } }
+            .getOrElse { failure ->
+                state.log(Level.SEVERE, "Could not prepare farm point mutation $zoneId/$kind", failure)
+                port.sendChat(player, MessageKey.GENERIC_ERROR)
+                return false
+            }
+        operation.whenComplete { _, failure ->
+            if (!org.bukkit.Bukkit.isPrimaryThread()) return@whenComplete
+            if (failure != null) {
+                state.log(Level.SEVERE, "Could not persist farm point mutation $zoneId/$kind", failure)
+                if (player.isOnline) port.sendChat(player, MessageKey.GENERIC_ERROR)
+            } else if (player.isOnline) {
+                refresh(runtime, kind, player, "admin_point_cleared")
+                port.sendChat(
+                    player,
+                    MessageKey.ADMIN_POINT_CLEARED,
+                    mapOf(
+                        "point" to locale.renderPath("admin.point.${kind.name.lowercase()}", player),
+                        "zone" to locale.text(zoneId),
+                    ),
+                )
+                debug.event("farm_admin_point_cleared", "player" to player.name, "zone" to zoneId, "point" to kind)
+            }
         }
-        refresh(runtime, kind, player, "admin_point_cleared")
-        port.sendChat(
-            player,
-            MessageKey.ADMIN_POINT_CLEARED,
-            mapOf(
-                "point" to locale.renderPath("admin.point.${kind.name.lowercase()}", player),
-                "zone" to locale.text(zoneId),
-            ),
-        )
-        debug.event("farm_admin_point_cleared", "player" to player.name, "zone" to zoneId, "point" to kind)
         return true
     }
 

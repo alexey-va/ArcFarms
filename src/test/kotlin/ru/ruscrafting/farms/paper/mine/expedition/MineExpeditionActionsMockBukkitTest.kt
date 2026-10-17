@@ -546,7 +546,7 @@ class MineExpeditionActionsMockBukkitTest : FunSpec({
             scene.zoneId, scene.sequence, scene.objectiveNonce, scene.journalSequence, scene.surface, scene.prepared)
         scene.refreshReady(building = false, complete = true)
         val plugin = paper.createSimplePlugin("FactoryMachineryTest")
-        val machinery = MineExpeditionMachinery(plugin, { _, _ -> true })
+        val machinery = MineExpeditionMachinery(plugin, { _, _ -> java.util.concurrent.CompletableFuture.completedFuture(true) })
         val roleKey = org.bukkit.NamespacedKey(plugin, "mine_expedition_machine_role")
         var state = MineExpeditionState(scene.placement, MineExpeditionStage.FACTORY_WATER)
         machinery.animate(scene, state, 0)

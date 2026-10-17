@@ -1,6 +1,7 @@
 package ru.ruscrafting.farms.paper.farm.perk
 
 import net.kyori.adventure.text.Component
+import kotlinx.collections.immutable.toPersistentMap
 import org.bukkit.Bukkit
 import org.bukkit.NamespacedKey
 import org.bukkit.Sound
@@ -72,7 +73,7 @@ internal class FarmPerkController(
         override fun update(playerId: UUID, next: FarmPlayerPerks, committed: () -> Unit) {
             if (busy(playerId)) return
             val before = normalized(playerId)
-            ledger = FarmPerkLedgerState(ledger.values + (playerId to next))
+            ledger = FarmPerkLedgerState(ledger.values.toPersistentMap().put(playerId, next))
             pendingPurchases[playerId] = next
             foodTransactions[playerId] = before
             val generation = persistenceGeneration
@@ -83,7 +84,7 @@ internal class FarmPerkController(
                     pendingPurchases.remove(playerId)
                     foodTransactions.remove(playerId)
                     if (failure != null) {
-                        ledger = FarmPerkLedgerState(ledger.values + (playerId to before))
+                        ledger = FarmPerkLedgerState(ledger.values.toPersistentMap().put(playerId, before))
                         state.log(Level.SEVERE, "Could not persist farm food purchase for $playerId", failure)
                         Bukkit.getPlayer(playerId)?.let { audience.sendChat(it, MessageKey.FARM_PERK_SAVE_FAILED) }
                     } else committed()
@@ -106,7 +107,7 @@ internal class FarmPerkController(
         pendingPurchases.clear()
         foodTransactions.clear()
         menuRefreshTasks.clear()
-        ledger = FarmPerkLedgerState(values)
+        ledger = FarmPerkLedgerState(values.toPersistentMap())
     }
 
     fun snapshot(): Map<UUID, FarmPlayerPerks> = ledger.values
@@ -221,7 +222,7 @@ internal class FarmPerkController(
     fun beforeReload() {
         // No food side effect has run for these callbacks; retain recoverable intent.
         foodTransactions.forEach { (playerId, before) ->
-            ledger = FarmPerkLedgerState(ledger.values + (playerId to before))
+            ledger = FarmPerkLedgerState(ledger.values.toPersistentMap().put(playerId, before))
         }
         foodTransactions.clear()
         persistenceGeneration++
@@ -427,7 +428,7 @@ internal class FarmPerkController(
             )
         }
         val purchased = decision as FarmPerkPurchaseResult.Purchased
-        ledger = FarmPerkLedgerState(ledger.values + (player.uniqueId to purchased.state))
+        ledger = FarmPerkLedgerState(ledger.values.toPersistentMap().put(player.uniqueId, purchased.state))
         pendingPurchases[player.uniqueId] = purchased.state
         val generation = persistenceGeneration
         val token = tasks.lifecycleToken()
@@ -437,7 +438,7 @@ internal class FarmPerkController(
                 pendingPurchases.remove(player.uniqueId)
                 if (failure != null) {
                     if (ledger.values[player.uniqueId] == purchased.state) {
-                        ledger = FarmPerkLedgerState(ledger.values + (player.uniqueId to before))
+                        ledger = FarmPerkLedgerState(ledger.values.toPersistentMap().put(player.uniqueId, before))
                     }
                     state.log(Level.SEVERE, "Could not persist farm perk purchase for ${player.uniqueId}", failure)
                     if (player.isOnline) {

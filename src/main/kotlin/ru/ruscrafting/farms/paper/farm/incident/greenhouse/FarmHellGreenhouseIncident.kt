@@ -30,6 +30,8 @@ import ru.ruscrafting.farms.paper.worksite.WorksiteAccessPort
 import ru.ruscrafting.farms.paper.worksite.WorksiteAudiencePort
 import ru.ruscrafting.farms.paper.worksite.WorksiteStatePort
 import java.util.UUID
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.CancellationException
 import java.util.logging.Level
 
 /** HELL_RIFT variant of the shared underground expedition; owns only the plantation and its room. */
@@ -45,9 +47,10 @@ internal class FarmHellGreenhouseIncident(
     ledger: FarmBlockLedger,
     text: FarmTextDisplayRenderer = PaperFarmTextDisplayRenderer,
     private val rooms: FarmMoleBurrowWorld,
-    tasks: WorksiteTaskPort,
+    private val tasks: WorksiteTaskPort,
 ) {
     private data class Clock(val sequence: Long, val placement: Long, var ticks: Int = 0, var room: FarmMoleBurrowScene? = null)
+    private val pendingInitializations = mutableMapOf<String, CompletableFuture<Boolean>>()
     private val clocks = mutableMapOf<String, Clock>()
     private val scene = FarmHellGreenhouseScene(plugin, locale, text)
     private val expedition = FarmUndergroundExpedition(plugin, tasks, access, audience, state, FarmUndergroundVariant.HELL_RIFT,
@@ -62,6 +65,105 @@ internal class FarmHellGreenhouseIncident(
     fun owns(entity: Entity): Boolean = scene.owns(entity)
     fun identity(entity: Entity): HellGreenhouseIdentity? = scene.identity(entity)
     private fun active(runtime: FarmRuntime) = runtime.state.phase == FarmPhase.INCIDENT && runtime.state.incidentType == FarmIncidentType.HELL_GREENHOUSE
+
+    fun initializeAsync(runtime: FarmRuntime, actor: Player? = null): CompletableFuture<Boolean> {
+        if (!active(runtime)) return CompletableFuture.completedFuture(false)
+        activeRuntimes[runtime.settings.id] = runtime
+        val source = runtime.state
+        val zoneSettings = runtime.settings
+        val currentGreenhouse = source.hellGreenhouse
+        if (currentGreenhouse?.entrance != null && currentGreenhouse.layoutVersion == FarmHellRiftRoom.LAYOUT_VERSION) {
+            return CompletableFuture.completedFuture(true)
+        }
+        pendingInitializations[zoneSettings.id]?.let { return it }
+        if (currentGreenhouse?.entrance != null && migrated.add(zoneSettings.id)) {
+            if (!evacuate(runtime)) { migrated.remove(zoneSettings.id); return CompletableFuture.completedFuture(true) }
+            rooms.beginRestore(runtime.region.world, zoneSettings.id, source.sequence)
+        }
+        if (rooms.restoring(zoneSettings.id)) return CompletableFuture.completedFuture(true)
+        val token = tasks.lifecycleToken()
+        val result = CompletableFuture<Boolean>()
+        pendingInitializations[zoneSettings.id] = result
+        fun current() = pendingInitializations[zoneSettings.id] === result && active(runtime) &&
+            activeRuntimes[zoneSettings.id] === runtime && runtime.settings === zoneSettings &&
+            runtime.state.sequence == source.sequence && runtime.state.placementSequence == source.placementSequence &&
+            runtime.state.hellGreenhouse === currentGreenhouse
+        beds.discoverAsync(runtime, ::current).thenCompose { indexed ->
+            tasks.compute {
+                FarmUndergroundEntrySelection.candidates(indexed, zoneSettings.moleBurrow.entranceMinBoundaryDistance,
+                    zoneSettings.moleBurrow.candidateAttempts, source.placementSequence xor 0x52494654L)
+            }.thenCompose { candidates ->
+                tasks.callSync(token) {
+                    val rejections = linkedMapOf<String, Int>()
+                    fun choose(index: Int): CompletableFuture<FarmMoleBurrowScene?> {
+                        check(current()) { "Greenhouse source changed" }
+                        if (index == candidates.size) {
+                            state.log(Level.WARNING, "Underground plantation unavailable: zone=${zoneSettings.id} " +
+                                "sequence=${source.sequence} candidates=${candidates.size} rejections=$rejections")
+                            return CompletableFuture.completedFuture(null)
+                        }
+                        return rooms.previewGreenhouseChamberDetailedAsync(runtime, candidates[index]).thenCompose { preview ->
+                            tasks.callSync(token) {
+                                preview.rejections.forEach { (reason, count) -> rejections[reason] = rejections.getOrDefault(reason, 0) + count }
+                                if (preview.scene != null) CompletableFuture.completedFuture(preview.scene) else choose(index + 1)
+                            }.thenCompose { it }
+                        }
+                    }
+                    choose(0).thenCompose { room ->
+                        if (room == null) return@thenCompose CompletableFuture.completedFuture(false)
+                        tasks.callSync(token) {
+                            check(current()) { "Greenhouse source changed" }
+                            rooms.prepareScenesAsync(listOf(room)).thenCompose { prepared ->
+                                tasks.callSync(token) {
+                                    if (!prepared || !current()) {
+                                        if (prepared) rooms.beginRestore(room.world, zoneSettings.id, source.sequence)
+                                        return@callSync CompletableFuture.completedFuture(false)
+                                    }
+                                    val center = room.start
+                                    val rules = zoneSettings.specialIncidents.hellGreenhouse
+                                    val points = FarmHellRiftRoom.bedOffsets.map { (x, z) ->
+                                        FarmPointPosition(center.world.name, center.x + x, center.y, center.z + z)
+                                    }
+                                    val surface = room.surface.let { FarmPointPosition(it.world.name, it.x, it.y, it.z) }
+                                    currentGreenhouse?.let(FarmHellGreenhouseEngine::validate)
+                                    val initialized = FarmHellGreenhouseEngine.initialize(
+                                        FarmHellGreenhouseState(points = points, entrance = surface, cooled = currentGreenhouse?.cooled ?: 0,
+                                            layoutVersion = FarmHellRiftRoom.LAYOUT_VERSION,
+                                            plots = currentGreenhouse?.takeIf { it.layoutVersion == FarmHellRiftRoom.LAYOUT_VERSION }?.plots
+                                                ?: List(FarmHellGreenhouseEngine.PHYSICAL_PLOTS) { FarmHellPlantationPlot() }), rules)
+                                    val iterator = indexed.iterator()
+                                    val restore = if (currentGreenhouse == null) CompletableFuture.completedFuture(Unit) else tasks.capture(token, ::current) {
+                                        if (!iterator.hasNext()) return@capture true
+                                        iterator.next().block()?.let { legacyLedger.restoreTemporaryRemovals(listOf(it), "greenhouse:${zoneSettings.id}") }
+                                        !iterator.hasNext()
+                                    }
+                                    restore.thenApply {
+                                        check(current()) { "Greenhouse source changed" }
+                                        runtime.state = runtime.state.copy(hellGreenhouse = initialized.state,
+                                            incidentProgress = initialized.state.cooled, incidentRequired = rules.quota)
+                                        reportedPauses.remove(zoneSettings.id)
+                                        state.log(Level.INFO, "Underground plantation planned: zone=${zoneSettings.id} sequence=${source.sequence} " +
+                                            "surface=$surface center=$center preserved_progress=${initialized.state.cooled}")
+                                        state.persistAsync()
+                                        true
+                                    }
+                                }.thenCompose { it }
+                            }
+                        }.thenCompose { it }
+                    }
+                }.thenCompose { it }
+            }
+        }.whenComplete { accepted, failure ->
+            tasks.callSync(token) {
+                if (pendingInitializations[zoneSettings.id] === result) {
+                    pendingInitializations.remove(zoneSettings.id)
+                    if (failure != null) rooms.beginRestore(runtime.region.world, zoneSettings.id, source.sequence)
+                }
+                if (failure == null) result.complete(accepted == true) else result.completeExceptionally(failure)
+            }.whenComplete { _, dispatchFailure -> if (dispatchFailure != null) result.completeExceptionally(dispatchFailure) }
+        }
+        return result
+    }
 
     fun initialize(runtime: FarmRuntime, actor: Player? = null): Boolean {
         if (!active(runtime)) return false
@@ -151,10 +253,15 @@ internal class FarmHellGreenhouseIncident(
         if (viewers.any(access::isAdminEditing)) { reportPause(runtime, "admin-editing"); clear(runtime); return }
         val eligible = viewers.filter { eligible(runtime, it) }
         if (eligible.isEmpty()) { reportPause(runtime, "no-participants"); clear(runtime); return }
-        if (!initialize(runtime)) {
-            if (!runtime.preparationChunksLoaded()) return
-            transitions.apply(runtime, FarmShiftEngine.skipUnavailableIncident(runtime.state, FarmIncidentType.HELL_GREENHOUSE), null)
-            state.persistAsync()
+        if (runtime.state.hellGreenhouse?.let { it.entrance != null && it.layoutVersion == FarmHellRiftRoom.LAYOUT_VERSION } != true) {
+            val sequence = runtime.state.sequence
+            val placement = runtime.state.placementSequence
+            initializeAsync(runtime).thenAccept { initialized ->
+                if (!initialized && active(runtime) && runtime.state.sequence == sequence && runtime.state.placementSequence == placement && runtime.preparationChunksLoaded()) {
+                    transitions.apply(runtime, FarmShiftEngine.skipUnavailableIncident(runtime.state, FarmIncidentType.HELL_GREENHOUSE), null)
+                    state.persistAsync()
+                }
+            }
             return
         }
         val greenhouse = runtime.state.hellGreenhouse ?: return
@@ -324,6 +431,7 @@ internal class FarmHellGreenhouseIncident(
     }
 
     fun clear(runtime: FarmRuntime) {
+        pendingInitializations.remove(runtime.settings.id)?.complete(false)
         val sequence = clocks[runtime.settings.id]?.sequence ?: runtime.state.sequence
         if (!evacuate(runtime)) return
         clocks.remove(runtime.settings.id)
@@ -334,6 +442,8 @@ internal class FarmHellGreenhouseIncident(
         }
     }
     fun cleanup() {
+        pendingInitializations.values.forEach { it.complete(false) }
+        pendingInitializations.clear()
         activeRuntimes.values.forEach(::clear)
         rooms.clearQueues() // Unrestored chunk journals remain durable for the next startup.
         entrances.values.flatten().forEach(Entity::remove)

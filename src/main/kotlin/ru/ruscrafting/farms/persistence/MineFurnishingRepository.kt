@@ -22,5 +22,6 @@ class MineFurnishingRepository(root: Path) {
         })
     fun loadAsync() = store.loadAsync()
     fun saveAsync(state: MineFurnishingState) = store.saveAsync(state)
+    fun closeAsync() = store.closeAsync()
     fun close() = store.shutdown()
 }

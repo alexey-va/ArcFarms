@@ -1,5 +1,10 @@
 package ru.ruscrafting.farms.paper
 
+import kotlinx.collections.immutable.PersistentMap
+import kotlinx.collections.immutable.PersistentSet
+import kotlinx.collections.immutable.persistentMapOf
+import kotlinx.collections.immutable.persistentSetOf
+
 import org.bukkit.Chunk
 import org.bukkit.Material
 import org.bukkit.World
@@ -12,6 +17,9 @@ import ru.ruscrafting.farms.config.FarmCropLayoutSettings
 import ru.ruscrafting.farms.domain.FarmPlotPosition
 import ru.ruscrafting.farms.domain.worksite.WorksiteDeterministicSeed
 import java.util.PriorityQueue
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.CancellationException
+import ru.ruscrafting.farms.paper.worksite.WorksiteTaskPort
 
 internal data class FarmBlockIndexDefinition(
     val zoneId: String,
@@ -72,42 +80,77 @@ internal class FarmBlockRegistry(
     private val nanoTime: () -> Long = System::nanoTime,
     private val addChunkTicket: (Chunk) -> Boolean = { chunk -> chunk.addPluginChunkTicket(plugin) },
     private val removeChunkTicket: (Chunk) -> Unit = { chunk -> chunk.removePluginChunkTicket(plugin) },
+    private val tasks: WorksiteTaskPort? = null,
 ) : FarmHarvestCropIndex, AutoCloseable {
-    private val bedsByZone = mutableMapOf<String, MutableSet<FarmPlotPosition>>()
-    private val fixedCropsByZone = mutableMapOf<String, MutableSet<FarmPlotPosition>>()
-    private val orchardLeavesByZone = mutableMapOf<String, MutableSet<FarmPlotPosition>>()
+    private val bedsByZone = mutableMapOf<String, FarmTopologyIndex>()
+    private val fixedCropsByZone = mutableMapOf<String, FarmTopologyIndex>()
+    private val orchardLeavesByZone = mutableMapOf<String, FarmTopologyIndex>()
     private val jobs = mutableMapOf<String, ReindexJob>()
     private var closed = false
+    private var epoch = 0L
+    private val pendingReconcile = mutableMapOf<Triple<String, java.util.UUID, Long>, CompletableFuture<Unit>>()
+    private val reconcileTails = mutableMapOf<String, CompletableFuture<Unit>>()
+    private val reconcileCounts = mutableMapOf<String, Int>()
 
-    override fun beds(zoneId: String): Set<FarmPlotPosition> = bedsByZone[zoneId].orEmpty()
+    override fun beds(zoneId: String): Set<FarmPlotPosition> = bedsByZone[zoneId]?.positions.orEmpty()
 
-    override fun fixedCrops(zoneId: String): Set<FarmPlotPosition> = fixedCropsByZone[zoneId].orEmpty()
+    override fun fixedCrops(zoneId: String): Set<FarmPlotPosition> = fixedCropsByZone[zoneId]?.positions.orEmpty()
 
-    fun orchardLeaves(zoneId: String): Set<FarmPlotPosition> = orchardLeavesByZone[zoneId].orEmpty()
+    fun orchardLeaves(zoneId: String): Set<FarmPlotPosition> = orchardLeavesByZone[zoneId]?.positions.orEmpty()
 
     fun addBeds(zoneId: String, positions: Collection<FarmPlotPosition>) {
-        if (positions.isNotEmpty()) bedsByZone.getOrPut(zoneId, ::linkedSetOf).addAll(positions)
+        if (positions.isNotEmpty()) bedsByZone[zoneId] = (bedsByZone[zoneId] ?: FarmTopologyIndex()).add(positions)
+    }
+
+    fun addBedsAsync(zoneId: String, positions: Collection<FarmPlotPosition>, isCurrent: () -> Boolean): CompletableFuture<Unit> {
+        return changeBedsAsync(zoneId, positions, false, isCurrent)
+    }
+
+    fun removeBedsAsync(zoneId: String, positions: Collection<FarmPlotPosition>, isCurrent: () -> Boolean): CompletableFuture<Unit> {
+        return changeBedsAsync(zoneId, positions, true, isCurrent)
+    }
+
+    private fun changeBedsAsync(zoneId: String, positions: Collection<FarmPlotPosition>, removing: Boolean,
+        isCurrent: () -> Boolean): CompletableFuture<Unit> {
+        val work = tasks ?: return CompletableFuture.completedFuture(Unit).thenApply {
+            if (removing) removeBeds(zoneId, positions) else addBeds(zoneId, positions)
+        }
+        if (positions.isEmpty()) return CompletableFuture.completedFuture(Unit)
+        val token = work.lifecycleToken()
+        val expectedEpoch = epoch
+        fun merge(): CompletableFuture<Unit> {
+            if (closed || epoch != expectedEpoch || !isCurrent()) return CompletableFuture.failedFuture(
+                CancellationException("Farm bed index source changed"))
+            val source = bedsByZone[zoneId]
+            return work.compute {
+                (source ?: FarmTopologyIndex()).let { if (removing) it.remove(positions) else it.add(positions) }
+            }.thenCompose { next ->
+                work.callSync(token) {
+                    if (closed || epoch != expectedEpoch || !isCurrent()) throw CancellationException("Farm bed index source changed")
+                    if (bedsByZone[zoneId] !== source) merge() else {
+                        bedsByZone[zoneId] = next
+                        CompletableFuture.completedFuture(Unit)
+                    }
+                }.thenCompose { it }
+            }
+        }
+        return merge()
     }
 
     fun removeBeds(zoneId: String, positions: Collection<FarmPlotPosition>) {
-        bedsByZone[zoneId]?.let { beds ->
-            beds.removeAll(positions.toSet())
-            if (beds.isEmpty()) bedsByZone.remove(zoneId)
-        }
+        bedsByZone[zoneId]?.let { beds -> bedsByZone[zoneId] = beds.remove(positions) }
     }
 
     fun removeOrchardLeaves(zoneId: String, positions: Collection<FarmPlotPosition>) {
-        orchardLeavesByZone[zoneId]?.let { leaves ->
-            leaves.removeAll(positions.toSet())
-            if (leaves.isEmpty()) orchardLeavesByZone.remove(zoneId)
-        }
+        orchardLeavesByZone[zoneId]?.let { leaves -> orchardLeavesByZone[zoneId] = leaves.remove(positions) }
     }
 
-    fun isReindexing(zoneId: String): Boolean = zoneId in jobs
+    fun isReindexing(zoneId: String): Boolean = zoneId in jobs || (reconcileCounts[zoneId] ?: 0) > 0
 
     fun status(zoneId: String): FarmBlockReindexStatus? = jobs[zoneId]?.status()
 
     fun reconcileChunk(definition: FarmBlockIndexDefinition, chunk: Chunk) {
+        if (tasks != null) { reconcileChunkAsync(definition, chunk); return }
         if (chunk.world != definition.region.world) return
         val records = ledger.blockRecords(chunk)
         val interruptedTemporaryBlocks = records.asSequence()
@@ -151,6 +194,96 @@ internal class FarmBlockRegistry(
         replaceChunkPositions(orchardLeavesByZone, definition.zoneId, chunk, leaves)
     }
 
+    fun reconcileChunkAsync(definition: FarmBlockIndexDefinition, chunk: Chunk): CompletableFuture<Unit> {
+        val work = tasks ?: return runCatching { reconcileChunk(definition, chunk); CompletableFuture.completedFuture(Unit) }
+            .getOrElse { CompletableFuture.failedFuture(it) }
+        if (chunk.world !== definition.region.world || closed) return CompletableFuture.completedFuture(Unit)
+        val key = Triple(definition.zoneId, chunk.world.uid, chunk.chunkKey)
+        pendingReconcile[key]?.let { return it }
+        val token = work.lifecycleToken()
+        val expectedEpoch = epoch
+        val result = CompletableFuture<Unit>()
+        pendingReconcile[key] = result
+        reconcileCounts[definition.zoneId] = (reconcileCounts[definition.zoneId] ?: 0) + 1
+        val previous = reconcileTails.put(definition.zoneId, result) ?: CompletableFuture.completedFuture(Unit)
+        fun current() = !closed && epoch == expectedEpoch && pendingReconcile[key] === result &&
+            definition.zoneId !in jobs && chunk.world.isChunkLoaded(chunk.x, chunk.z) &&
+            chunk.world.getChunkAt(chunk.x, chunk.z) === chunk
+        previous.handle { _, _ -> Unit }.thenCompose { work.callSync(token) {
+            if (!current()) throw CancellationException("Farm chunk reconciliation source changed")
+            ledger.restoreTemporaryAsync(chunk, definition.zoneId, work, ::current)
+                .thenCompose { work.callSync(token) { ledger.loadAsync(chunk, work, ::current) }.thenCompose { it } }
+                .thenCompose { loaded -> work.compute {
+                    loaded to Triple(loaded.contents.blocks.filter { it.zoneId == definition.zoneId && it.indexed }.iterator(),
+                        loaded.contents.fixed.filter { it.zoneId == definition.zoneId && it.restoreAt == null }.iterator(),
+                        loaded.contents.leaves.filter { it.zoneId == definition.zoneId }.iterator())
+                } }.thenCompose { (loaded, records) -> work.callSync(token) {
+                    val (beds, fixed, leaves) = records
+                    fun currentRecords() = current() && ledger.isCurrent(chunk, loaded)
+                    val chunkBeds = linkedSetOf<FarmPlotPosition>()
+                    val chunkFixed = linkedSetOf<FarmPlotPosition>()
+                    val chunkLeaves = linkedSetOf<FarmPlotPosition>()
+                    work.capture(token, ::currentRecords) {
+                        when {
+                            beds.hasNext() -> beds.next().let { record ->
+                                val block = chunk.world.getBlockAt(record.x, record.y, record.z)
+                                if (definition.region.contains(block.location) && FarmBlockPolicy.isRecoverableIndexedBed(
+                                        block.type, block.getRelative(org.bukkit.block.BlockFace.UP).type, definition.crops))
+                                    chunkBeds += block.toPosition()
+                            }
+                            fixed.hasNext() -> fixed.next().let { record ->
+                                val block = chunk.world.getBlockAt(record.x, record.y, record.z)
+                                if (definition.region.contains(block.location) && MaterialRules.isFixedBlockCrop(block.type) &&
+                                    block.type.name in definition.crops) chunkFixed += block.toPosition()
+                            }
+                            leaves.hasNext() -> leaves.next().let { record ->
+                                val block = chunk.world.getBlockAt(record.x, record.y, record.z)
+                                if (definition.region.contains(block.location) && FarmBlockPolicy.isOrchardLeaf(
+                                        block.type, block.getRelative(org.bukkit.block.BlockFace.DOWN).type)) chunkLeaves += block.toPosition()
+                            }
+                        }
+                        !beds.hasNext() && !fixed.hasNext() && !leaves.hasNext()
+                    }.thenCompose {
+                        val coordinates = Triple(chunk.world.name, chunk.x, chunk.z)
+                        fun publish(): CompletableFuture<Unit> {
+                            val previousBeds = bedsByZone[definition.zoneId]
+                            val previousFixed = fixedCropsByZone[definition.zoneId]
+                            val previousLeaves = orchardLeavesByZone[definition.zoneId]
+                            return work.compute { Triple((previousBeds ?: FarmTopologyIndex()).replace(coordinates, chunkBeds),
+                            (previousFixed ?: FarmTopologyIndex()).replace(coordinates, chunkFixed),
+                            (previousLeaves ?: FarmTopologyIndex()).replace(coordinates, chunkLeaves)) }
+                            .thenCompose { (nextBeds, nextFixed, nextLeaves) -> work.callSync(token) {
+                                if (!currentRecords()) throw CancellationException("Farm journal changed while reconciling")
+                                if (bedsByZone[definition.zoneId] !== previousBeds || fixedCropsByZone[definition.zoneId] !== previousFixed ||
+                                    orchardLeavesByZone[definition.zoneId] !== previousLeaves) publish() else {
+                                    bedsByZone[definition.zoneId] = nextBeds
+                                    fixedCropsByZone[definition.zoneId] = nextFixed
+                                    orchardLeavesByZone[definition.zoneId] = nextLeaves
+                                    CompletableFuture.completedFuture(Unit)
+                                }
+                            }.thenCompose { it } }
+                        }
+                        publish()
+                    }
+                }.thenCompose { it } }
+        }.thenCompose { it } }.whenComplete { _, failure ->
+            val delivered = work.runSync(token) {
+                val wasCurrent = current()
+                if (pendingReconcile[key] === result) {
+                    pendingReconcile.remove(key)
+                    reconcileCounts[definition.zoneId] = (reconcileCounts[definition.zoneId] ?: 1) - 1
+                    if (reconcileTails[definition.zoneId] === result) reconcileTails.remove(definition.zoneId)
+                }
+                if (failure == null) result.complete(Unit) else {
+                    result.completeExceptionally(failure)
+                    if (wasCurrent) plugin.logger.log(java.util.logging.Level.SEVERE, "Could not reconcile farm chunk ${chunk.x},${chunk.z}", failure)
+                }
+            }
+            if (!delivered) result.completeExceptionally(CancellationException("Farm registry retired"))
+        }
+        return result
+    }
+
     fun startReindex(
         definition: FarmBlockIndexDefinition,
         onProgress: (FarmBlockReindexStatus) -> Unit,
@@ -179,6 +312,11 @@ internal class FarmBlockRegistry(
     }
 
     fun clear() {
+        epoch++
+        pendingReconcile.values.forEach { it.completeExceptionally(CancellationException("Farm registry cleared")) }
+        pendingReconcile.clear()
+        reconcileTails.clear()
+        reconcileCounts.clear()
         cancelReindexes()
         bedsByZone.clear()
         fixedCropsByZone.clear()
@@ -192,15 +330,10 @@ internal class FarmBlockRegistry(
     }
 
     private fun replaceChunkPositions(
-        registry: MutableMap<String, MutableSet<FarmPlotPosition>>,
-        zoneId: String,
-        chunk: Chunk,
-        replacement: Set<FarmPlotPosition>,
+        registry: MutableMap<String, FarmTopologyIndex>, zoneId: String, chunk: Chunk, replacement: Set<FarmPlotPosition>,
     ) {
-        val positions = registry.getOrPut(zoneId, ::linkedSetOf)
-        positions.removeIf { it.world == chunk.world.name && (it.x shr 4) == chunk.x && (it.z shr 4) == chunk.z }
-        positions.addAll(replacement)
-        if (positions.isEmpty()) registry.remove(zoneId)
+        registry[zoneId] = (registry[zoneId] ?: FarmTopologyIndex())
+            .replace(Triple(chunk.world.name, chunk.x, chunk.z), replacement)
     }
 
     private inner class ReindexJob(
@@ -214,9 +347,9 @@ internal class FarmBlockRegistry(
         private val beds = mutableMapOf<Long, MutableSet<FarmPlotPosition>>()
         private val fixedCrops = mutableMapOf<Long, MutableSet<FarmPlotPosition>>()
         private val orchardSampler = BoundedOrchardSampler(definition.maxOrchardLeaves)
-        private val appliedBeds = linkedSetOf<FarmPlotPosition>()
-        private val appliedFixedCropPositions = linkedSetOf<FarmPlotPosition>()
-        private val appliedLeaves = linkedSetOf<FarmPlotPosition>()
+        private var appliedBeds = FarmTopologyIndex()
+        private var appliedFixedCropPositions = FarmTopologyIndex()
+        private var appliedLeaves = FarmTopologyIndex()
         private var appliedFixedCrops = 0
         private var phase = FarmBlockReindexPhase.SCANNING
         private var chunkIndex = 0
@@ -239,12 +372,170 @@ internal class FarmBlockRegistry(
             totalBlocks = geometry.totalBlocks,
             appliedChunks = appliedChunks,
             totalChunks = geometry.chunks.size,
-            beds = if (finished) appliedBeds.size else bedCount,
+            beds = if (finished) appliedBeds.positions.size else bedCount,
             fixedCrops = if (finished) appliedFixedCrops else fixedCropCount,
-            orchardLeaves = if (finished) appliedLeaves.size else orchardSampler.size,
+            orchardLeaves = if (finished) appliedLeaves.positions.size else orchardSampler.size,
         )
 
-        fun start() = requestChunk()
+        fun start() { if (tasks == null) requestChunk() else requestChunkAsync() }
+
+        private fun current() = !finished && !closed && jobs[definition.zoneId] === this &&
+            (currentChunk?.let { it.isLoaded && it.world.getChunkAt(it.x, it.z) === it } != false)
+
+        private fun requestChunkAsync() {
+            val work = requireNotNull(tasks)
+            val token = work.lifecycleToken()
+            if (!current()) return
+            if (chunkIndex >= geometry.chunks.size) {
+                if (phase == FarmBlockReindexPhase.SCANNING) beginApplyAsync() else complete()
+                return
+            }
+            val coordinates = geometry.chunks[chunkIndex]
+            var load: CompletableFuture<Chunk>? = null
+            work.capture(token, ::current) {
+                val world = definition.region.world
+                load = if (world.isChunkLoaded(coordinates.x, coordinates.z))
+                    CompletableFuture.completedFuture(world.getChunkAt(coordinates.x, coordinates.z))
+                else world.getChunkAtAsync(coordinates.x, coordinates.z, false)
+                true
+            }.thenCompose { requireNotNull(load) }.thenCompose { chunk -> work.callSync(token) {
+                if (!current()) throw CancellationException("Farm reindex source changed")
+                prepareCurrentChunk(chunk)
+                ledger.loadAsync(chunk, work, ::current).thenCompose { loaded -> work.callSync(token) {
+                    check(loaded.contents.fixed.none { it.zoneId == definition.zoneId && it.restoreAt != null }) {
+                        "Farm ${definition.zoneId} still has pending fixed crop restoration"
+                    }
+                    if (phase == FarmBlockReindexPhase.SCANNING) scanChunkAsync(chunk) else applyChunkAsync(chunk)
+                }.thenCompose { it } }
+            }.thenCompose { it } }.whenComplete { _, failure -> work.runSync(token) {
+                if (failure != null && current()) fail(failure)
+            } }
+        }
+
+        private fun scanChunkAsync(chunk: Chunk): CompletableFuture<Unit> {
+            val work = requireNotNull(tasks)
+            val token = work.lifecycleToken()
+            val slice = geometry.slice(chunk.x, chunk.z)
+            val worldName = chunk.world.name
+            val crops = definition.crops
+            val minimumHeight = chunk.world.minHeight
+            val maximumHeight = chunk.world.maxHeight
+            var snapshot: org.bukkit.ChunkSnapshot? = null
+            return work.capture(token, ::current) { snapshot = chunk.getChunkSnapshot(false, false, false); true }
+                .thenCompose { work.compute {
+                    val captured = requireNotNull(snapshot)
+                    val candidates = mutableListOf<Pair<FarmPlotPosition, Int>>()
+                    for (x in slice.minX..slice.maxX) for (z in slice.minZ..slice.maxZ) for (y in slice.minY..slice.maxY) {
+                        val material = captured.getBlockType(x and 15, y, z and 15)
+                        val category = when {
+                            material == Material.FARMLAND && FarmBlockPolicy.isSelectableBed(material,
+                                if (y + 1 < maximumHeight) captured.getBlockType(x and 15, y + 1, z and 15) else Material.AIR, crops) -> 0
+                            MaterialRules.isFixedBlockCrop(material) && material.name in crops -> 1
+                            MaterialRules.isLeaf(material) && FarmBlockPolicy.isOrchardLeaf(material,
+                                if (y - 1 >= minimumHeight) captured.getBlockType(x and 15, y - 1, z and 15) else Material.AIR) -> 2
+                            else -> -1
+                        }
+                        if (category >= 0) candidates += FarmPlotPosition(worldName, x, y, z) to category
+                    }
+                    candidates.iterator()
+                } }.thenCompose { candidates -> work.callSync(token) {
+                    work.capture(token, ::current) {
+                        if (candidates.hasNext()) {
+                            val (position, category) = candidates.next()
+                            if (definition.region.contains(org.bukkit.Location(chunk.world, position.x.toDouble(), position.y.toDouble(), position.z.toDouble()))) {
+                                when (category) {
+                                    0 -> if (addBounded(beds, chunk.chunkKey, position, bedCount, MAX_INDEXED_BEDS, "farm beds")) bedCount++
+                                    1 -> if (addBounded(fixedCrops, chunk.chunkKey, position, fixedCropCount, MAX_INDEXED_FIXED_CROPS, "fixed crops")) fixedCropCount++
+                                    2 -> orchardSampler.add(position)
+                                }
+                            }
+                        }
+                        !candidates.hasNext()
+                    }.thenApply {
+                        scannedBlocks += slice.volume
+                        finishCurrentChunk()
+                        onProgress(status())
+                        chunkIndex++
+                        requestChunkAsync()
+                        Unit
+                    }
+                }.thenCompose { it } }
+        }
+
+        private fun beginApplyAsync() {
+            val work = requireNotNull(tasks)
+            val token = work.lifecycleToken()
+            phase = FarmBlockReindexPhase.APPLYING
+            chunkIndex = 0
+            // Scan builders are quiescent until this worker returns; status reads only counters.
+            work.compute {
+                FarmCropLayoutPlanner.plan(beds.values.flatten(), definition.cropLayout) to
+                    orchardSampler.values().groupBy { chunkKey(it.x shr 4, it.z shr 4) }.mapValues { (_, positions) ->
+                        positions.sortedWith(compareBy(FarmPlotPosition::y, FarmPlotPosition::x, FarmPlotPosition::z))
+                            .take(MAX_INDEXED_ORCHARD_LEAVES_PER_CHUNK).toSet()
+                    }
+            }.thenCompose { (layout, orchards) -> work.callSync(token) {
+                if (!current()) throw CancellationException("Farm reindex source changed during layout")
+                cropLayoutByBed = layout
+                orchardByChunk = orchards
+                onProgress(status())
+                requestChunkAsync()
+            } }.whenComplete { _, failure -> work.runSync(token) { if (failure != null && current()) fail(failure) } }
+        }
+
+        private fun applyChunkAsync(chunk: Chunk): CompletableFuture<Unit> {
+            val work = requireNotNull(tasks)
+            val token = work.lifecycleToken()
+            val bedIterator = beds[chunk.chunkKey].orEmpty().iterator()
+            val fixedIterator = fixedCrops[chunk.chunkKey].orEmpty().iterator()
+            val leafIterator = orchardByChunk[chunk.chunkKey].orEmpty().iterator()
+            val validBeds = mutableListOf<ManagedFarmBlockRecord>()
+            val validFixed = mutableListOf<ManagedFarmFixedCropRecord>()
+            val validLeaves = mutableListOf<ManagedFarmOrchardLeafRecord>()
+            val worldName = chunk.world.name
+            return work.capture(token, ::current) {
+                when {
+                    bedIterator.hasNext() -> bedIterator.next().let { position ->
+                        val block = chunk.world.getBlockAt(position.x, position.y, position.z)
+                        val crop = block.getRelative(org.bukkit.block.BlockFace.UP)
+                        if (definition.region.contains(block.location) && FarmBlockPolicy.isSelectableBed(block.type, crop.type, definition.crops)) {
+                            FarmBlockPolicy.makeWet(block)
+                            cropLayoutByBed[position]?.let { plantMature(crop, Material.valueOf(it)) }
+                            val cropData = crop.blockData.takeUnless { crop.type.isAir }?.asString
+                            validBeds += ManagedFarmBlockRecord(definition.zoneId, block.x, block.y, block.z,
+                                block.blockData.asString, cropData, cropData, indexed = true)
+                        }
+                    }
+                    fixedIterator.hasNext() -> fixedIterator.next().let { position ->
+                        val block = chunk.world.getBlockAt(position.x, position.y, position.z)
+                        if (definition.region.contains(block.location) && MaterialRules.isFixedBlockCrop(block.type) && block.type.name in definition.crops)
+                            validFixed += ManagedFarmFixedCropRecord(definition.zoneId, block.x, block.y, block.z, block.blockData.asString, null)
+                    }
+                    leafIterator.hasNext() -> leafIterator.next().let { position ->
+                        val block = chunk.world.getBlockAt(position.x, position.y, position.z)
+                        if (definition.region.contains(block.location) && FarmBlockPolicy.isOrchardLeaf(block.type, block.getRelative(org.bukkit.block.BlockFace.DOWN).type))
+                            validLeaves += ManagedFarmOrchardLeafRecord(definition.zoneId, block.x, block.y, block.z)
+                    }
+                }
+                !bedIterator.hasNext() && !fixedIterator.hasNext() && !leafIterator.hasNext()
+            }.thenCompose { ledger.replaceZoneIndexAsync(chunk, definition.zoneId, validBeds, validFixed, validLeaves, work, ::current) }
+                .thenCompose { work.compute {
+                    Triple(appliedBeds.add(validBeds.map { FarmPlotPosition(worldName, it.x, it.y, it.z) }),
+                        appliedFixedCropPositions.add(validFixed.map { FarmPlotPosition(worldName, it.x, it.y, it.z) }),
+                        appliedLeaves.add(validLeaves.map { FarmPlotPosition(worldName, it.x, it.y, it.z) }))
+                } }.thenCompose { (nextBeds, nextFixed, nextLeaves) -> work.callSync(token) {
+                    if (!current()) throw CancellationException("Farm reindex source changed after ledger commit")
+                    appliedBeds = nextBeds
+                    appliedFixedCropPositions = nextFixed
+                    appliedLeaves = nextLeaves
+                    appliedFixedCrops += validFixed.size
+                    appliedChunks++
+                    finishCurrentChunk()
+                    onProgress(status())
+                    chunkIndex++
+                    requestChunkAsync()
+                } }
+        }
 
         fun cancel() {
             if (finished) return
@@ -422,9 +713,9 @@ internal class FarmBlockRegistry(
             runCatching {
                 ledger.replaceZoneIndex(chunk, definition.zoneId, validBeds, validFixed, validLeaves)
             }.onFailure { return fail(it) }
-            validBeds.mapTo(appliedBeds) { it.toPosition() }
-            validFixed.mapTo(appliedFixedCropPositions) { it.toPosition() }
-            validLeaves.mapTo(appliedLeaves) { it.toPosition() }
+            appliedBeds = appliedBeds.add(validBeds.map { it.toPosition() })
+            appliedFixedCropPositions = appliedFixedCropPositions.add(validFixed.map { it.toPosition() })
+            appliedLeaves = appliedLeaves.add(validLeaves.map { it.toPosition() })
             appliedFixedCrops += validFixed.size
             appliedChunks++
             finishCurrentChunk()
@@ -531,9 +822,12 @@ internal class FarmBlockRegistry(
                     maxChunkX.toLong() - minChunkX + 1L,
                     maxChunkZ.toLong() - minChunkZ + 1L,
                 )
-                val chunks = if (totalChunks <= MAX_REINDEX_CHUNKS) buildList {
-                    for (chunkX in minChunkX..maxChunkX) {
-                        for (chunkZ in minChunkZ..maxChunkZ) add(ChunkCoordinates(chunkX, chunkZ))
+                val chunks = if (totalChunks <= MAX_REINDEX_CHUNKS) object : AbstractList<ChunkCoordinates>() {
+                    override val size = totalChunks.toInt()
+                    private val gridDepth = maxChunkZ - minChunkZ + 1
+                    override fun get(index: Int): ChunkCoordinates {
+                        require(index in indices)
+                        return ChunkCoordinates(minChunkX + index / gridDepth, minChunkZ + index % gridDepth)
                     }
                 } else emptyList()
                 return ScanGeometry(
@@ -627,4 +921,35 @@ internal class FarmBlockRegistry(
 
         fun Block.toPosition(): FarmPlotPosition = FarmPlotPosition(world.name, x, y, z)
     }
+}
+
+/** Stable ordered roots let delayed capture traverse one exact topology revision without copying a whole zone. */
+private data class FarmTopologyIndex(
+    val positions: PersistentSet<FarmPlotPosition> = persistentSetOf(),
+    val chunks: PersistentMap<Triple<String, Int, Int>, PersistentSet<FarmPlotPosition>> = persistentMapOf(),
+) {
+    fun add(values: Collection<FarmPlotPosition>): FarmTopologyIndex {
+        var nextPositions = positions
+        var nextChunks = chunks
+        values.forEach { position ->
+            nextPositions = nextPositions.add(position)
+            val key = Triple(position.world, position.x shr 4, position.z shr 4)
+            nextChunks = nextChunks.put(key, (nextChunks[key] ?: persistentSetOf()).add(position))
+        }
+        return FarmTopologyIndex(nextPositions, nextChunks)
+    }
+    fun remove(values: Collection<FarmPlotPosition>): FarmTopologyIndex {
+        var nextPositions = positions
+        var nextChunks = chunks
+        values.forEach { position ->
+            nextPositions = nextPositions.remove(position)
+            val key = Triple(position.world, position.x shr 4, position.z shr 4)
+            nextChunks[key]?.remove(position)?.let { remaining ->
+                nextChunks = if (remaining.isEmpty()) nextChunks.remove(key) else nextChunks.put(key, remaining)
+            }
+        }
+        return FarmTopologyIndex(nextPositions, nextChunks)
+    }
+    fun replace(key: Triple<String, Int, Int>, values: Collection<FarmPlotPosition>): FarmTopologyIndex =
+        remove(chunks[key].orEmpty()).add(values)
 }

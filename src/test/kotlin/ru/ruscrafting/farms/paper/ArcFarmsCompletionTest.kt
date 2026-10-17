@@ -31,7 +31,7 @@ class ArcFarmsCompletionTest : FunSpec({
         }
         val sender = mockk<CommandSender> { every { hasPermission("arcfarms.admin") } returns true }
         val command = mockk<Command>()
-        val handler = ArcFarmsCommand(service, mockk<ArcFarmsLocale>(), mockk<ArcFarmsMenu>()) { Result.success(Unit) }
+        val handler = ArcFarmsCommand(service, mockk<ArcFarmsLocale>(), mockk<ArcFarmsMenu>()) { java.util.concurrent.CompletableFuture.completedFuture(Unit) }
         val cases = listOf(
             emptyList<String>() to emptyList(),
             listOf("") to listOf("status", "top", "travel", "reload", "admin", "debug"),

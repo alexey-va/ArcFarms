@@ -1,5 +1,6 @@
 package ru.ruscrafting.farms.paper.mine
 
+import ru.ruscrafting.farms.paper.worksite.captureLoadedChunks
 import org.bukkit.Chunk
 import org.bukkit.entity.Player
 import org.bukkit.block.Block
@@ -265,14 +266,14 @@ internal class MineModule(
 
     override fun activateLoadedState() {
         worldWarmup.activate(registry.snapshot().map { it.region.world }, registry.snapshot())
-        registry.snapshot().forEach { runtime ->
-            runtime.region.world.loadedChunks.forEach { chunk ->
+        tasks.captureLoadedChunks { chunk ->
+            registry.snapshot().filter { it.region.world === chunk.world }.forEach { runtime ->
                 index.reconcileChunk(runtime.indexDefinition(), chunk)
-                cartScene.reconcileChunk(chunk)
                 incidents.reconcileChunk(runtime, chunk)
             }
-            extraction.reconcile(runtime)
+            cartScene.reconcileChunk(chunk)
         }
+        registry.snapshot().forEach(extraction::reconcile)
         incidents.reconcileRecovery()
         recovery.activateLoadedState()
         // Mining-only maps depend on a complete visible-surface index. Rebuild it on every activation,

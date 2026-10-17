@@ -288,7 +288,8 @@ class MineWorkingWorldMockBukkitTest : FunSpec({
             fixture.registry,
             sceneOwner,
             MockBukkitFarmBlockDataDecoder,
-        ) { position -> position == blocked }
+            occupiedByRecovery = { position -> position == blocked },
+        )
 
         workings.prewarm(fixture.runtime, fixture.type, fixture.placement)
         repeat(256) { workings.process() }

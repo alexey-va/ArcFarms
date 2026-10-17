@@ -28,6 +28,9 @@ import ru.ruscrafting.farms.paper.farm.expedition.FarmUndergroundEntrySelection
 import ru.ruscrafting.farms.paper.farm.placement.FarmPlacementService
 import ru.ruscrafting.farms.paper.farm.placement.FarmSurfacePolicy
 import ru.ruscrafting.farms.paper.location
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.CancellationException
+import ru.ruscrafting.farms.paper.worksite.WorksiteTaskPort
 import java.util.random.RandomGenerator
 import java.util.logging.Level
 
@@ -61,7 +64,317 @@ internal class FarmCarePlanService(
     private val moleBurrow: FarmMoleBurrowWorld,
     private val participantCount: (ActivityRegion) -> Int,
     private val log: (Level, String) -> Unit,
+    private val tasks: WorksiteTaskPort? = null,
 ) {
+    fun selectAsync(runtime: FarmRuntime, preferredType: FarmCareType?, actor: Player?): CompletableFuture<FarmCarePlan?> {
+        val work = tasks ?: return CompletableFuture.completedFuture(select(runtime, preferredType, actor))
+        val configured = runtime.state.orderId?.let(runtime.orders::get)?.careTypes
+            ?: return CompletableFuture.completedFuture(null)
+        val start = if (preferredType == null) {
+            Math.floorMod(runtime.state.sequence.toInt() * 17 + random.nextInt(configured.size), configured.size)
+        } else configured.indexOf(preferredType).takeIf { it >= 0 } ?: 0
+        val candidates = if (preferredType != null) listOf(preferredType) else {
+            configured.indices.map { configured[(start + it) % configured.size] }
+        }
+        val token = work.lifecycleToken()
+        val source = runtime.state
+        val zoneSettings = runtime.settings
+        fun current() = runtime.settings === zoneSettings && runtime.state.sequence == source.sequence &&
+            runtime.state.placementSequence == source.placementSequence && runtime.state.phase == source.phase &&
+            runtime.state.orderId == source.orderId && runtime.state.preparationPatch === source.preparationPatch
+        fun choose(index: Int): CompletableFuture<FarmCarePlan?> {
+            if (!current()) return CompletableFuture.failedFuture(CancellationException("Care planning source changed"))
+            if (index == candidates.size) return CompletableFuture.completedFuture(null)
+            val type = candidates[index]
+            return targetsAsync(runtime, type, actor, ::current).thenCompose { selected ->
+                work.callSync(token) {
+                    check(current()) { "Care planning source changed" }
+                    if (selected == null) choose(index + 1) else {
+                        val goal = if (type == FarmCareType.APPLE_HARVEST) {
+                            zoneSettings.appleTargetCount.coerceAtMost(selected.size)
+                        } else selected.sumOf(FarmCareTarget::required)
+                        CompletableFuture.completedFuture(FarmCarePlan(type, selected, goal))
+                    }
+                }.thenCompose { it }
+            }
+        }
+        return choose(0)
+    }
+
+    private fun targetsAsync(
+        runtime: FarmRuntime,
+        type: FarmCareType,
+        actor: Player?,
+        current: () -> Boolean,
+    ): CompletableFuture<List<FarmCareTarget>?> {
+        val work = requireNotNull(tasks)
+        val token = work.lifecycleToken()
+        val patch = mutableListOf<FarmPlotPosition>()
+        val farmBeds = mutableListOf<FarmPlotPosition>()
+        val patchIterator = runtime.state.preparationPatch.iterator()
+        val bedIterator = registry.beds(runtime.settings.id).iterator()
+        val world = runtime.region.world
+        val worldName = world.name
+        val participants = participantCount(runtime.region)
+        val zoneSettings = runtime.settings
+        val placementSequence = runtime.state.nextPlacementSequence()
+        val actorOrigin = actor?.location?.takeIf(runtime.region::contains)?.let { it.x to it.z }
+        val explicit = overrides().zones[zoneSettings.id]
+        return work.capture(token, current) {
+            val iterator = if (patchIterator.hasNext()) patchIterator else bedIterator
+            if (!iterator.hasNext()) return@capture true
+            val plot = iterator.next()
+            if (plot.world == worldName && world.isChunkLoaded(plot.x shr 4, plot.z shr 4) &&
+                FarmSurfacePolicy.isOutdoorBed(world.getBlockAt(plot.x, plot.y, plot.z))) {
+                if (iterator === patchIterator) patch += plot else farmBeds += plot
+            }
+            !patchIterator.hasNext() && !bedIterator.hasNext()
+        }.thenCompose {
+            if (patch.isEmpty()) return@thenCompose CompletableFuture.completedFuture(null)
+            val salt = WorksiteDeterministicSeed.derive(
+                WorksiteDeterministicSeed.derive(placementSequence, type.ordinal * 17L + 101L), random.nextLong(),
+            )
+            val allBeds = farmBeds.ifEmpty { patch }
+            if (type == FarmCareType.MOLES) {
+                return@thenCompose moleTargetsAsync(runtime, allBeds, placementSequence, salt, participants, current)
+            }
+            if (type == FarmCareType.APPLE_HARVEST) {
+                val leaves = mutableListOf<FarmPlotPosition>()
+                val iterator = registry.orchardLeaves(zoneSettings.id).iterator()
+                return@thenCompose work.capture(token, current) {
+                    if (!iterator.hasNext()) return@capture true
+                    val point = iterator.next()
+                    if (point.world == worldName && world.isChunkLoaded(point.x shr 4, point.z shr 4)) {
+                        val leaf = world.getBlockAt(point.x, point.y, point.z)
+                        if (runtime.region.contains(leaf.location) && FarmBlockPolicy.isOrchardLeaf(
+                                leaf.type, leaf.getRelative(org.bukkit.block.BlockFace.DOWN).type,
+                            )) leaves += point
+                    }
+                    !iterator.hasNext()
+                }.thenCompose {
+                    work.compute {
+                        FarmOrchardPlanner.select(leaves, zoneSettings.applePlacementCount, zoneSettings.appleMinSpacing, salt)
+                            .mapIndexed { index, leaf ->
+                                FarmCareTarget(index, FarmCareRole.APPLE, FarmPointPosition(leaf.world, leaf.x + 0.5, leaf.y + 0.5, leaf.z + 0.5))
+                            }.takeIf { it.size >= minOf(3, zoneSettings.appleTargetCount) }
+                    }
+                }
+            }
+            if (type == FarmCareType.POLLINATION) {
+                return@thenCompose fixturePointAsync(runtime, FarmPointKind.HIVE, placementSequence, current).thenCompose { hive ->
+                    work.compute {
+                        hive ?: return@compute null
+                        val count = FarmCarePlanner.targetCount(participants, zoneSettings.careTargetsPerPlayer, zoneSettings.careTargetsMax, patch.size)
+                        listOf(FarmCareTarget(0, FarmCareRole.HIVE, hive)) +
+                            FarmCarePlanner.spread(patch, count.coerceAtMost(patch.size), salt).mapIndexed { index, plot ->
+                                FarmCareTarget(index + 1, FarmCareRole.FLOWER_PATCH, FarmPointPosition(plot.world, plot.x + 0.5, plot.y + 1.05, plot.z + 0.5))
+                            }
+                    }
+                }
+            }
+            if (type == FarmCareType.ANIMAL_RESCUE) {
+                val pen = fixturePoint(runtime, FarmPointKind.PEN, placementSequence)
+                    ?: return@thenCompose CompletableFuture.completedFuture(null)
+                return@thenCompose placement.sourcesAsync(runtime, actor?.location, current).thenCompose { sources ->
+                    work.callSync(token) { placement.bedCandidatesAsync(runtime, sources, zoneSettings.placementSearchRadius, current) }
+                        .thenCompose { it }.thenCompose { candidates ->
+                            work.compute {
+                                FarmDeliveryPlanner.selectTargets(
+                                    candidates, pen.x, pen.z, sources.map { it.x to it.z },
+                                    zoneSettings.placementMinObjectiveDistance.toDouble(), zoneSettings.animalRescueMaxPlayerDistance.toDouble(),
+                                    zoneSettings.animalRescueTargetCount, salt, zoneSettings.animalRescueMinSpacing,
+                                ).mapIndexed { index, point -> FarmCareTarget(index, FarmCareRole.ANIMAL, FarmPointPosition(point.world, point.x, point.y, point.z)) }
+                                    .takeIf { it.isNotEmpty() }
+                            }
+                        }
+                }
+            }
+            if (type == FarmCareType.DITCH_RESCUE) {
+                return@thenCompose ditchTargetsAsync(runtime, allBeds, placementSequence, salt, current)
+            }
+            work.compute {
+                val count = FarmCarePlanner.targetCount(participants, zoneSettings.careTargetsPerPlayer, zoneSettings.careTargetsMax, patch.size)
+                fun bedTargets(role: FarmCareRole, amount: Int) = FarmCarePlanner.spread(patch, amount.coerceAtMost(patch.size), salt)
+                    .mapIndexed { index, plot -> FarmCareTarget(index, role, FarmPointPosition(plot.world, plot.x + 0.5, plot.y + 1.05, plot.z + 0.5)) }
+                when (type) {
+                    FarmCareType.SEEDER -> {
+                        val center = areaCenter(patch) ?: return@compute null
+                        val origin = actorOrigin ?: (center.x.toDouble() to center.z.toDouble())
+                        val first = patch.minWithOrNull(compareBy<FarmPlotPosition> {
+                            val dx = it.x + 0.5 - origin.first; val dz = it.z + 0.5 - origin.second
+                            dx * dx + dz * dz
+                        }.thenBy(FarmPlotPosition::x).thenBy(FarmPlotPosition::z)) ?: return@compute null
+                        listOf(FarmCareTarget(0, FarmCareRole.SEEDER_HORSE, FarmPointPosition(first.world, first.x + 0.5, first.y + 1.05, first.z + 0.5)))
+                    }
+                    FarmCareType.WEEDS -> bedTargets(FarmCareRole.WEED_ROOT, count)
+                    FarmCareType.IRRIGATION -> FarmCarePlanner.orient(bedTargets(FarmCareRole.VALVE, count), explicit?.get(FarmPointKind.IRRIGATION))
+                    FarmCareType.STORM_COVERS -> FarmCarePlanner.orient(bedTargets(FarmCareRole.COVER_ANCHOR, count), explicit?.get(FarmPointKind.COVERS))
+                    FarmCareType.SCARECROWS -> FarmCarePlanner.orient(
+                        FarmCarePlanner.centralSpread(allBeds, zoneSettings.scarecrowTargetCount.coerceAtMost(allBeds.size), zoneSettings.scarecrowMinSpacing, salt)
+                            .mapIndexed { index, plot -> FarmCareTarget(index, FarmCareRole.SCARECROW, FarmPointPosition(plot.world, plot.x + 0.5, plot.y + 1.05, plot.z + 0.5)) },
+                        explicit?.get(FarmPointKind.SCARECROWS),
+                    )
+                    FarmCareType.DISEASE -> bedTargets(FarmCareRole.DISEASED_CROP, zoneSettings.diseaseInitialSpots.coerceAtMost(patch.size))
+                    else -> error("Handled by native capture branch: $type")
+                }.takeIf { it.isNotEmpty() }
+            }
+        }
+    }
+
+    private fun moleTargetsAsync(
+        runtime: FarmRuntime,
+        beds: List<FarmPlotPosition>,
+        placementSequence: Long,
+        salt: Long,
+        participants: Int,
+        current: () -> Boolean,
+    ): CompletableFuture<List<FarmCareTarget>?> {
+        val work = requireNotNull(tasks)
+        val token = work.lifecycleToken()
+        val rules = runtime.settings.moleBurrow
+        val requested = participants.coerceAtLeast(1).coerceAtMost(rules.maxBurrows)
+        val startedAt = System.nanoTime()
+        return work.compute { ru.ruscrafting.farms.domain.FarmMoleEntrancePlanner.preferredBeds(beds, rules.entranceMinBoundaryDistance) }
+            .thenCompose { preferred ->
+                work.callSync(token) {
+                    val clear = mutableListOf<FarmPlotPosition>()
+                    val iterator = preferred.iterator()
+                    work.capture(token, current) {
+                        if (!iterator.hasNext()) return@capture true
+                        val plot = iterator.next()
+                        if (hasRegionClearance(runtime.region, plot, rules.entranceMinBoundaryDistance)) clear += plot
+                        !iterator.hasNext()
+                    }.thenCompose {
+                        work.compute {
+                            val eligible = clear.ifEmpty { preferred }
+                            FarmCarePlanner.spread(eligible, rules.candidateAttempts.coerceAtMost(eligible.size), salt xor 0x4D4F4C45L)
+                                .map { FarmPointPosition(it.world, it.x + 0.5, it.y + 1.05, it.z + 0.5) }.distinct()
+                        }
+                    }
+                }.thenCompose { it }
+            }.thenCompose { candidates ->
+                work.callSync(token) {
+                    var tested = 0
+                    var probes = 0
+                    val rejections = linkedMapOf<String, Int>()
+                    val occupied = hashSetOf<Triple<Int, Int, Int>>()
+                    val selected = mutableListOf<FarmCareTarget>()
+                    fun next(): CompletableFuture<List<FarmCareTarget>?> {
+                        check(current()) { "Mole source changed" }
+                        if (selected.size == requested || tested == candidates.size) {
+                            debug.event("farm_mole_entrance_candidates", "zone" to runtime.settings.id,
+                                "beds" to beds.size, "candidates" to candidates.size, "tested" to tested,
+                                "layout_probes" to probes, "requested" to requested, "selected" to selected.size,
+                                "rejections" to rejections.toString(), "elapsed_ms" to (System.nanoTime() - startedAt) / 1_000_000L)
+                            return CompletableFuture.completedFuture(selected.takeIf { it.size == requested })
+                        }
+                        val candidate = candidates[tested++]
+                        val id = selected.size
+                        return moleBurrow.previewDetailedAsync(runtime, candidate, placementSequence, id).thenCompose { preview ->
+                            probes += preview.layoutAttempts
+                            preview.rejections.forEach { (reason, count) -> rejections[reason] = rejections.getOrDefault(reason, 0) + count }
+                            val positions = preview.scene?.index?.positions
+                            work.compute {
+                                positions != null && if (positions.any { it in occupied }) false else { occupied += positions; true }
+                            }.thenCompose { accepted ->
+                                work.callSync(token) {
+                                    if (accepted) selected += FarmCareTarget(id, FarmCareRole.MOLE_MOUND, candidate)
+                                    else if (positions != null) rejections["overlap"] = rejections.getOrDefault("overlap", 0) + 1
+                                    next()
+                                }.thenCompose { it }
+                            }
+                        }
+                    }
+                    next()
+                }.thenCompose { it }
+            }
+    }
+
+    private fun ditchTargetsAsync(
+        runtime: FarmRuntime, beds: List<FarmPlotPosition>, placementSequence: Long, selection: Long,
+        current: () -> Boolean,
+    ): CompletableFuture<List<FarmCareTarget>?> {
+        val work = requireNotNull(tasks)
+        val token = work.lifecycleToken()
+        val valid = hashSetOf<FarmPlotPosition>()
+        val iterator = beds.iterator()
+        val maximum = runtime.settings.animalRescueTargetCount
+        return work.capture(token, current) {
+            if (!iterator.hasNext()) return@capture true
+            val plot = iterator.next()
+            val world = runtime.region.world
+            if (plot.world == world.name && world.isChunkLoaded(plot.x shr 4, plot.z shr 4)) {
+                val soil = world.getBlockAt(plot.x, plot.y, plot.z)
+                if (soil.type == Material.FARMLAND && FarmSurfacePolicy.isOutdoorBed(soil) && runtime.region.contains(soil.location)) valid += plot
+            }
+            !iterator.hasNext()
+        }.thenCompose {
+            work.compute {
+                val indexed = beds.groupBy { Triple(it.world, it.x, it.z) }
+                val offsets = FarmDitchLayout.cells(placementSequence)
+                val candidates = beds.mapNotNull { center ->
+                    offsets.map { offset ->
+                        indexed[Triple(center.world, center.x + offset.x, center.z + offset.z)].orEmpty().asSequence()
+                            .filter { kotlin.math.abs(it.y - center.y) <= DITCH_MAX_SURFACE_STEP }
+                            .sortedBy { kotlin.math.abs(it.y - center.y) }.firstOrNull { it in valid }
+                    }.takeIf { it.all { plot -> plot != null } }?.filterNotNull()?.takeIf { plots ->
+                        plots.maxOf(FarmPlotPosition::y) - plots.minOf(FarmPlotPosition::y) <= DITCH_MAX_SURFACE_STEP
+                    }
+                }
+                if (candidates.isEmpty()) return@compute null
+                candidates[Math.floorMod(selection, candidates.size.toLong()).toInt()].take(maximum).mapIndexed { index, plot ->
+                    FarmCareTarget(index, FarmCareRole.ANIMAL, FarmPointPosition(plot.world, plot.x + 0.5, plot.y.toDouble(), plot.z + 0.5))
+                }
+            }
+        }
+    }
+
+    fun fixturePointAsync(
+        runtime: FarmRuntime, kind: FarmPointKind, placementSequence: Long = runtime.state.placementSequence,
+        current: () -> Boolean = { true },
+    ): CompletableFuture<FarmPointPosition?> {
+        val work = tasks ?: return CompletableFuture.completedFuture(fixturePoint(runtime, kind, placementSequence))
+        val token = work.lifecycleToken()
+        overrides().zones[runtime.settings.id]?.get(kind)?.let { return CompletableFuture.completedFuture(it) }
+        if (kind == FarmPointKind.PEN) return CompletableFuture.completedFuture(points.resolve(runtime, FarmPointKind.RECEIVING))
+        val patch = runtime.state.preparationPatch
+        val rules = runtime.settings
+        val world = runtime.region.world
+        val worldName = world.name
+        return work.compute { areaCenter(patch) }.thenCompose { center ->
+            if (center == null) return@thenCompose CompletableFuture.completedFuture(null)
+            work.callSync(token) {
+                var found: FarmPointPosition? = null
+                val radius = rules.careRadius
+                var x = center.x - radius; var z = center.z - radius; var y = center.y - 4
+                val scan = if (kind != FarmPointKind.HIVE) CompletableFuture.completedFuture(Unit) else work.capture(token, current) {
+                    if (found != null || x > center.x + radius) return@capture true
+                    if (world.isChunkLoaded(x shr 4, z shr 4) && y in world.minHeight until world.maxHeight) {
+                        val block = world.getBlockAt(x, y, z)
+                        if (runtime.region.contains(block.location) && (block.type == Material.BEE_NEST || block.type == Material.BEEHIVE)) {
+                            found = FarmPointPosition(worldName, x + 0.5, y + 0.5, z + 0.5)
+                        }
+                    }
+                    if (++y > center.y + 1) { y = center.y - 4; if (++z > center.z + radius) { z = center.z - radius; x++ } }
+                    found != null || x > center.x + radius
+                }
+                scan.thenCompose {
+                    if (found != null || !rules.proceduralCareFixtures) return@thenCompose CompletableFuture.completedFuture(found)
+                    placement.safeGroundCandidatesAsync(runtime, listOf(FarmPointPosition(worldName, center.x.toDouble(), center.y.toDouble(), center.z.toDouble())), radius, current)
+                        .thenCompose { candidates ->
+                            work.compute {
+                                if (candidates.isNotEmpty()) {
+                                    val selection = WorksiteDeterministicSeed.derive(placementSequence, kind.ordinal * 31L)
+                                    candidates[Math.floorMod(selection, candidates.size.toLong()).toInt()].let { FarmPointPosition(it.world, it.x, it.y, it.z) }
+                                } else FarmCarePlanner.spread(patch, 1, WorksiteDeterministicSeed.derive(placementSequence, kind.ordinal.toLong()))
+                                    .firstOrNull()?.let { FarmPointPosition(it.world, it.x + 0.5, it.y + 1.0, it.z + 0.5) }
+                            }
+                        }
+                }
+            }.thenCompose { it }
+        }
+    }
+
     fun select(runtime: FarmRuntime, preferredType: FarmCareType?, actor: Player?): FarmCarePlan? {
         val configured = runtime.state.orderId?.let(runtime.orders::get)?.careTypes ?: run {
             log(

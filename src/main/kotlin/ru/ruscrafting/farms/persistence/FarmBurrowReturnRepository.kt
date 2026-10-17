@@ -24,14 +24,14 @@ data class FarmBurrowReturn(
 /** One durable safe return per player, committed before entering a temporary tunnel. */
 class FarmBurrowReturnRepository(dataRoot: Path, relativeDirectory: Path = Path.of("data/recovery/farm-burrow-returns")) {
     private val gson = Gson()
-    private val journal = DurableRecordJournal(
+    private val journal by lazy { DurableRecordJournal(
         root = dataRoot,
         relativeDirectory = relativeDirectory,
         maxRecordBytes = MAX_RECORD_BYTES,
         encode = { record: FarmBurrowReturn -> gson.toJson(record).toByteArray(StandardCharsets.UTF_8) },
         decode = ::decode,
         validate = ::validate,
-    )
+    ) }
 
     fun commit(record: FarmBurrowReturn): FarmBurrowReturn =
         journal.commit(record.playerId.toString(), record)

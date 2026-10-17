@@ -484,11 +484,7 @@ internal class MineController(
         }
 
         fun validateJournalMaterials(journal: MineRecoveryJournal) {
-            journal.records().forEach { record ->
-                MaterialRules.material(record.originalMaterial)
-                MaterialRules.material(record.temporaryMaterial)
-                MaterialRules.material(record.nextMaterial)
-            }
+            journal.materialNames().forEach(MaterialRules::material)
         }
 
         fun validatePersisted(

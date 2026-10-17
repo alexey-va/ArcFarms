@@ -1,6 +1,8 @@
 package ru.ruscrafting.farms.persistence
 
 import ru.arc.persistence.CoalescingAsyncWriter
+import kotlinx.collections.immutable.toPersistentMap
+import kotlinx.collections.immutable.toPersistentList
 import ru.ruscrafting.farms.domain.ActivityKind
 import ru.ruscrafting.farms.domain.ArcFarmsState
 import ru.ruscrafting.farms.domain.FarmCropDamage
@@ -28,7 +30,6 @@ import ru.ruscrafting.farms.domain.enterprise.WorksiteEnterpriseLedger
 import ru.ruscrafting.farms.domain.enterprise.WorksiteEnterpriseCapitalLedger
 import ru.ruscrafting.farms.domain.enterprise.WorksiteEnterpriseFinancingSnapshot
 import ru.ruscrafting.farms.domain.enterprise.WorksiteEnterpriseSnapshot
-import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
@@ -51,35 +52,23 @@ class ArcFarmsStateRepository(dataRoot: Path) : AutoCloseable {
         emptyValue = ::ArcFarmsState,
         validate = ::validateState,
     )
-    private val persistedStateLock = Any()
-    private var lastPersistedState: ArcFarmsState? = null
-    private var hasPersistedState = false
-    private var latestPendingState: ArcFarmsState? = null
-    private var latestPendingWrite: CompletableFuture<Unit>? = null
-    private val writer =
-        CoalescingAsyncWriter<ArcFarmsState> { state ->
-            store.saveAsync(state).thenApply {
-                synchronized(persistedStateLock) {
-                    lastPersistedState = state
-                    hasPersistedState = true
-                }
-            }
-        }
+    private val writer = CoalescingAsyncWriter<ArcFarmsState> { state -> store.saveAsync(state) }
     private val pendingRequests = AtomicInteger()
     private val completedRequests = AtomicLong()
     private val failedRequests = AtomicLong()
     private val lastDurationMillis = AtomicLong()
     private val maxDurationMillis = AtomicLong()
 
-    fun load(): ArcFarmsState {
-        val existed = Files.isRegularFile(statePath)
+    @Volatile private var preparedState: ArcFarmsState? = null
+
+    fun load(): ArcFarmsState = preparedState ?: loadPrepared().let { state ->
+        state.copy(stats = state.stats.toPersistentMap(), farmPerks = state.farmPerks.orEmpty().toPersistentMap(),
+            claimedFarmRewardSequences = state.claimedFarmRewardSequences.toPersistentMap(),
+            pendingFarmRewards = state.pendingFarmRewards.toPersistentList())
+    }.also { preparedState = it }
+
+    private fun loadPrepared(): ArcFarmsState {
         val state = store.load()
-        if (existed) {
-            synchronized(persistedStateLock) {
-                lastPersistedState = state
-                hasPersistedState = true
-            }
-        }
         val farms = state.farms.mapValues { (_, farm) ->
             val normalized = if (farm.diseaseDamagedCrops == null) {
                 farm.copy(diseaseDamagedCrops = emptyList())
@@ -164,43 +153,15 @@ class ArcFarmsStateRepository(dataRoot: Path) : AutoCloseable {
         maxDurationMillis = maxDurationMillis.get(),
     )
 
-    private fun submitDistinct(state: ArcFarmsState): CompletableFuture<Unit> {
-        return synchronized(persistedStateLock) {
-            val pendingWrite = latestPendingWrite
-            if (pendingWrite?.isDone == true) {
-                latestPendingState = null
-                latestPendingWrite = null
-            } else if (pendingWrite != null && latestPendingState == state) {
-                return pendingWrite
-            }
-
-            if (latestPendingWrite == null && hasPersistedState && lastPersistedState == state) {
-                return CompletableFuture.completedFuture(Unit)
-            }
-
-            val submitted = writer.submit(state)
-            latestPendingState = state
-            latestPendingWrite = submitted
-            submitted.whenComplete { _, _ ->
-                synchronized(persistedStateLock) {
-                    if (latestPendingWrite === submitted) {
-                        latestPendingState = null
-                        latestPendingWrite = null
-                    }
-                }
-            }
-            submitted
-        }
-    }
+    private fun submitDistinct(state: ArcFarmsState): CompletableFuture<Unit> = writer.submit(state)
 
     fun saveBlocking(state: ArcFarmsState) {
         saveAsync(state).get(SAVE_TIMEOUT_SECONDS, TimeUnit.SECONDS)
     }
 
-    override fun close() {
-        writer.closeAsync().get(SAVE_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-        store.close()
-    }
+    fun closeAsync(): CompletableFuture<Unit> = writer.closeAsync().thenCompose { store.closeAsync() }
+
+    override fun close() { closeAsync() }
 
     private companion object {
         const val SAVE_TIMEOUT_SECONDS = 15L

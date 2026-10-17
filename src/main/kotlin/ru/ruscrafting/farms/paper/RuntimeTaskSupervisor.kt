@@ -1,6 +1,8 @@
 package ru.ruscrafting.farms.paper
 
 import ru.arc.core.LifecycleTaskScope
+import ru.arc.core.BudgetedTaskQueue
+import java.util.concurrent.CompletableFuture
 import ru.arc.core.ScheduledTask
 import ru.arc.core.TaskScheduler
 import ru.arc.core.Tasks
@@ -15,12 +17,25 @@ internal class RuntimeTaskSupervisor(
     internal class Token internal constructor(internal val delegate: LifecycleTaskScope.Token)
 
     private val delegate = LifecycleTaskScope(scheduler, initiallyActive = false)
+    private var nativeWork: BudgetedTaskQueue? = null
 
     fun activate() {
         delegate.activate()
+        nativeWork = BudgetedTaskQueue(delegate)
     }
 
-    fun restart(): Token = Token(delegate.restart())
+    fun restart(): Token {
+        nativeWork?.close()
+        val token = Token(delegate.restart())
+        nativeWork = BudgetedTaskQueue(delegate)
+        return token
+    }
+
+    fun capture(token: Token, isCurrent: () -> Boolean, step: () -> Boolean): CompletableFuture<Unit> =
+        nativeWork?.submit({ delegate.isCurrent(token.delegate) && isCurrent() }, step)
+            ?: CompletableFuture.failedFuture(IllegalStateException("Worksite runtime is inactive"))
+
+    fun <T> callSync(token: Token, task: () -> T): CompletableFuture<T> = delegate.callSync(token.delegate, task)
 
     fun token(): Token = Token(delegate.token())
 
@@ -40,9 +55,13 @@ internal class RuntimeTaskSupervisor(
     fun runTimer(delayTicks: Long, periodTicks: Long, task: () -> Unit): ScheduledTask? =
         delegate.runTimer(delayTicks, periodTicks, task)
 
-    fun cancelAll() = delegate.cancelAll()
+    fun cancelAll() {
+        nativeWork?.close()
+        nativeWork = null
+        delegate.cancelAll()
+    }
 
     internal fun trackedCount(): Int = delegate.trackedTaskCount()
 
-    override fun close() = delegate.cancelAll()
+    override fun close() = cancelAll()
 }

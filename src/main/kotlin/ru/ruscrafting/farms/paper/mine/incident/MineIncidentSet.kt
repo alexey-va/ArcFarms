@@ -68,6 +68,24 @@ internal class MineIncidentSet(
         return scheduler.force(runtime, type, now)
     }
 
+    fun forceAdminAsync(runtime: MineRuntime, type: ru.ruscrafting.farms.domain.MineIncidentType, now: Long): java.util.concurrent.CompletableFuture<Boolean> {
+        if (type !in MineIncidentScheduler.SUPPORTED_TYPES) return java.util.concurrent.CompletableFuture.completedFuture(false)
+        workings.cancelPending(runtime.settings.id)
+        workings.forceCleanup(runtime)
+        lostMiner.forceCleanup(runtime)
+        if (type != ru.ruscrafting.farms.domain.MineIncidentType.CAVE_IN) {
+            caveIn.cancelPending(runtime.settings.id)
+        }
+        if (runtime.state.phase == ru.ruscrafting.farms.domain.MinePhase.INCIDENT || runtime.state.incident != null) {
+            clearActive(runtime)
+            if (!coordinator.abort(runtime)) return java.util.concurrent.CompletableFuture.completedFuture(false)
+        }
+        if (type == ru.ruscrafting.farms.domain.MineIncidentType.LOST_MINER && lostMiner.isRestoring(runtime)) {
+            return java.util.concurrent.CompletableFuture.completedFuture(false)
+        }
+        return scheduler.forceAsync(runtime, type, now)
+    }
+
     fun tick(runtime: MineRuntime, now: Long, participants: Collection<Player>) {
         scheduler.tick(runtime, now, participants.size)
         if (abortIncompatibleObjective(runtime)) return

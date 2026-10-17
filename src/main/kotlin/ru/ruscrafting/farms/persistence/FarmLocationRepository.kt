@@ -13,7 +13,11 @@ class FarmLocationRepository(dataRoot: Path) : AutoCloseable {
 
     fun load(): FarmLocationOverrides = store.load()
 
+    fun saveAsync(value: FarmLocationOverrides): java.util.concurrent.CompletableFuture<Unit> = store.saveAsync(value)
+
     fun saveBlocking(value: FarmLocationOverrides) = store.saveBlocking(value)
+
+    fun closeAsync(): java.util.concurrent.CompletableFuture<Unit> = store.closeAsync()
 
     override fun close() = store.close()
 

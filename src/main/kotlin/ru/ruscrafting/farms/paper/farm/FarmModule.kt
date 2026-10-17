@@ -32,6 +32,7 @@ import ru.ruscrafting.farms.paper.worksite.WorksiteAccessPort
 import ru.ruscrafting.farms.paper.worksite.WorksiteAudiencePort
 import ru.ruscrafting.farms.paper.worksite.WorksiteStatePort
 import ru.ruscrafting.farms.paper.worksite.WorksiteTaskPort
+import ru.ruscrafting.farms.paper.worksite.captureLoadedChunks
 import ru.ruscrafting.farms.paper.WorksiteModule
 import ru.ruscrafting.farms.paper.WorksiteBlockBreakHandler
 import ru.ruscrafting.farms.paper.WorksitePlayerInteractHandler
@@ -203,19 +204,34 @@ internal class FarmModule(
         fixedCrops.processDue(limit)
         runtimes.forEach { runtime ->
             if (shiftStart.isPending(runtime.settings.id)) return@forEach
+            if (field.isPending(runtime)) return@forEach
             if (!hasRestoreWork(runtime)) return@forEach
             if (hasEditor && isAdminEditing(runtime)) return@forEach
             var remaining = runtime.settings.restoreBlocksPerTick
             if (runtime.state.preparationPatch.isNotEmpty() && !runtime.state.preparationReleased) {
-                val release = field.release(runtime, remaining)
-                remaining -= release.processed
-                if (release.complete) {
-                    runtime.state = runtime.state.copy(preparationReleased = true)
-                    state.persistAsync()
-                }
-                if (!release.complete || remaining <= 0) return@forEach
+                val token = tasks.lifecycleToken()
+                val sequence = runtime.state.sequence
+                val patch = runtime.state.preparationPatch
+                field.releaseAsync(runtime, remaining).whenComplete { release, failure -> tasks.runSync(token) {
+                    if (runtime.state.sequence != sequence || runtime.state.preparationPatch !== patch) return@runSync
+                    if (failure != null) {
+                        if (access.allowInteraction("farm-release-failed:${runtime.settings.id}", 10_000))
+                            state.log(java.util.logging.Level.WARNING, "Farm patch release will retry: ${runtime.settings.id}", failure)
+                    } else if (release.complete) {
+                        runtime.state = runtime.state.copy(preparationReleased = true)
+                        state.persistAsync()
+                    }
+                } }
+                return@forEach
             }
-            if (remaining > 0) remaining -= field.finishAutomaticQuota(runtime, remaining)
+            if (remaining > 0 && field.hasPendingAutomaticQuota(runtime)) {
+                val token = tasks.lifecycleToken()
+                field.finishAutomaticQuotaAsync(runtime, remaining).whenComplete { _, failure -> tasks.runSync(token) {
+                    if (failure != null && access.allowInteraction("farm-auto-finish:${runtime.settings.id}", 10_000))
+                        state.log(java.util.logging.Level.WARNING, "Farm automatic quota will retry: ${runtime.settings.id}", failure)
+                } }
+                return@forEach
+            }
             if (
                 remaining > 0 && runtime.state.phase !in setOf(FarmPhase.INCIDENT, FarmPhase.CARE) &&
                 incidentRecovery.pending(runtime)
@@ -223,10 +239,18 @@ internal class FarmModule(
                 remaining -= incidentRecovery.restore(runtime, remaining, drought.hasActiveWater(runtime.settings.id))
             }
             if (remaining > 0 && runtime.state.phase == FarmPhase.COOLDOWN &&
-                !incidentRecovery.pending(runtime) && runtime.state.preparationPatch.isNotEmpty() &&
-                field.restoreOriginal(runtime, remaining)
+                !incidentRecovery.pending(runtime) && runtime.state.preparationPatch.isNotEmpty()
             ) {
-                field.clearState(runtime)
+                val token = tasks.lifecycleToken()
+                val sequence = runtime.state.sequence
+                val patch = runtime.state.preparationPatch
+                field.restoreOriginalAsync(runtime, remaining).whenComplete { complete, failure -> tasks.runSync(token) {
+                    if (runtime.state.sequence != sequence || runtime.state.preparationPatch !== patch) return@runSync
+                    if (failure != null) {
+                        if (access.allowInteraction("farm-restore-failed:${runtime.settings.id}", 10_000))
+                            state.log(java.util.logging.Level.WARNING, "Farm patch restoration will retry: ${runtime.settings.id}", failure)
+                    } else if (complete) field.clearState(runtime)
+                } }
             }
         }
     }
@@ -297,7 +321,7 @@ internal class FarmModule(
                     runtime.state.phase == FarmPhase.PREPARATION && runtime.state.preparationReleased &&
                     carePlans.shouldUseSeeder(runtime)
                 ) {
-                    care.initialize(runtime, audience.players(runtime.region).firstOrNull(), FarmCareType.SEEDER)
+                    care.initializeAsync(runtime, audience.players(runtime.region).firstOrNull(), FarmCareType.SEEDER)
                 }
                 drought.ensure(runtime)
                 pests.ensure(runtime)
@@ -317,7 +341,7 @@ internal class FarmModule(
                 delivery.ensure(runtime)
                 scene.ensure(runtime)
                 ensureSupplies(runtime)
-                field.maintain(
+                field.maintainAsync(
                     runtime,
                     drought.hasActiveWater(runtime.settings.id),
                     care.irrigationDryPlots(runtime),
@@ -458,8 +482,12 @@ internal class FarmModule(
 
     override fun emitGuidance() = guidance.emit()
 
-    private fun reconcileLoadedBlockIndexes() = registry.snapshot().forEach { runtime ->
-        runtime.region.world.loadedChunks.forEach { chunk -> blockRegistry.reconcileChunk(runtime.blockIndexDefinition(), chunk) }
+    private fun reconcileLoadedBlockIndexes() {
+        tasks.captureLoadedChunks { chunk ->
+            registry.snapshot().forEach { runtime ->
+                if (runtime.region.world === chunk.world) blockRegistry.reconcileChunk(runtime.blockIndexDefinition(), chunk)
+            }
+        }
     }
 
     private fun ensureSupplies(runtime: FarmRuntime) {

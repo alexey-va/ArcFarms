@@ -7,9 +7,11 @@ import org.bukkit.entity.Player
 import ru.arc.persistence.AtomicFileStore
 import java.nio.file.Path
 import java.util.UUID
+import java.util.concurrent.CompletableFuture
+import ru.arc.core.BoundedAsyncExecutor
 
 /** Location-only transport escrow; inventories, effects and game modes are never mutated by the lift. */
-internal class MineLiftRecovery(root: Path, journalId: String = "main") {
+internal class MineLiftRecovery(root: Path, journalId: String = "main", private val writer: BoundedAsyncExecutor? = null) {
     init {
         require(journalId == "main" || journalId.matches(Regex("[a-z][a-z0-9_]{0,31}"))) {
             "Invalid mine lift journal id: $journalId"
@@ -26,14 +28,17 @@ internal class MineLiftRecovery(root: Path, journalId: String = "main") {
             entries.forEach { require(it.world.isNotBlank() && listOf(it.x, it.y, it.z).all(Double::isFinite) && it.yaw.isFinite()) }
         },
     )
-    private var entries = store.loadOrDefault { emptyArray() }.associateBy { it.player }
+    @Volatile private var entries = store.loadOrDefault { emptyArray() }.associateBy { it.player }
     fun contains(player: UUID) = player in entries
     val pendingCount: Int get() = entries.size
 
-    fun capture(player: Player, safe: Location) {
-        check(player.uniqueId !in entries) { "Mine lift passenger recovery is pending" }
-        val next = entries + (player.uniqueId to ReturnPoint(player.uniqueId, safe.world.name, safe.x, safe.y, safe.z, safe.yaw))
-        entries = store.write(next.values.toTypedArray()).associateBy { it.player }
+    fun capture(player: Player, safe: Location): CompletableFuture<Unit> {
+        val point = ReturnPoint(player.uniqueId, safe.world.name, safe.x, safe.y, safe.z, safe.yaw)
+        return submit {
+            check(point.player !in entries) { "Mine lift passenger recovery is pending" }
+            val next = entries + (point.player to point)
+            entries = store.write(next.values.toTypedArray()).associateBy { it.player }
+        }
     }
 
     fun destination(player: UUID): Location? = entries[player]?.let { saved ->
@@ -41,8 +46,14 @@ internal class MineLiftRecovery(root: Path, journalId: String = "main") {
     }
 
     /** Save the verified safe player position before acknowledging the escrow. */
-    fun acknowledge(player: Player) {
+    fun acknowledge(player: Player): CompletableFuture<Unit> {
         player.saveData()
-        entries = store.write(entries.filterKeys { it != player.uniqueId }.values.toTypedArray()).associateBy { it.player }
+        val playerId = player.uniqueId
+        return submit {
+            entries = store.write(entries.filterKeys { it != playerId }.values.toTypedArray()).associateBy { it.player }
+        }
     }
+
+    private fun submit(action: () -> Unit): CompletableFuture<Unit> = writer?.submit(action)
+        ?: runCatching(action).fold({ CompletableFuture.completedFuture(Unit) }, CompletableFuture<Unit>::failedFuture)
 }

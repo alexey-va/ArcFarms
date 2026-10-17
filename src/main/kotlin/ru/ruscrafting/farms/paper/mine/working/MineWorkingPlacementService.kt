@@ -16,6 +16,8 @@ import ru.ruscrafting.farms.paper.mine.lift.MineLiftAccess
 import ru.ruscrafting.farms.paper.worksite.WorksiteAsyncBlockScanner
 import ru.ruscrafting.farms.paper.worksite.WorksiteChunkCoordinate
 import ru.ruscrafting.farms.paper.worksite.WorksiteStatePort
+import java.util.concurrent.CompletableFuture
+import ru.ruscrafting.farms.paper.worksite.WorksiteTaskPort
 import java.util.logging.Level
 import kotlin.math.abs
 
@@ -26,6 +28,7 @@ internal class MineWorkingPlacementService(
     private val lift: MineLiftAccess?,
     private val state: WorksiteStatePort,
     private val points: ru.ruscrafting.farms.paper.mine.point.MinePointService? = null,
+    private val tasks: WorksiteTaskPort? = null,
 ) {
     private data class Search(val sequence: Long, val cursor: Int, val type: MineIncidentType)
     private val pending = mutableMapOf<String, Search>()
@@ -53,23 +56,23 @@ internal class MineWorkingPlacementService(
         }
         val bounds = runtime.region.bounds
         val exits = floors.map { WorksitePosition(world.name, it.exit.blockX, it.exit.blockY, it.exit.blockZ) }
-        val coordinates = candidates.flatMap { candidate ->
+        val coordinates = { candidates.flatMap { candidate ->
             val end = candidate.position(0, 0, FOOTPRINT_RADIUS)
             val minX = minOf(candidate.entrance.x, end.x) - FOOTPRINT_RADIUS / 2
             val maxX = maxOf(candidate.entrance.x, end.x) + FOOTPRINT_RADIUS / 2
             val minZ = minOf(candidate.entrance.z, end.z) - FOOTPRINT_RADIUS / 2
             val maxZ = maxOf(candidate.entrance.z, end.z) + FOOTPRINT_RADIUS / 2
             buildList { for (x in (minX shr 4)..(maxX shr 4)) for (z in (minZ shr 4)..(maxZ shr 4)) {
-                if (world.isChunkLoaded(x, z)) add(WorksiteChunkCoordinate(x, z))
+                add(WorksiteChunkCoordinate(x, z))
             } }
-        }.distinct()
+        }.distinct() }
         pending[zone] = search
         fun current() = pending[zone] == search && runtime.state.sequence == search.sequence &&
             runtime.state.incidentCursor == search.cursor && runtime.state.incident == null &&
             runtime.state.phase in setOf(MinePhase.PROSPECTING, MinePhase.MINING, MinePhase.LOADING, MinePhase.EXTRACTION)
         val submitted = scanner.submit(world, coordinates, ::current, plan = { snapshot ->
             val rejected = linkedMapOf<String, Int>()
-            val selected = mutableListOf<MineWorkingPlacement>()
+            val selected = mutableListOf<MineWorkingPlan>()
             var considered = 0
             for (candidate in candidates) {
                 considered++
@@ -82,17 +85,18 @@ internal class MineWorkingPlacementService(
                     else -> MineWorkingPlanner.rejection(plan, snapshot::type)
                 }
                 if (reason == null) {
-                    selected += candidate
+                    selected += plan
                     if (selected.size == MAX_FINALISTS) break
                 } else rejected[reason] = rejected.getOrDefault(reason, 0) + 1
             }
             Triple(selected.toList(), considered, rejected.toMap())
         }, complete = { result ->
             if (!current()) return@submit
-            pending.remove(zone, search)
             result.fold(onSuccess = { (selected, considered, rejected) ->
-                val chosen = selected.firstOrNull { candidate ->
-                    val plan = MineWorkingLayout.plan(type, candidate)
+                if (tasks == null) {
+                    pending.remove(zone, search)
+                val chosen = selected.firstOrNull { plan ->
+                    val candidate = plan.placement
                     val occupied = world.players.any { player ->
                         val location = player.location
                         location.blockY in candidate.entrance.y..candidate.entrance.y + 5 &&
@@ -107,9 +111,54 @@ internal class MineWorkingPlacementService(
                     if (chosen == null && selected.isNotEmpty()) rejected + ("live_placement_changed" to selected.size) else rejected)
                 if (chosen == null) retryAfter[zone] = now + RETRY_MILLIS else {
                     retryAfter.remove(zone)
-                    complete(chosen)
+                    complete(chosen.placement)
+                }
+                } else {
+                    val token = tasks.lifecycleToken()
+                    fun validate(index: Int): CompletableFuture<MineWorkingPlan?> {
+                        val candidate = selected.getOrNull(index) ?: return CompletableFuture.completedFuture(null)
+                        val placement = candidate.placement
+                        val occupied = world.players.any { player ->
+                            val location = player.location
+                            location.blockY in placement.entrance.y..placement.entrance.y + 5 &&
+                                WorksitePosition(world.name, location.blockX, placement.entrance.y + 1, location.blockZ) in candidate.blocks
+                        }
+                        if (occupied) return validate(index + 1)
+                        return tasks.compute {
+                            linkedSetOf<WorksitePosition>().apply {
+                                addAll(candidate.blocks.keys)
+                                val surface = placement.position(0, 0, -1)
+                                add(surface)
+                                (1..3).forEach { add(surface.copy(y = surface.y + it)) }
+                            }.iterator()
+                        }.thenCompose { positions -> tasks.callSync(token) {
+                            val types = mutableMapOf<WorksitePosition, Material>()
+                            var rejectedLive = false
+                            tasks.capture(token, ::current) {
+                                if (positions.hasNext()) {
+                                    val p = positions.next()
+                                    if (!world.isChunkLoaded(p.x shr 4, p.z shr 4) ||
+                                        lift?.excludesEvent(org.bukkit.Location(world, p.x + .5, p.y + .5, p.z + .5)) == true) rejectedLive = true
+                                    else types[p] = world.getBlockAt(p.x, p.y, p.z).type
+                                }
+                                !positions.hasNext()
+                            }.thenCompose { tasks.compute { !rejectedLive && MineWorkingPlanner.rejection(candidate) { types[it] } == null } }
+                        }.thenCompose { it } }.thenCompose { valid -> tasks.callSync(token) {
+                            if (valid) CompletableFuture.completedFuture(candidate) else validate(index + 1)
+                        }.thenCompose { it } }
+                    }
+                    validate(0).whenComplete { chosen, failure -> tasks.callSync(token) {
+                        if (!current()) return@callSync
+                        pending.remove(zone, search)
+                        reports[zone] = MineIncidentPlacementReport(type, 1, if (chosen == null) 0 else 1, considered,
+                            if (chosen == null && selected.isNotEmpty()) rejected + ("live_placement_changed" to selected.size) else rejected)
+                        if (failure != null) state.log(Level.WARNING, "Mine live placement validation failed zone=$zone type=$type", failure)
+                        if (chosen == null || failure != null) retryAfter[zone] = now + RETRY_MILLIS
+                        else { retryAfter.remove(zone); complete(chosen.placement) }
+                    } }
                 }
             }, onFailure = { failure ->
+                pending.remove(zone, search)
                 retryAfter[zone] = now + RETRY_MILLIS
                 state.log(Level.WARNING, "Mine working planning failed zone=$zone type=$type", failure)
             })

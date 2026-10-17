@@ -29,6 +29,8 @@ import ru.ruscrafting.farms.paper.worksite.scene.WorksitePreparedSceneEnsureResu
 import ru.ruscrafting.farms.paper.worksite.scene.WorksitePreparedSceneOwner
 import ru.ruscrafting.farms.paper.worksite.scene.WorksitePreparedSceneRecord
 import java.util.ArrayDeque
+import java.util.concurrent.CompletableFuture
+import ru.ruscrafting.farms.paper.worksite.WorksiteTaskPort
 
 internal data class FarmMoleBurrowScene(
     val world: World,
@@ -39,13 +41,16 @@ internal data class FarmMoleBurrowScene(
     val start: Location,
     val lair: Location,
     val records: List<FarmMoleBurrowJournalRecord>,
+    val index: FarmMoleSceneIndex = moleSceneIndex(records, start.blockY, lair.blockX, lair.blockZ),
 ) {
-    private val tunnelPositions = records.mapTo(hashSetOf()) { Triple(it.x, it.y, it.z) }
-    private val pathDistanceToLair: Map<Pair<Int, Int>, Int> = buildPathDistances()
-    val maxPathDistance: Int = pathDistanceToLair.values.maxOrNull() ?: 0
+    private val tunnelPositions = index.positions
+    private val pathDistanceToLair = index.distances
+    internal var completionProbe: (() -> Boolean)? = null
+    val maxPathDistance: Int = index.maximumDistance
     private var verifiedReady = false
 
     val ready: Boolean get() {
+        completionProbe?.let { return it() }
         if (verifiedReady) return true
         verifiedReady = records.all { record ->
             if (!world.isChunkLoaded(record.x shr 4, record.z shr 4)) return@all false
@@ -65,29 +70,7 @@ internal data class FarmMoleBurrowScene(
         return pathDistanceToLair[location.blockX to location.blockZ]
     }
 
-    private fun buildPathDistances(): Map<Pair<Int, Int>, Int> {
-        val floorY = start.blockY
-        val walkable = records.asSequence()
-            .filter { it.y == floorY && (it.burrowData == MOLE_AIR_DATA || it.burrowData.startsWith("minecraft:light")) }
-            .mapTo(hashSetOf()) { it.x to it.z }
-        val origin = lair.blockX to lair.blockZ
-        if (origin !in walkable) return emptyMap()
-        val distances = mutableMapOf(origin to 0)
-        val queue = ArrayDeque<Pair<Int, Int>>().apply { add(origin) }
-        while (queue.isNotEmpty()) {
-            val current = queue.removeFirst()
-            val nextDistance = distances.getValue(current) + 1
-            listOf(
-                current.first + 1 to current.second,
-                current.first - 1 to current.second,
-                current.first to current.second + 1,
-                current.first to current.second - 1,
-            ).forEach { next ->
-                if (next in walkable && distances.putIfAbsent(next, nextDistance) == null) queue.add(next)
-            }
-        }
-        return distances
-    }
+
 }
 
 internal enum class FarmMoleBurrowEnsureResult {
@@ -107,7 +90,7 @@ internal data class FarmMoleBurrowPreview(
         .ifEmpty { "none" }
 }
 
-private fun FarmMoleBurrowJournalRecord.toPreparedRecord(): WorksitePreparedSceneRecord = WorksitePreparedSceneRecord(
+internal fun FarmMoleBurrowJournalRecord.toPreparedRecord(): WorksitePreparedSceneRecord = WorksitePreparedSceneRecord(
     world = world,
     zoneId = zoneId,
     sequence = sequence,
@@ -121,7 +104,7 @@ private fun FarmMoleBurrowJournalRecord.toPreparedRecord(): WorksitePreparedScen
     totalRecords = totalRecords,
 )
 
-private fun WorksitePreparedSceneRecord.toFarmRecord(): FarmMoleBurrowJournalRecord = FarmMoleBurrowJournalRecord(
+internal fun WorksitePreparedSceneRecord.toFarmRecord(): FarmMoleBurrowJournalRecord = FarmMoleBurrowJournalRecord(
     world = world,
     zoneId = zoneId,
     sequence = sequence,
@@ -178,6 +161,7 @@ internal class FarmMoleBurrowWorld(
     private val chunkRetention: MoleBurrowChunkRetention,
     private val blockDataDecoder: FarmBlockDataDecoder,
     private val journalNamespace: String = "farm_mole_burrow",
+    private val tasks: WorksiteTaskPort? = null,
 ) {
     private val logger = plugin.logger
     private val journalKey = NamespacedKey(plugin, "${journalNamespace}_v1")
@@ -189,7 +173,83 @@ internal class FarmMoleBurrowWorld(
         chunkRetention = WorksitePreparedSceneChunkRetention { chunk -> chunkRetention.retain(chunk) },
         blockDataDecoder = WorksitePreparedSceneBlockDataDecoder { raw -> blockDataDecoder.decode(raw) },
         logger = logger,
+        tasks = tasks,
     )
+
+    private val asyncScenes = tasks?.let { FarmMoleAsyncScenes(it, plugin, journalNamespace, preparedSceneCodec) }
+    private data class EnsureKey(val zone: String, val sequence: Long, val id: Int)
+    private val ensuring = mutableMapOf<EnsureKey, CompletableFuture<Boolean>>()
+    private val failedScenes = mutableSetOf<EnsureKey>()
+
+    fun previewDetailedAsync(runtime: FarmRuntime, surface: FarmPointPosition,
+        placementSequence: Long = runtime.state.placementSequence, burrowId: Int = 0): CompletableFuture<FarmMoleBurrowPreview> =
+        asyncScenes?.preview(runtime, surface, placementSequence, burrowId)
+            ?: CompletableFuture.completedFuture(previewDetailed(runtime, surface, placementSequence, burrowId))
+
+    fun previewGreenhouseChamberDetailedAsync(runtime: FarmRuntime, surface: FarmPointPosition): CompletableFuture<FarmMoleBurrowPreview> =
+        asyncScenes?.preview(runtime, surface, runtime.state.placementSequence, FarmHellRiftRoom.BURROW_ID, greenhouse = true)
+            ?: CompletableFuture.completedFuture(previewGreenhouseChamberDetailed(runtime, surface))
+
+    fun prepareAsync(runtime: FarmRuntime, targets: List<ru.ruscrafting.farms.domain.FarmCareTarget>,
+        placementSequence: Long): CompletableFuture<Boolean> {
+        val work = tasks ?: return CompletableFuture.completedFuture(prepare(runtime, targets, placementSequence))
+        val selected = targets.filter { it.role == ru.ruscrafting.farms.domain.FarmCareRole.MOLE_MOUND }
+        if (selected.isEmpty()) return CompletableFuture.completedFuture(false)
+        val token = work.lifecycleToken()
+        val sequence = runtime.state.sequence
+        return preparedSceneOwner.hasZoneRecordsAsync(runtime.region.world, runtime.settings.id, sequence).thenCompose { existing ->
+            if (existing) CompletableFuture.completedFuture(false)
+            else {
+                var chain = CompletableFuture.completedFuture(mutableListOf<FarmMoleBurrowScene>())
+                selected.forEach { target -> chain = chain.thenCompose { scenes ->
+                    previewDetailedAsync(runtime, target.position, placementSequence, target.id).thenApply { preview ->
+                        preview.scene?.let(scenes::add)
+                        scenes
+                    }
+                } }
+                chain.thenCompose { scenes -> work.callSync(token) {
+                    if (runtime.state.sequence != sequence || scenes.size != selected.size) CompletableFuture.completedFuture(false)
+                    else prepareScenesAsync(scenes)
+                }.thenCompose { it } }
+            }
+        }
+    }
+
+    fun prepareScenesAsync(scenes: List<FarmMoleBurrowScene>): CompletableFuture<Boolean> {
+        val work = tasks ?: return CompletableFuture.completedFuture(preparedSceneOwner.prepare(scenes.map(FarmMoleBurrowScene::toPreparedScene)))
+        val token = work.lifecycleToken()
+        val converted = scenes.map { requireNotNull(asyncScenes).prepareView(it) }
+        return CompletableFuture.allOf(*converted.toTypedArray()).thenCompose { work.callSync(token) {
+            preparedSceneOwner.prepareAllAsync(converted.map { it.join() })
+        }.thenCompose { it } }
+    }
+
+    private fun ensureAsync(runtime: FarmRuntime, surface: FarmPointPosition, id: Int, greenhouse: Boolean): Pair<FarmMoleBurrowEnsureResult, FarmMoleBurrowScene?> {
+        val key = EnsureKey(runtime.settings.id, runtime.state.sequence, id)
+        val (status, prepared) = preparedSceneOwner.ensurePreparedScene(runtime.region.world, key.zone, key.sequence, id,
+            Location(runtime.region.world, surface.x, surface.y, surface.z), recoveryRadius(runtime.settings.moleBurrow),
+            prepare = { null }, startMarker = FarmMoleBurrowMarker.START.name, endMarker = FarmMoleBurrowMarker.LAIR.name)
+        if (prepared != null) {
+            val converted = requireNotNull(asyncScenes).convert(prepared)
+            return (if (converted == null) FarmMoleBurrowEnsureResult.BUILDING else status.toFarmEnsureResult()) to converted
+        }
+        if (key in failedScenes) return FarmMoleBurrowEnsureResult.UNAVAILABLE to null
+        if (status == WorksitePreparedSceneEnsureResult.UNAVAILABLE && key !in ensuring) {
+            val token = requireNotNull(tasks).lifecycleToken()
+            val preview = if (greenhouse) previewGreenhouseChamberDetailedAsync(runtime, surface)
+                else previewDetailedAsync(runtime, surface, burrowId = id)
+            val result = preview.thenCompose { candidate -> tasks.callSync(token) {
+                if (candidate.scene == null || runtime.state.sequence != key.sequence) CompletableFuture.completedFuture(false)
+                else prepareScenesAsync(listOf(candidate.scene))
+            }.thenCompose { it } }
+            ensuring[key] = result
+            result.whenComplete { accepted, failure -> tasks.callSync(token) {
+                ensuring.remove(key, result)
+                if (failure != null || accepted != true) failedScenes += key
+            } }
+        }
+        return FarmMoleBurrowEnsureResult.BUILDING to null
+    }
 
     fun preview(runtime: FarmRuntime, surface: FarmPointPosition): FarmMoleBurrowScene? =
         previewDetailed(runtime, surface, runtime.state.placementSequence).scene
@@ -395,6 +455,7 @@ internal class FarmMoleBurrowWorld(
         surface: FarmPointPosition,
         burrowId: Int = 0,
     ): Pair<FarmMoleBurrowEnsureResult, FarmMoleBurrowScene?> {
+        if (tasks != null) return ensureAsync(runtime, surface, burrowId, greenhouse = false)
         var preview: FarmMoleBurrowPreview? = null
         val (status, prepared) = preparedSceneOwner.ensurePreparedScene(
             world = runtime.region.world,
@@ -545,6 +606,7 @@ internal class FarmMoleBurrowWorld(
         runtime: FarmRuntime,
         surface: FarmPointPosition,
     ): Pair<FarmMoleBurrowEnsureResult, FarmMoleBurrowScene?> {
+        if (tasks != null) return ensureAsync(runtime, surface, FarmHellRiftRoom.BURROW_ID, greenhouse = true)
         val (status, prepared) = preparedSceneOwner.ensurePreparedScene(
             world = runtime.region.world,
             zoneId = runtime.settings.id,
@@ -594,7 +656,7 @@ internal class FarmMoleBurrowWorld(
             recoveryRadius(runtime.settings.moleBurrow),
             startMarker = FarmMoleBurrowMarker.START.name,
             endMarker = FarmMoleBurrowMarker.LAIR.name,
-        )?.toFarmScene()
+        )?.let { prepared -> asyncScenes?.convert(prepared) ?: if (tasks == null) prepared.toFarmScene() else null }
     }
 
     fun scenes(runtime: FarmRuntime): List<FarmMoleBurrowScene> = runtime.state.careTargets.asSequence()
@@ -626,7 +688,11 @@ internal class FarmMoleBurrowWorld(
         preparedSceneOwner.reconcileLoaded(active)
     }
 
+
     fun clearQueues() {
+        asyncScenes?.clear()
+        ensuring.clear()
+        failedScenes.clear()
         preparedSceneOwner.clearQueues()
     }
 
