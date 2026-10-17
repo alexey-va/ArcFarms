@@ -9,7 +9,9 @@ import org.bukkit.block.data.BlockData
 import org.bukkit.persistence.PersistentDataType
 import org.bukkit.plugin.Plugin
 import java.util.ArrayDeque
+import java.util.concurrent.CancellationException
 import java.util.concurrent.CompletableFuture
+import java.util.concurrent.CompletionException
 import ru.ruscrafting.farms.paper.worksite.WorksiteTaskPort
 import ru.ruscrafting.farms.paper.worksite.captureLoadedChunks
 import kotlinx.collections.immutable.persistentMapOf
@@ -963,7 +965,7 @@ internal class WorksitePreparedSceneOwner(
                 !builds.hasNext() && !restores.hasNext()
             }
         }.thenCompose { it } }.whenComplete { _, failure ->
-            if (failure != null) logger.log(java.util.logging.Level.WARNING, "Could not recover loaded scene chunk", failure)
+            logLoadedSceneRecoveryFailure(logger, failure)
         }
     }
 
@@ -1656,4 +1658,12 @@ internal class WorksitePreparedSceneOwner(
     private fun WorksitePreparedScene.key() = SceneKey(world.name, zoneId, sequence, sceneId)
     private fun WorksitePreparedSceneRecord.sceneKey() = SceneKey(world, zoneId, sequence, sceneId)
     private fun WorksitePreparedSceneRecord.key() = RecordKey(world, x, y, z)
+}
+
+internal fun logLoadedSceneRecoveryFailure(logger: Logger, failure: Throwable?) {
+    var cause = failure
+    while (cause is CompletionException && cause.cause != null) cause = cause.cause
+    if (cause != null && cause !is CancellationException) {
+        logger.log(Level.WARNING, "Could not recover loaded scene chunk", failure)
+    }
 }
