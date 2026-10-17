@@ -52,6 +52,13 @@ class MineLiftRuntimeManagerTest : FunSpec({
             plugin.isEnabled shouldBe true
             val operator = paper.addPlayer("LiftOperator")
             operator.isOp = true
+            val command = requireNotNull(plugin.getCommand("minelift"))
+            command.tabComplete(operator, "minelift", arrayOf("ST")) shouldBe listOf("status")
+            command.tabComplete(operator, "minelift", arrayOf("status", "MA")) shouldBe listOf("main")
+            command.tabComplete(operator, "minelift", arrayOf("status", "main", "")) shouldBe emptyList()
+            val distantPlayer = paper.addPlayer("DistantRider")
+            command.tabComplete(distantPlayer, "minelift", arrayOf("")) shouldBe emptyList()
+            command.tabComplete(distantPlayer, "minelift", arrayOf("main", "")) shouldBe emptyList()
             operator.performCommand("minelift status") shouldBe true
             PlainTextComponentSerializer.plainText().serialize(requireNotNull(operator.nextComponentMessage())) shouldContain "id=main"
             Files.readString(corrupt) shouldBe "corrupt-west-journal"

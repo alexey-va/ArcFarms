@@ -752,6 +752,9 @@ class ArcFarmsCommand(
 
     private fun adminCompletions(args: Array<out String>): List<String> {
         val action = args[1].lowercase()
+        if (args.drop(2).dropLast(1).any { it.equals("help", true) }) return emptyList()
+        if (action == "worksite" && args.size >= 5 &&
+            (parseKind(args[2])?.takeUnless { it == ActivityKind.FARM }?.let(service.worksiteAdmins::handler) == null)) return emptyList()
         return when (args.size) {
             2 -> listOf("help", "edit", "inspect", "point", "unmanage", "blockreset", "backup", "stage", "next", "finish", "event", "route", "worksite", "expeditions") + ADMIN_SHORTCUTS
             3 -> when (action) {
@@ -766,10 +769,12 @@ class ArcFarmsCommand(
             }
             4 -> when (action) {
                 "expeditions" -> when (args[2].lowercase()) {
-                    "factory" -> service.mineZoneIds() + "help"
-                    else -> listOf("all", "last_descent", "drilling_ark", "dead_factory")
+                    "factory" -> service.mineZoneIds()
+                    "rebuild" -> listOf("all", "last_descent", "drilling_ark", "dead_factory")
+                    "edit" -> listOf("last_descent", "drilling_ark", "dead_factory")
+                    else -> emptyList()
                 }
-                "worksite" -> parseKind(args[2])?.let(service.worksiteAdmins::zoneIds).orEmpty() + "help"
+                "worksite" -> parseKind(args[2])?.takeUnless { it == ActivityKind.FARM }?.let(service.worksiteAdmins::zoneIds).orEmpty() + "help"
                 "point" -> if (isMineZone(args.getOrNull(2))) service.minePointKinds() + "help" else POINT_ARGUMENTS + "help"
                 "stage" -> STAGE_STAGES + "help"
                 "event" -> eventIds(args[2]) + "help"

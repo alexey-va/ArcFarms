@@ -145,7 +145,7 @@ internal class MineLiftRuntimeManager(
         val player = sender as? Player
         val nearby = player?.let { runtimes.values.filter { runtime -> runtime.isNearAuthorized(it) } }.orEmpty()
         if (args.size == 1) {
-            val ids = runtimes.keys.filter { it.startsWith(args[0], ignoreCase = true) }
+            val ids = runtimes.filterValues { it in nearby }.keys
             val admin = if (sender.hasPermission("arcfarms.admin")) listOf("status") else emptyList()
             val floors = if (nearby.size == 1) nearby.single().floorArguments() else emptyList()
             return (ids + admin + floors).distinct()

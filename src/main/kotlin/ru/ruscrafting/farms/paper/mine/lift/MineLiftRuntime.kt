@@ -462,8 +462,8 @@ internal class MineLiftRuntime(
     }
 
     override fun onTabComplete(sender: CommandSender, command: Command, alias: String, args: Array<out String>): List<String> =
-        if (args.size == 1) (settings.floors.indices.map { (it + 1).toString() } +
-            if (sender.hasPermission("arcfarms.admin")) listOf("status") else emptyList()).filter { it.startsWith(args[0]) } else emptyList()
+        if (args.size == 1) ((if (sender is Player && isNearAuthorized(sender)) floorArguments() else emptyList()) +
+            if (sender.hasPermission("arcfarms.admin")) listOf("status") else emptyList()).filter { it.startsWith(args[0], true) } else emptyList()
 
     private fun floorName(index: Int, player: Player? = null) = text(
         "floors.${settings.floors[index].id}", player, mapOf("number" to Component.text(index + 1)),
