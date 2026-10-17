@@ -73,7 +73,6 @@ class FarmUndergroundExpeditionTest : FunSpec({
             var rejectSync = true
             val token = RuntimeTaskSupervisor(TestTaskScheduler()).apply { activate() }.token()
             every { fixture.port.lifecycleToken() } returns token
-            every { fixture.port.runAsync(any(), any()) } answers { secondArg<() -> Unit>()(); true }
             every { fixture.port.runSync(any(), any()) } answers {
                 if (rejectSync) {
                     rejectSync = false
@@ -114,7 +113,6 @@ class FarmUndergroundExpeditionTest : FunSpec({
         private fun expedition(fixture: FarmIncidentScenarioFixture): FarmUndergroundExpedition {
             val token = RuntimeTaskSupervisor(TestTaskScheduler()).apply { activate() }.token()
             every { fixture.port.lifecycleToken() } returns token
-            every { fixture.port.runAsync(any(), any()) } answers { secondArg<() -> Unit>()(); true }
             every { fixture.port.runSync(any(), any()) } answers { secondArg<() -> Unit>()(); true }
             return FarmUndergroundExpedition(
             plugin = fixture.plugin,

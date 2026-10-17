@@ -5,16 +5,19 @@ import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.ints.shouldBeGreaterThanOrEqual
 import io.kotest.matchers.shouldBe
+import io.mockk.every
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer
 import org.bukkit.entity.ItemDisplay
 import org.bukkit.entity.Rabbit
 import ru.ruscrafting.farms.domain.FarmPhase
 import ru.ruscrafting.farms.paper.fixtures.FarmMoleScenarioFixture
 import ru.ruscrafting.farms.paper.fixtures.requiredMockBukkitScenario
+import java.util.concurrent.CompletableFuture
 
 class FarmMoleLifecycleMockBukkitIntegrationTest : FunSpec({
     test("surface burrow entrances are visible across the full field") {
         requiredMockBukkitScenario { FarmMoleScenarioFixture.open(burrowCount = 1).use { fixture ->
+            fixture.executeComputeTasks()
             fixture.prepareAndBuild()
 
             val entrance = fixture.world.entities.filterIsInstance<ItemDisplay>()
@@ -27,6 +30,7 @@ class FarmMoleLifecycleMockBukkitIntegrationTest : FunSpec({
 
     test("three workers explore independent burrows and exact block recovery closes the event") {
         requiredMockBukkitScenario { FarmMoleScenarioFixture.open().use { fixture ->
+            fixture.executeComputeTasks()
             val scenes = fixture.prepareAndBuild().sortedBy(FarmMoleBurrowScene::burrowId)
             val originals = scenes.flatMap(FarmMoleBurrowScene::records).associate { record ->
                 Triple(record.x, record.y, record.z) to record.originalData
@@ -77,6 +81,7 @@ class FarmMoleLifecycleMockBukkitIntegrationTest : FunSpec({
 
     test("finishing one lair immediately returns every explorer in that burrow while another stays active") {
         requiredMockBukkitScenario { FarmMoleScenarioFixture.open(burrowCount = 2).use { fixture ->
+            fixture.executeComputeTasks()
             val scenes = fixture.prepareAndBuild().sortedBy(FarmMoleBurrowScene::burrowId)
             val first = fixture.paper.addPlayer("MolePairOne")
             val second = fixture.paper.addPlayer("MolePairTwo")
@@ -109,6 +114,7 @@ class FarmMoleLifecycleMockBukkitIntegrationTest : FunSpec({
 
     test("durable burrow return survives a controller restart and is acknowledged exactly once") {
         requiredMockBukkitScenario { FarmMoleScenarioFixture.open().use { fixture ->
+            fixture.executeComputeTasks()
             val scene = fixture.prepareAndBuild().first { it.burrowId == 0 }
             val worker = fixture.paper.addPlayer("RestartedMoleScout")
 
@@ -130,3 +136,12 @@ class FarmMoleLifecycleMockBukkitIntegrationTest : FunSpec({
         } }
     }
 })
+
+private fun FarmMoleScenarioFixture.executeComputeTasks() {
+    every { port.compute<Any?>(any()) } answers {
+        runCatching(firstArg<() -> Any?>()).fold(
+            { CompletableFuture.completedFuture(it) },
+            { CompletableFuture.failedFuture(it) },
+        )
+    }
+}

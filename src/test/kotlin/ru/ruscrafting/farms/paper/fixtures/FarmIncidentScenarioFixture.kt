@@ -338,6 +338,21 @@ internal class FarmIncidentScenarioFixture private constructor(
         it.forEach { delayed -> delayed.task() }
     }.map(DelayedTask::delayTicks)
 
+    /** Keep the actual worker operation and its future pending until the test executes it. */
+    fun deferCompute(): MutableList<() -> Unit> {
+        val pending = mutableListOf<() -> Unit>()
+        every { port.compute<Any?>(any()) } answers {
+            val task = firstArg<() -> Any?>()
+            val completion = CompletableFuture<Any?>()
+            pending += {
+                runCatching(task).fold(completion::complete, completion::completeExceptionally)
+                Unit
+            }
+            completion
+        }
+        return pending
+    }
+
     fun persistAndReload(runtime: FarmRuntime): FarmRuntime {
         ArcFarmsStateRepository(stateRoot).use { repository ->
             repository.saveBlocking(ArcFarmsState(farms = mapOf(zone.id to runtime.state)))
@@ -469,6 +484,12 @@ internal class FarmIncidentScenarioFixture private constructor(
             every { port.players(any()) } answers { paper.server.onlinePlayers.toList() }
             every { port.isAdminEditing(any()) } returns false
             every { port.persistAsync() } returns CompletableFuture.completedFuture(Unit)
+            every { port.compute<Any?>(any()) } answers {
+                runCatching(firstArg<() -> Any?>()).fold(
+                    { CompletableFuture.completedFuture(it) },
+                    { CompletableFuture.failedFuture(it) },
+                )
+            }
             every { port.runLater(any(), any()) } answers {
                 delayedTasks += DelayedTask(firstArg(), secondArg())
                 true

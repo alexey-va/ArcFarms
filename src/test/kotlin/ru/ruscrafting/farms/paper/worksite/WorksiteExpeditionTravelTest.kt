@@ -3,7 +3,6 @@ package ru.ruscrafting.farms.paper.worksite
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
 import io.mockk.every
-import io.mockk.slot
 import ru.arc.core.TestTaskScheduler
 import ru.ruscrafting.farms.paper.RuntimeTaskSupervisor
 import ru.ruscrafting.farms.paper.fixtures.FarmIncidentScenarioFixture
@@ -36,9 +35,11 @@ class WorksiteExpeditionTravelTest : FunSpec({
                 val player = scenario.paper.addPlayer("RepeatedExpedition")
                 val surface = Location(scenario.world, 12.5, 65.0, 12.5)
                 player.teleport(surface)
+                every { scenario.port.runSync(any(), any()) } answers { secondArg<() -> Unit>()(); true }
                 val travel = travel(scenario)
                 travel.enter(request(player, surface, scenario.world.spawnLocation)) { true }
                 val before = travel.record(player)
+                before?.sequence shouldBe 4
                 travel.enter(request(player, surface, scenario.world.spawnLocation)) { true }
                 travel.record(player) shouldBe before
             }
@@ -49,8 +50,8 @@ class WorksiteExpeditionTravelTest : FunSpec({
         requiredMockBukkitScenario {
             FarmIncidentScenarioFixture.open().use { scenario ->
                 val player = scenario.paper.addPlayer("EnteredExpedition")
-                every { scenario.port.runAsync(any(), any()) } answers { secondArg<() -> Unit>()(); true }
                 every { scenario.port.runSync(any(), any()) } answers { secondArg<() -> Unit>()(); true }
+                val asyncTasks = scenario.deferCompute()
                 val surface = Location(scenario.world, 12.5, 65.0, 12.5)
                 val destination = Location(scenario.world, 44.5, 65.0, 44.5)
                 player.teleport(surface)
@@ -62,6 +63,11 @@ class WorksiteExpeditionTravelTest : FunSpec({
                     FarmBurrowReturnRepository(scenario.plugin.dataFolder.toPath(), DIR).load(player.uniqueId)?.zoneId shouldBe "mine"
                     acknowledged = true
                 }) { true }
+                acknowledged shouldBe false
+                player.location shouldBe surface
+                FarmBurrowReturnRepository(scenario.plugin.dataFolder.toPath(), DIR).load(player.uniqueId) shouldBe null
+                asyncTasks.size shouldBe 1
+                asyncTasks.removeAt(0)()
                 acknowledged shouldBe true
             }
         }
@@ -86,7 +92,6 @@ class WorksiteExpeditionTravelTest : FunSpec({
             FarmIncidentScenarioFixture.open().use { scenario ->
                 val token = RuntimeTaskSupervisor(TestTaskScheduler()).apply { activate() }.token()
                 every { scenario.port.lifecycleToken() } returns token
-                every { scenario.port.runAsync(any(), any()) } answers { secondArg<() -> Unit>()(); true }
                 every { scenario.port.runSync(any(), any()) } returns false
                 val player = scenario.paper.addPlayer("StaleExpedition")
                 val surface = Location(scenario.world, 12.5, 65.0, 12.5)
@@ -108,11 +113,7 @@ class WorksiteExpeditionTravelTest : FunSpec({
                 val old = FarmBurrowReturn(player.uniqueId, "mine", 3, scenario.world.name, 4.5, 64.0, 4.5, 0f, 0f, 1L)
                 val repository = FarmBurrowReturnRepository(scenario.plugin.dataFolder.toPath(), DIR)
                 repository.commit(old)
-                val asyncTasks = mutableListOf<() -> Unit>()
-                every { scenario.port.runAsync(any(), any()) } answers {
-                    asyncTasks += secondArg<() -> Unit>()
-                    true
-                }
+                val asyncTasks = scenario.deferCompute()
                 every { scenario.port.runSync(any(), any()) } answers {
                     secondArg<() -> Unit>()()
                     true
@@ -139,8 +140,7 @@ class WorksiteExpeditionTravelTest : FunSpec({
                 val old = FarmBurrowReturn(player.uniqueId, "mine", 3, scenario.world.name, 4.5, 64.0, 4.5, 0f, 0f, 1L)
                 val repository = FarmBurrowReturnRepository(scenario.plugin.dataFolder.toPath(), DIR)
                 repository.commit(old)
-                val async = slot<() -> Unit>()
-                every { scenario.port.runAsync(any(), capture(async)) } returns true
+                val asyncTasks = scenario.deferCompute()
                 every { scenario.port.runSync(any(), any()) } answers {
                     secondArg<() -> Unit>()()
                     true
@@ -149,7 +149,7 @@ class WorksiteExpeditionTravelTest : FunSpec({
 
                 travel.recover(player)
                 travel.quit(player)
-                async.captured()
+                asyncTasks.single()()
 
                 travel.retains(player) shouldBe false
                 travel.record(player) shouldBe null

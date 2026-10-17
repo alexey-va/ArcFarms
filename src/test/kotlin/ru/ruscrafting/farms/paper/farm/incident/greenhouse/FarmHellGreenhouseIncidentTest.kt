@@ -29,7 +29,6 @@ class FarmHellGreenhouseIncidentTest : FunSpec({
             for (x in 16..32) for (z in 16..32) for (y in 50..64) f.world.getBlockAt(x, y, z).type = Material.STONE
             val token = RuntimeTaskSupervisor(TestTaskScheduler()).apply { activate() }.token()
             every { f.port.lifecycleToken() } returns token
-            every { f.port.runAsync(any(), any()) } answers { secondArg<() -> Unit>()(); true }
             every { f.port.runSync(any(), any()) } answers { secondArg<() -> Unit>()(); true }
             val rooms = FarmMoleBurrowWorld(f.plugin, ArcFarmsDebug({ false }) {},
                 MockBukkitMoleBurrowChunkRetention(), MockBukkitFarmBlockDataDecoder, "farm_greenhouse")

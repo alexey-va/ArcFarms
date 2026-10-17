@@ -167,6 +167,27 @@ internal fun immediateMinePort(): WorksiteRuntimePort {
         every { hasAccess(any(), any()) } returns true
         every { isAdminEditing(any()) } returns false
         every { lifecycleToken() } returns token
+        every { compute<Any?>(any()) } answers {
+            runCatching(firstArg<() -> Any?>()).fold(
+                { CompletableFuture.completedFuture(it) }, { CompletableFuture.failedFuture(it) },
+            )
+        }
+        every { callSync<Any?>(token, any()) } answers {
+            runCatching(secondArg<() -> Any?>()).fold(
+                { CompletableFuture.completedFuture(it) }, { CompletableFuture.failedFuture(it) },
+            )
+        }
+        every { capture(token, any(), any()) } answers {
+            val current = secondArg<() -> Boolean>()
+            val step = thirdArg<() -> Boolean>()
+            runCatching {
+                var steps = 0
+                do {
+                    check(current()) { "Fixture capture superseded" }
+                    check(++steps <= 1_000_000) { "Fixture capture did not finish" }
+                } while (!step())
+            }.fold({ CompletableFuture.completedFuture(Unit) }, { CompletableFuture.failedFuture(it) })
+        }
         every { runSync(token, any()) } answers {
             secondArg<() -> Unit>().invoke()
             true

@@ -457,12 +457,19 @@ class MineWorkingLifecycleMockBukkitTest : FunSpec({
         val tasks = mockk<WorksiteTaskPort>(relaxed = true)
         val token = mockk<RuntimeTaskSupervisor.Token>()
         every { sceneWorld.retainedScene(runtime.settings.id, runtime.state.sequence) } returns scene
+        val projected = CompletableFuture<Unit>()
+        every { sceneWorld.projectAsync(runtime, MineIncidentType.TUNNEL_DRIVE, any()) } returns projected
         every { incidents.work(any(), any(), any(), any()) } answers {
             runtime.state = runtime.state.copy(phase = MinePhase.MINING, incident = null)
             EngineResult(runtime.state, true)
         }
         every { state.persistAsync() } returns CompletableFuture.completedFuture(Unit)
         every { tasks.lifecycleToken() } returns token
+        every { tasks.callSync<Any?>(token, any()) } answers {
+            runCatching(secondArg<() -> Any?>()).fold(
+                { CompletableFuture.completedFuture(it) }, { CompletableFuture.failedFuture(it) },
+            )
+        }
         every { tasks.runSync(token, any()) } answers {
             secondArg<() -> Unit>().invoke()
             true
@@ -477,8 +484,14 @@ class MineWorkingLifecycleMockBukkitTest : FunSpec({
         advance.invoke(controller, runtime, player, 0, 1, false)
 
         verify(exactly = 1) {
-            sceneWorld.project(runtime, MineIncidentType.TUNNEL_DRIVE, any<MineWorkingState>())
+            sceneWorld.projectAsync(runtime, MineIncidentType.TUNNEL_DRIVE, any<MineWorkingState>())
         }
+        verify(exactly = 0) { incidents.work(any(), any(), any(), any()) }
+        runtime.state.phase shouldBe MinePhase.INCIDENT
+        projected.complete(Unit)
+        verify(exactly = 1) { incidents.work(any(), any(), any(), any()) }
+        runtime.state.phase shouldBe MinePhase.MINING
+        runtime.state.incident shouldBe null
     }
 
     test("reconcileLoaded reapplies saved working projection and restores an orphaned scene") {
