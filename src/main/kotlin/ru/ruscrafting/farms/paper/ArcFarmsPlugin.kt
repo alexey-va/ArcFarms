@@ -64,48 +64,27 @@ open class ArcFarmsPlugin : JavaPlugin() {
     private lateinit var lifecycleTasks: LifecycleTaskScope
     private var reloading = false
     private var shutdownDrain = CompletableFuture.completedFuture(Unit)
-    private var predecessorDrain = CompletableFuture.completedFuture(Unit)
-    private var enableScope: ru.arc.core.LifecycleTaskScope? = null
-    private var generationOpen = false
-    private var generationStarted = false
-
-    private val preparedResources = ConcurrentHashMap.newKeySet<Prepared>()
+    private var lifecycleOpen = false
+    private var preparedResources: Prepared? = null
     private val nestedStorage = ConcurrentHashMap.newKeySet<() -> CompletableFuture<Unit>>()
 
     override fun getDefaultWorldGenerator(worldName: String, id: String?): ChunkGenerator? =
         if (worldName == MineExpeditionWorldGenerator.WORLD_NAME) MineExpeditionWorldGenerator() else null
 
     override fun onEnable() {
-        check(!generationOpen) { "Plugin generation is already open" }
-        generationOpen = true
-        generationStarted = false
-        predecessorDrain = shutdownDrain
-        shutdownDrain = CompletableFuture()
-        val scope = ru.arc.core.LifecycleTaskScope(ru.arc.core.BukkitTaskScheduler(this))
-        enableScope = scope
-        val token = scope.token()
-        predecessorDrain.whenComplete { _, failure ->
-            scope.callSync(token) {
-                if (enableScope !== scope || !generationOpen) return@callSync
-                if (failure != null) {
-                    logger.log(Level.SEVERE, "Previous plugin generation failed to drain; startup remains closed", failure)
-                    server.pluginManager.disablePlugin(this)
-                } else {
-                    generationStarted = true
-                    startGeneration()
-                }
-            }.whenComplete { _, startFailure ->
-                if (startFailure != null) scope.callSync(token) {
-                    if (enableScope === scope && generationOpen) {
-                        logger.log(Level.SEVERE, "Plugin generation startup failed closed", startFailure)
-                        server.pluginManager.disablePlugin(this)
-                    }
-                }
-            }
+        check(!lifecycleOpen) { "Plugin lifecycle is already open" }
+        try {
+            check(shutdownDrain.isDone) { "Previous storage cleanup is still pending" }
+            shutdownDrain.getNow(Unit)
+            lifecycleOpen = true
+            shutdownDrain = CompletableFuture()
+            startGeneration()
+        } catch (failure: Throwable) {
+            logger.log(Level.SEVERE, "ArcFarms startup failed closed", failure)
+            server.pluginManager.disablePlugin(this)
         }
     }
 
-    /** Cold preparation starts only after the exact predecessor's terminal writer/lease drain. */
     protected open fun startGeneration() {
         reloading = false
         ArcProductTelemetryBridge.install()
@@ -116,20 +95,10 @@ open class ArcFarmsPlugin : JavaPlugin() {
         }
         io = BoundedAsyncExecutor("arc-farms-prepare")
         lifecycleTasks = lifecycle.own(LifecycleTaskScope(Tasks.scheduler))
-        val token = lifecycleTasks.token()
         val root = dataFolder.toPath()
         val redisService = server.servicesManager.load(ArcRedisService::class.java)
         val ownerName = name
-        io.submit { prepare(root, redisService, ownerName) }.whenComplete { prepared, failure ->
-            if (pluginRuntime !== lifecycle) {
-                prepared?.let(::retirePrepared)
-            } else lifecycleTasks.callSync(token) {
-                if (failure != null) failStartup(lifecycle, failure)
-                else activate(lifecycle, prepared)
-            }.whenComplete { _, activationFailure ->
-                if (activationFailure != null) prepared?.let(::retirePrepared)
-            }
-        }
+        activate(lifecycle, prepare(root, redisService, ownerName))
     }
 
     private fun prepare(root: java.nio.file.Path, redisService: ArcRedisService?, ownerName: String): Prepared {
@@ -157,7 +126,7 @@ open class ArcFarmsPlugin : JavaPlugin() {
                 logger.log(Level.SEVERE, "Mine lift $id preparation rejected; lift remains closed", problem)
             }
             return Prepared(config, translated, ArcFarmsMenuPlatform.prepare(root), redisConfig, manager,
-                state, mine, crops, locations, mineLocations, routes, lifts, resources).also { preparedResources += it }
+                state, mine, crops, locations, mineLocations, routes, lifts, resources).also { preparedResources = it }
         } catch (failure: Throwable) {
             resources.asReversed().forEach { resource -> runCatching { closeStorageResource(resource) }.exceptionOrNull()?.let(failure::addSuppressed) }
             throw failure
@@ -184,13 +153,6 @@ open class ArcFarmsPlugin : JavaPlugin() {
             }
             failure?.let { throw it }
         }
-    }
-
-    private fun retirePrepared(prepared: Prepared) {
-        io.submit {
-            try { prepared.close() } finally { preparedResources.remove(prepared) }
-        }
-        // The terminal finalizer owns any prepare finishing after admission closes.
     }
 
     private fun activate(lifecycle: PaperPluginRuntime, prepared: Prepared) {
@@ -342,17 +304,15 @@ open class ArcFarmsPlugin : JavaPlugin() {
     }
 
     override fun onDisable() {
-        if (!generationOpen) return
-        generationOpen = false
-        enableScope?.close()
-        enableScope = null
-        val completion = shutdownDrain
-        val previous = predecessorDrain
-        val retiring = if (generationStarted) runCatching { closeGeneration() }.getOrElse { CompletableFuture.failedFuture(it) }
-            else CompletableFuture.completedFuture(Unit)
-        generationStarted = false
-        CompletableFuture.allOf(previous, retiring).whenComplete { _, failure ->
-            if (failure == null) completion.complete(Unit) else completion.completeExceptionally(failure)
+        if (!lifecycleOpen) return
+        lifecycleOpen = false
+        try {
+            // Native owners are detached first; independent journals then finish accepted IO.
+            closeGeneration().join()
+            shutdownDrain.complete(Unit)
+        } catch (failure: Throwable) {
+            shutdownDrain.completeExceptionally(failure)
+            logger.log(Level.SEVERE, "Could not close ArcFarms storage", failure)
         }
     }
 
@@ -375,6 +335,8 @@ open class ArcFarmsPlugin : JavaPlugin() {
         farmLocationRepository = null
         farmRouteRepository = null
         stateRepository = null
+        val prepared = preparedResources
+        preparedResources = null
         val drain = if (::io.isInitialized) io.closeAsync {
             var failure: Throwable? = null
             nestedStorage.forEach { close ->
@@ -382,10 +344,8 @@ open class ArcFarmsPlugin : JavaPlugin() {
                     if (failure == null) failure = problem else failure.addSuppressed(problem)
                 } finally { nestedStorage.remove(close) }
             }
-            preparedResources.forEach { prepared ->
-                try { prepared.close() } catch (problem: Throwable) {
-                    if (failure == null) failure = problem else failure.addSuppressed(problem)
-                } finally { preparedResources.remove(prepared) }
+            try { prepared?.close() } catch (problem: Throwable) {
+                if (failure == null) failure = problem else failure.addSuppressed(problem)
             }
             failure?.let { throw it }
         } else CompletableFuture.completedFuture(Unit)
@@ -482,7 +442,7 @@ open class ArcFarmsPlugin : JavaPlugin() {
     private companion object {
         const val HEALTH_REPORT_TICKS = 1_200L
 
-        /** Worker-only: the predecessor gate includes each independent store's accepted writer drain. */
+        /** Lifecycle boundary: finish each independent store's accepted writer drain. */
         fun closeStorageResource(resource: AutoCloseable) {
             when (resource) {
                 is ArcFarmsStateRepository -> resource.closeAsync().join()
