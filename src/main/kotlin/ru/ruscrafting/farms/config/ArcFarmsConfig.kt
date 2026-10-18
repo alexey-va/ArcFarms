@@ -27,7 +27,7 @@ import java.time.ZoneId
 import kotlin.math.ceil
 import kotlin.math.floor
 
-private val ROUTE_MONSTER_TYPES = setOf("HUSK", "ZOMBIE", "SKELETON", "SPIDER", "PHANTOM")
+internal val ROUTE_MONSTER_TYPES = setOf("HUSK", "ZOMBIE", "SKELETON", "SPIDER")
 private val RIVAL_WORKER_TYPES = setOf("HUSK", "ZOMBIE", "DROWNED", "PILLAGER")
 
 data class NetworkSettings(
@@ -1032,6 +1032,7 @@ data class WorksiteEnterpriseSettings(
     val weeklyUpkeepCents: Long,
     val retainedReportWeeks: Int,
     val businessWeek: WorksiteBusinessWeekSettings,
+    val workerPayoutEnabled: Boolean = false,
     val capital: WorksiteEnterpriseCapitalSettings = WorksiteEnterpriseCapitalSettings(
         totalShares = 100,
         sharePriceCents = 5_000_000,
@@ -1566,7 +1567,7 @@ class ArcFarmsConfig private constructor(
                         "route-delivery.monsters.phantom-spawn-height", 7.0, 1.0, 32.0,
                     ),
                     monsterTypes = section.stringList("route-delivery.monsters.types")
-                        .ifEmpty { listOf("HUSK", "ZOMBIE", "SKELETON", "SPIDER", "PHANTOM") }
+                        .ifEmpty { ROUTE_MONSTER_TYPES.toList() }
                         .map(String::trim)
                         .map(String::uppercase)
                         .distinct()
@@ -3047,6 +3048,7 @@ class ArcFarmsConfig private constructor(
                 operatingCostPercent = section.int("operating-cost-percent", 20)
                     .checked("$path.operating-cost-percent", 0, 100),
                 workerBonusPercent = workerBonus,
+                workerPayoutEnabled = section.boolean("worker-payout.enabled", false),
                 dividendPercent = dividend,
                 weeklyUpkeepCents = enterpriseMoneyCents(
                     section.string("weekly-upkeep", "25000.00"),

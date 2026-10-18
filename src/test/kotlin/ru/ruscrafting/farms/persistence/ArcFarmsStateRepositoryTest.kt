@@ -1,5 +1,6 @@
 package ru.ruscrafting.farms.persistence
 
+import com.google.gson.JsonParser
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.shouldBe
@@ -26,12 +27,16 @@ import ru.ruscrafting.farms.domain.MinePhase
 import ru.ruscrafting.farms.domain.MineShiftState
 import ru.ruscrafting.farms.domain.FarmRewardItem
 import ru.ruscrafting.farms.domain.PendingFarmReward
+import ru.ruscrafting.farms.domain.FarmRewardMoneyDelivery
+import ru.ruscrafting.farms.domain.FarmRewardMoneyState
 import ru.ruscrafting.farms.domain.enterprise.WorksiteEnterpriseReservation
 import ru.ruscrafting.farms.domain.enterprise.WorksiteEnterpriseCapitalCompany
 import ru.ruscrafting.farms.domain.enterprise.WorksiteEnterpriseCapitalPhase
 import ru.ruscrafting.farms.domain.enterprise.WorksiteEnterpriseFinancingSnapshot
 import ru.ruscrafting.farms.domain.enterprise.WorksiteEnterpriseSnapshot
 import ru.ruscrafting.farms.domain.enterprise.WorksiteEnterpriseTerms
+import ru.ruscrafting.farms.domain.enterprise.WorksiteEnterpriseWeek
+import ru.ruscrafting.farms.domain.enterprise.MAX_ENTERPRISE_MONEY_CENTS
 import ru.ruscrafting.farms.domain.PlayerActivityStats
 import ru.ruscrafting.farms.domain.WeeklyActivityContribution
 import java.nio.file.Files
@@ -931,6 +936,79 @@ class ArcFarmsStateRepositoryTest : FunSpec({
             val failure = shouldThrow<ExecutionException> { repository.saveBlocking(invalid) }
             (failure.cause is IllegalArgumentException) shouldBe true
         }
+    }
+
+    test("money outcomes preserve full grants across atomic persistence") {
+        val root = Files.createTempDirectory("arcfarms-state-money-outcomes-test")
+        val deliveries = FarmRewardMoneyState.entries.associate { outcome ->
+            val player = UUID(0, outcome.ordinal.toLong() + 1)
+            val reward = PendingFarmReward("communal_farm:7:$player", "communal_farm", 7, player, 100,
+                moneyCents = 290_000, workerBonusCents = 240_000)
+            reward.id to FarmRewardMoneyDelivery(reward, outcome)
+        }
+        val expected = ArcFarmsState(
+            farmRewardMoneyDeliveries = deliveries,
+            claimedFarmRewardSequences = deliveries.values.associate { it.reward.claimKey to it.reward.sequence },
+        )
+        ArcFarmsStateRepository(root).use { it.saveBlocking(expected) }
+        ArcFarmsStateRepository(root).use { it.load() shouldBe expected }
+    }
+
+    test("combined payment may exceed the ordinary reward limit while both components remain valid") {
+        val root = Files.createTempDirectory("arcfarms-state-combined-payment-test")
+        val player = UUID(0, 42)
+        val reward = PendingFarmReward("communal_farm:7:$player", "communal_farm", 7, player, 100,
+            moneyCents = 100_050_000, workerBonusCents = 100_000_000)
+        val expected = ArcFarmsState(pendingFarmRewards = listOf(reward))
+        ArcFarmsStateRepository(root).use { it.saveBlocking(expected) }
+        ArcFarmsStateRepository(root).use { it.load() shouldBe expected }
+
+        val invalid = listOf(
+            reward.copy(moneyCents = 200_000_001), // ordinary component exceeds its unchanged ceiling
+            reward.copy(moneyCents = MAX_ENTERPRISE_MONEY_CENTS + 1, workerBonusCents = MAX_ENTERPRISE_MONEY_CENTS + 1),
+            reward.copy(workerBonusCents = -1),
+            reward.copy(moneyCents = -1),
+            reward.copy(workerBonusCents = reward.moneyCents + 1),
+        )
+        invalid.forEach { grant ->
+            ArcFarmsStateRepository(Files.createTempDirectory("arcfarms-state-invalid-component-test")).use { repository ->
+                shouldThrow<ExecutionException> { repository.saveBlocking(ArcFarmsState(pendingFarmRewards = listOf(grant))) }
+                    .cause.let { it is IllegalArgumentException } shouldBe true
+            }
+        }
+    }
+
+    test("Gson legacy missing fields preserve forecasts and never activate old worker payments") {
+        val root = Files.createTempDirectory("arcfarms-state-worker-payment-migration-test")
+        val player = UUID(0, 42)
+        val terms = WorksiteEnterpriseTerms(20, 30, 50, 100_000)
+        val week = WorksiteEnterpriseWeek(ActivityKind.FARM, "communal_farm", 20_695,
+            completedOrders = 1, grossRevenueCents = 1_000_000, operatingBurnCents = 200_000,
+            workerBonusCents = 240_000, retainedProfitCents = 560_000,
+            uniqueContributors = setOf(player), projectedWorkerCreditsCents = mapOf(player to 240_000), terms = terms)
+        val reservation = WorksiteEnterpriseReservation("enterprise:farm:communal_farm:8", ActivityKind.FARM,
+            "communal_farm", "communal_farm", "bakery_supply", 8, 1_000_000, 1_800_000_000_000, 20_695, terms)
+        val pending = PendingFarmReward("communal_farm:7:$player", "communal_farm", 7, player, 100, moneyCents = 50_000)
+        val expected = ArcFarmsState(pendingFarmRewards = listOf(pending), worksiteEnterprise = WorksiteEnterpriseSnapshot(
+            reservations = mapOf("farm:communal_farm" to reservation), weeks = mapOf("farm:communal_farm:20695" to week),
+            settledGrossByCompany = mapOf("farm:communal_farm" to 1_000_000)))
+        ArcFarmsStateRepository(root).use { it.saveBlocking(expected) }
+        val file = root.resolve("data/state.json")
+        val legacy = JsonParser.parseString(Files.readString(file)).asJsonObject
+        legacy.remove("farmRewardMoneyDeliveries")
+        legacy.getAsJsonArray("pendingFarmRewards").forEach { it.asJsonObject.remove("workerBonusCents") }
+        val enterprise = legacy.getAsJsonObject("worksiteEnterprise")
+        enterprise.getAsJsonObject("weeks").entrySet().forEach { it.value.asJsonObject.remove("rewardWorkerCreditsCents") }
+        enterprise.getAsJsonObject("reservations").entrySet().forEach { it.value.asJsonObject.remove("workerPayoutEnabled") }
+        Files.writeString(file, legacy.toString())
+
+        val loaded = ArcFarmsStateRepository(root).use { it.load() }
+        loaded shouldBe expected
+        loaded.pendingFarmRewards.single().workerBonusCents shouldBe 0L
+        loaded.worksiteEnterprise!!.reservations.values.single().workerPayoutEnabled shouldBe false
+        loaded.worksiteEnterprise.weeks.values.single().rewardWorkerCreditsCents shouldBe emptyMap()
+        loaded.worksiteEnterprise.weeks.values.single().projectedWorkerCreditsCents shouldBe mapOf(player to 240_000L)
+        loaded.farmRewardMoneyDeliveries shouldBe emptyMap()
     }
 
     test("state persistence rejects progress outside the selected patch") {

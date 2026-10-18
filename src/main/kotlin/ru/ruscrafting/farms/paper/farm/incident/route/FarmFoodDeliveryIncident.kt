@@ -82,6 +82,7 @@ internal class FarmFoodDeliveryIncident(
     private val gunner = FarmFoodDeliveryGunner(plugin, locale, settings, debug, audience, tasks, entityRayTrace)
     private val safety = FarmFoodDeliverySafety(audience, debug, routes, vehiclePassengers, gunner)
     private val ambush = FarmFoodDeliveryAmbush(random, night, audience, debug, mobDespawns, vehiclePassengers)
+    private val deliveryNight = FarmFoodDeliveryNight(plugin)
     private val sessions = mutableMapOf<String, FarmFoodDeliverySession>()
     private val lastRouteNames = mutableMapOf<String, String>()
     private val portals = FarmActivityPortal(plugin, locale, access, audience, tasks, textDisplays, "farm_food_route")
@@ -138,9 +139,15 @@ internal class FarmFoodDeliveryIncident(
         return runtime.state.specialIncident != null
     }
 
+    fun retryInactiveNight(runtime: FarmRuntime) {
+        if (!active(runtime) && deliveryNight.hasOwner(runtime.settings.id)) deliveryNight.release(runtime.settings.id)
+    }
+
     fun ensure(runtime: FarmRuntime, now: Long) {
         if (!active(runtime)) {
-            if (runtime.settings.id in sessions) clear(runtime.settings.id, "inactive")
+            if (runtime.settings.id in sessions || deliveryNight.hasOwner(runtime.settings.id)) {
+                clear(runtime.settings.id, "inactive")
+            }
             return
         }
         if (!initialize(runtime)) {
@@ -162,15 +169,8 @@ internal class FarmFoodDeliveryIncident(
                 .also { sessions[runtime.settings.id] = it }
         // Farm entry and ambience must not depend on a distant route chunk being loaded.
         ensurePortal(runtime, session)
-        val participants = (
-            audience.players(runtime.region) + participants(runtime)
-            ).distinctBy(Player::getUniqueId)
-        night.syncAmbientTime(
-            nightOwner(runtime.settings.id),
-            participants,
-            runtime.settings.routeDelivery.playerTime,
-            runtime.settings.routeDelivery.timeTransitionSeconds,
-        )
+        deliveryNight.hold(runtime.settings.id, runtime.region.world, runtime.settings.routeDelivery.playerTime)
+        night.resetAmbientTime(nightOwner(runtime.settings.id))
         refreshAmbushPlan(runtime, session, route.points)
         val horse = (session.horseId?.let(Bukkit::getEntity) as? Horse)?.takeIf { it.isValid && !it.isDead }
         val resumePoint = route.points[(runtime.state.incidentProgress - 1).coerceIn(0, route.points.lastIndex)]
@@ -413,19 +413,21 @@ internal class FarmFoodDeliveryIncident(
             releaseChunk(session)
             gunner.clear(zoneId, session, reason)
         }
-        night.clearAmbientTime(nightOwner(zoneId))
+        night.resetAmbientTime(nightOwner(zoneId))
         ambush.clear(zoneId)
+        deliveryNight.release(zoneId)
         debug.event("farm_food_route_cleared", "zone" to zoneId, "reason" to reason)
     }
 
     fun cleanup(reason: String) {
         Bukkit.getWorlds().asSequence().flatMap { it.entities.asSequence() }.filter(::owns).forEach(Entity::remove)
-        sessions.keys.forEach { night.clearAmbientTime(nightOwner(it)) }
+        sessions.keys.forEach { night.resetAmbientTime(nightOwner(it)) }
         sessions.values.forEach(::releaseChunk)
         sessions.clear()
         portals.cleanup()
         gunner.cleanup(reason)
         night.releaseExternalLights("food:")
+        deliveryNight.cleanup()
         debug.event("farm_food_route_cleanup", "reason" to reason)
     }
 

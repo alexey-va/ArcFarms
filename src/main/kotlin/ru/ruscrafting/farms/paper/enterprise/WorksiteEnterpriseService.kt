@@ -23,6 +23,7 @@ import ru.ruscrafting.farms.paper.NoOpFarmEconomyGateway
 import ru.ruscrafting.farms.paper.RuntimeTaskSupervisor
 import ru.ruscrafting.farms.paper.farm.enterprise.FarmEnterpriseAdapter
 import ru.ruscrafting.farms.paper.farm.enterprise.FarmEnterprisePort
+import ru.ruscrafting.farms.paper.farm.enterprise.FarmEnterpriseCompletion
 import ru.ruscrafting.farms.paper.farm.enterprise.weekStartEpochDay
 import org.bukkit.OfflinePlayer
 import java.util.UUID
@@ -116,18 +117,19 @@ internal class WorksiteEnterpriseService(
             val terms = reservation.terms ?: return null
             val afterCost = reservation.grossTariffCents - reservation.grossTariffCents * terms.operatingCostPercent / 100
             return WorksiteEnterpriseOrderPremium(afterCost * terms.workerBonusPercent / 100,
-                !capital.hasCompany(reservation.activity, reservation.companyId))
+                !reservation.workerPayoutEnabled && !capital.hasCompany(reservation.activity, reservation.companyId),
+                reservation.workerPayoutEnabled)
         }
         override fun orderStarted(worksiteId: String, orderId: String, sequence: Long, startedAt: Long) =
             farmAdapter.orderStarted(worksiteId, orderId, sequence, startedAt)
         override fun orderCancelled(worksiteId: String, sequence: Long) = farmAdapter.orderCancelled(worksiteId, sequence)
-        override fun orderCompleted(worksiteId: String, sequence: Long, contributors: Map<UUID, Int>, commercialEligible: Boolean): Boolean {
-            val revenueChanged = farmAdapter.orderCompleted(worksiteId, sequence, contributors, commercialEligible)
+        override fun orderCompleted(worksiteId: String, sequence: Long, contributors: Map<UUID, Int>, commercialEligible: Boolean): FarmEnterpriseCompletion {
+            val settlement = farmAdapter.orderCompleted(worksiteId, sequence, contributors, commercialEligible)
             val configured = settings().enterprises.getValue(ActivityKind.FARM)
             val recorded = engagementEnabled() && configured.worksiteId == worksiteId && commercialEligible &&
                 contributors.any { it.value > 0 } && participation.recordCompleted(configured.activity, configured.companyId,
                     worksiteId, sequence, configured.weekStartEpochDay(clock()), contributors)
-            return revenueChanged || recorded
+            return settlement.copy(changed = settlement.changed || recorded)
         }
         override fun orderPool(worksiteId: String, orders: List<FarmOrder>): List<FarmOrder> {
             val configured = settings().enterprises.getValue(ActivityKind.FARM)
@@ -264,7 +266,7 @@ internal class WorksiteEnterpriseService(
 
     private fun engagementEnabled(): Boolean {
         val configured = settings().enterprises.getValue(ActivityKind.FARM)
-        return configured.mode != WorksiteEnterpriseMode.OFF || capital.hasCompany(configured.activity, configured.companyId)
+        return configured.workerPayoutEnabled || configured.mode != WorksiteEnterpriseMode.OFF || capital.hasCompany(configured.activity, configured.companyId)
     }
 
     private fun holdings(configured: ru.ruscrafting.farms.config.WorksiteEnterpriseSettings = settings().enterprises.getValue(ActivityKind.FARM)): Map<UUID, Int> {
@@ -275,7 +277,7 @@ internal class WorksiteEnterpriseService(
 
     private fun advanceParticipation(candidate: ArcFarmsConfig? = null): Boolean {
         val configured = (candidate ?: settings()).enterprises.getValue(ActivityKind.FARM)
-        if (configured.mode == WorksiteEnterpriseMode.OFF && !capital.hasCompany(configured.activity, configured.companyId) ||
+        if (configured.mode == WorksiteEnterpriseMode.OFF && !configured.workerPayoutEnabled && !capital.hasCompany(configured.activity, configured.companyId) ||
             ballotWritePending || ballotWriteFailed) return false
         return participation.advance(configured.activity, configured.companyId,
             configured.weekStartEpochDay(clock()), holdings(configured)).changed
@@ -306,6 +308,10 @@ internal class WorksiteEnterpriseService(
         }.sumOf { it.projectedWorkerCreditsCents[playerId] ?: 0L }
         return WorksiteEnterprisePlayerView(
             simulated = company == null,
+            workerPayoutEnabled = configured.workerPayoutEnabled,
+            workerRewardAllocatedCents = ledger.snapshot().weeks.values.filter {
+                it.activity == configured.activity && it.companyId == configured.companyId
+            }.sumOf { it.rewardWorkerCreditsCents.orEmpty()[playerId] ?: 0L },
             workerAccruedCents = pendingWorker,
             projectedDividendCents = overview.projectedDividendPoolCents / configured.capital.totalShares * (ownership?.ownedShares ?: 0),
             nextSettlementMillis = next, currentWeekStartEpochDay = week,

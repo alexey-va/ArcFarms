@@ -85,6 +85,9 @@ internal class ArcFarmsRuntimeValidator(
     private val mineJournal: MineRecoveryJournal,
 ) {
     fun validatePersisted(candidate: ArcFarmsConfig, persisted: ArcFarmsState) {
+        require(persisted.worksiteEnterprise?.reservations.orEmpty().values.none { it.workerPayoutEnabled } || economyAvailable()) {
+            "Accepted enterprise worker payments require Vault and an economy provider"
+        }
         persisted.pendingFarmRewards.forEach { reward ->
             reward.items.forEach { item -> MaterialRules.material(item.material) }
             require(reward.moneyCents == 0L || economyAvailable()) {
@@ -220,9 +223,9 @@ internal class ArcFarmsRuntimeValidator(
 
     fun validateRuntime(candidate: ArcFarmsConfig) {
         require(
-            candidate.enterprises.values.none { it.mode == ru.ruscrafting.farms.config.WorksiteEnterpriseMode.LIVE } ||
+            candidate.enterprises.values.none { it.workerPayoutEnabled || it.mode == ru.ruscrafting.farms.config.WorksiteEnterpriseMode.LIVE } ||
                 economyAvailable(),
-        ) { "LIVE enterprise funding requires Vault and an economy provider" }
+        ) { "Worker payments or LIVE enterprise funding require Vault and an economy provider" }
         if (candidate.menuBackground.enabled) {
             val material = MaterialRules.material(candidate.menuBackground.material)
             require(material.isItem && !material.isAir) { "ui.menu-background.material must be a non-air item material" }

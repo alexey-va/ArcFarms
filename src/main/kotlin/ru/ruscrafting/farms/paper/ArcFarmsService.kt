@@ -237,7 +237,8 @@ class ArcFarmsService(
         runtimeValidator.validatePersisted(settings, persisted)
         MineController.validateJournalMaterials(mineJournal)
         stats.replace(persisted.stats)
-        farm.rewards.replace(persisted.pendingFarmRewards, persisted.claimedFarmRewardSequences)
+        farm.rewards.replace(persisted.pendingFarmRewards, persisted.claimedFarmRewardSequences,
+            persisted.farmRewardMoneyDeliveries.orEmpty())
         farm.perks.replace(persisted.farmPerks.orEmpty())
         val recoveredEnterpriseMoney = enterprise.replace(persisted.worksiteEnterprise)
         farm.orderCycle.replace(persisted.pausedFarmZones.orEmpty())
@@ -668,6 +669,7 @@ class ArcFarmsService(
             stats = stats.snapshot(),
             pendingFarmRewards = rewards.pending,
             claimedFarmRewardSequences = rewards.claimed,
+            farmRewardMoneyDeliveries = rewards.moneyDeliveries,
             farmPerks = farm.perks.snapshot(),
             worksiteEnterprise = enterprise.snapshot(),
         )

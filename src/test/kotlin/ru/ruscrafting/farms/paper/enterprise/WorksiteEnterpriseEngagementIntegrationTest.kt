@@ -30,7 +30,7 @@ class WorksiteEnterpriseEngagementIntegrationTest : FunSpec({
         service.snapshot().settledGrossByCompany.getValue("farm:$COMPANY") shouldBe 16_000_000
         service.farm.orderStarted(COMPANY, "bakery_supply", 17, fixture.now)
         service.snapshot().reservations shouldBe emptyMap()
-        service.farm.orderCompleted(COMPANY, 17, mapOf(OWNER to 3), true) shouldBe true
+        service.farm.orderCompleted(COMPANY, 17, mapOf(OWNER to 3), true).changed shouldBe true
         service.snapshot().settledGrossByCompany.getValue("farm:$COMPANY") shouldBe 16_000_000
         service.playerView(OWNER)!!.completedOrders shouldBe 17
         service.playerView(OWNER)!!.projectStage shouldBe 1
@@ -59,7 +59,7 @@ class WorksiteEnterpriseEngagementIntegrationTest : FunSpec({
     test("OFF without a company has no participation or worker credits") {
         val fixture = EngagementFixture(funded = false, mode = WorksiteEnterpriseMode.OFF)
         fixture.service.farm.orderStarted(COMPANY, "bakery_supply", 1, fixture.now) shouldBe false
-        fixture.service.farm.orderCompleted(COMPANY, 1, mapOf(OWNER to 10), true) shouldBe false
+        fixture.service.farm.orderCompleted(COMPANY, 1, mapOf(OWNER to 10), true).changed shouldBe false
         fixture.service.playerView(OWNER) shouldBe null
     }
 

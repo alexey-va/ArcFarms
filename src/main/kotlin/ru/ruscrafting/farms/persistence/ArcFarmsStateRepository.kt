@@ -17,6 +17,8 @@ import ru.ruscrafting.farms.domain.FarmProcessingStage
 import ru.ruscrafting.farms.domain.FarmShiftState
 import ru.ruscrafting.farms.domain.FarmTornadoState
 import ru.ruscrafting.farms.domain.PendingFarmReward
+import ru.ruscrafting.farms.domain.FarmRewardLedger
+import ru.ruscrafting.farms.domain.FarmRewardMoneyState
 import ru.ruscrafting.farms.domain.MinePhase
 import ru.ruscrafting.farms.domain.MineResource
 import ru.ruscrafting.farms.domain.MineShiftState
@@ -30,6 +32,7 @@ import ru.ruscrafting.farms.domain.enterprise.WorksiteEnterpriseLedger
 import ru.ruscrafting.farms.domain.enterprise.WorksiteEnterpriseCapitalLedger
 import ru.ruscrafting.farms.domain.enterprise.WorksiteEnterpriseFinancingSnapshot
 import ru.ruscrafting.farms.domain.enterprise.WorksiteEnterpriseSnapshot
+import ru.ruscrafting.farms.domain.enterprise.MAX_ENTERPRISE_MONEY_CENTS
 import java.nio.file.Path
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
@@ -64,6 +67,7 @@ class ArcFarmsStateRepository(dataRoot: Path) : AutoCloseable {
     fun load(): ArcFarmsState = preparedState ?: loadPrepared().let { state ->
         state.copy(stats = state.stats.toPersistentMap(), farmPerks = state.farmPerks.orEmpty().toPersistentMap(),
             claimedFarmRewardSequences = state.claimedFarmRewardSequences.toPersistentMap(),
+            farmRewardMoneyDeliveries = state.farmRewardMoneyDeliveries.orEmpty().toPersistentMap(),
             pendingFarmRewards = state.pendingFarmRewards.toPersistentList())
     }.also { preparedState = it }
 
@@ -113,12 +117,17 @@ class ArcFarmsStateRepository(dataRoot: Path) : AutoCloseable {
         val pausedFarmZones = state.pausedFarmZones.orEmpty()
         val farmPerks = state.farmPerks.orEmpty()
         val loadedEnterprise = state.worksiteEnterprise ?: WorksiteEnterpriseSnapshot()
-        val worksiteEnterprise = if (loadedEnterprise.financing == null) {
-            loadedEnterprise.copy(financing = WorksiteEnterpriseFinancingSnapshot())
-        } else loadedEnterprise
+        val worksiteEnterprise = loadedEnterprise.copy(
+            financing = loadedEnterprise.financing ?: WorksiteEnterpriseFinancingSnapshot(),
+            weeks = loadedEnterprise.weeks.mapValues { (_, week) ->
+                if (week.rewardWorkerCreditsCents == null) week.copy(rewardWorkerCreditsCents = emptyMap()) else week
+            },
+        )
+        val rewardMoney = state.farmRewardMoneyDeliveries.orEmpty()
         return if (
             stats == state.stats && farms == state.farms && mines == state.mines && pausedFarmZones == state.pausedFarmZones &&
-            farmPerks == state.farmPerks && worksiteEnterprise == state.worksiteEnterprise
+            farmPerks == state.farmPerks && worksiteEnterprise == state.worksiteEnterprise &&
+            rewardMoney == state.farmRewardMoneyDeliveries
         ) {
             state
         } else {
@@ -129,6 +138,7 @@ class ArcFarmsStateRepository(dataRoot: Path) : AutoCloseable {
                 stats = stats,
                 farmPerks = farmPerks,
                 worksiteEnterprise = worksiteEnterprise,
+                farmRewardMoneyDeliveries = rewardMoney,
             )
         }
     }
@@ -206,6 +216,17 @@ class ArcFarmsStateRepository(dataRoot: Path) : AutoCloseable {
                 "Pending farm rewards contain duplicate ids"
             }
             state.pendingFarmRewards.forEach(::validateFarmReward)
+            require(state.farmRewardMoneyDeliveries.orEmpty().size <= FarmRewardLedger.MAX_MONEY_DELIVERIES) {
+                "Farm money outcome journal is unbounded"
+            }
+            state.farmRewardMoneyDeliveries.orEmpty().forEach { (id, delivery) ->
+                validateFarmReward(delivery.reward)
+                require(id == delivery.reward.id && delivery.reward.moneyCents > 0L &&
+                    delivery.state in FarmRewardMoneyState.entries) { "Farm money outcome record is invalid" }
+                require((state.claimedFarmRewardSequences[delivery.reward.claimKey] ?: -1L) >= delivery.reward.sequence) {
+                    "Farm money outcome has no durable reward claim"
+                }
+            }
             require(state.claimedFarmRewardSequences.size <= 1_000_000) { "Claimed farm reward watermarks are unbounded" }
             require(state.claimedFarmRewardSequences.keys.all(REWARD_CLAIM_KEY::matches)) {
                 "Claimed farm reward watermark contains an invalid key"
@@ -631,8 +652,14 @@ class ArcFarmsStateRepository(dataRoot: Path) : AutoCloseable {
             require(reward.sequence in 0 until Long.MAX_VALUE && reward.contribution > 0) {
                 "Pending farm reward sequence or contribution is invalid"
             }
-            require(reward.experience in 0..10_000 && reward.moneyCents in 0..100_000_000L) {
+            require(reward.experience in 0..10_000 && reward.moneyCents >= 0L) {
                 "Pending farm reward amount is outside supported bounds"
+            }
+            require(reward.workerBonusCents in 0..MAX_ENTERPRISE_MONEY_CENTS && reward.workerBonusCents <= reward.moneyCents) {
+                "Farm worker bonus is outside supported bounds or exceeds its frozen payment"
+            }
+            require(reward.moneyCents - reward.workerBonusCents in 0..100_000_000L) {
+                "Ordinary farm money reward is outside supported bounds"
             }
             require(reward.items.size <= 128 && reward.items.all { item ->
                 CONTENT_ID.matches(item.material) && item.amount in 1..2_304

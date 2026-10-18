@@ -8,6 +8,13 @@ import ru.ruscrafting.farms.paper.farm.care.mole.FarmMoleBurrowController
 import java.util.logging.Level
 import java.util.concurrent.CompletableFuture
 
+internal enum class FarmCareStartResult {
+    STARTED,
+    NO_PLACEMENT,
+    PREPARATION_FAILED,
+    STATE_CHANGED,
+}
+
 /** Prepares and rolls back world-backed care resources around the state transition. */
 internal class FarmCareStartService(
     private val port: WorksiteStatePort,

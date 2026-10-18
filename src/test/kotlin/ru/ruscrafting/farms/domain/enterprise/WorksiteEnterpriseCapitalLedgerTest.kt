@@ -133,6 +133,25 @@ class WorksiteEnterpriseCapitalLedgerTest : FunSpec({
         snapshot.investmentCreditsCents[OWNER_A] shouldBe null
     }
 
+    test("worker premiums allocated to completion grants never become weekly investment credit") {
+        val ledger = activeLedger()
+        val revenue = WorksiteEnterpriseWeek(
+            activity = ActivityKind.FARM, companyId = COMPANY, weekStartEpochDay = 100,
+            completedOrders = 1, grossRevenueCents = 1_000_000, operatingBurnCents = 200_000,
+            workerBonusCents = 240_000, retainedProfitCents = 560_000,
+            uniqueContributors = setOf(WORKER), projectedWorkerCreditsCents = emptyMap(),
+            rewardWorkerCreditsCents = mapOf(WORKER to 240_000),
+            terms = WorksiteEnterpriseTerms(20, 30, 50, 100_000),
+        )
+        val revenues = WorksiteEnterpriseSnapshot(weeks = mapOf("farm:$COMPANY:100" to revenue))
+        val configured = policy(totalShares = 4, sharePriceCents = 1_000_000, maxSharesPerOwner = 4)
+        ledger.advance(configured, 9_000, 107, revenues) shouldBe true
+        ledger.snapshot().investmentCreditsCents[WORKER] shouldBe null
+        ledger.snapshot().investmentCreditsCents[OWNER_A] shouldBe 230_000L
+        ledger.advance(configured, 10_000, 107, revenues) shouldBe false
+        ledger.snapshot().investmentCreditsCents[WORKER] shouldBe null
+    }
+
     test("a week with a carried reservation is not closed until that reservation is terminal") {
         val ledger = activeLedger()
         val reservation = WorksiteEnterpriseReservation(

@@ -17,10 +17,13 @@ data class WorksiteEnterprisePlayerView(
     val canVote: Boolean,
     val canAdvise: Boolean,
     val simulated: Boolean = false,
+    val workerPayoutEnabled: Boolean = false,
+    val workerRewardAllocatedCents: Long = 0,
 )
 
 /** Accepted per-order worker pool; a worker's share depends on actual contribution. */
 data class WorksiteEnterpriseOrderPremium(
     val workerPoolCents: Long,
     val simulated: Boolean,
+    val paidAtCompletion: Boolean = false,
 )

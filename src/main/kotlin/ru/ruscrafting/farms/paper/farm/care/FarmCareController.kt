@@ -113,7 +113,7 @@ internal class FarmCareController(
     private val animalFollowers = mutableMapOf<FarmCareEntityKey, UUID>()
     private val reconciledSequences = mutableMapOf<String, Long>()
     private val pollenCharges = FarmPollenCharges()
-    private val pendingStarts = mutableMapOf<String, CompletableFuture<Boolean>>()
+    private val pendingStarts = mutableMapOf<String, CompletableFuture<FarmCareStartResult>>()
     private val starts = FarmCareStartService(state, moles)
     private val ditchWorld = FarmDitchRescueWorld(ledger, state, debug)
     private val rescueRod = FarmDitchRescueRod(serviceItems, access, audience, locale, debug)
@@ -244,15 +244,18 @@ internal class FarmCareController(
 
     fun initializeAsync(
         runtime: FarmRuntime, actor: Player?, preferredType: FarmCareType? = null,
-    ): CompletableFuture<Boolean> {
-        val work = tasks ?: return CompletableFuture.completedFuture(initialize(runtime, actor, preferredType))
+    ): CompletableFuture<Boolean> = initializeDetailedAsync(runtime, actor, preferredType).thenApply { it == FarmCareStartResult.STARTED }
+
+    fun initializeDetailedAsync(runtime: FarmRuntime, actor: Player?, preferredType: FarmCareType? = null): CompletableFuture<FarmCareStartResult> {
+        val work = tasks ?: return CompletableFuture.completedFuture(initializeDetailed(runtime, actor, preferredType))
         pendingStarts[runtime.settings.id]?.let { return it }
+        val sourceRuntime = runtime.copy()
         val source = runtime.state
         val zoneSettings = runtime.settings
         val ready = if (preferredType == FarmCareType.SEEDER) source.phase == FarmPhase.PREPARATION else source.phase == FarmPhase.HARVESTING
-        if (!ready || source.careType != null) return CompletableFuture.completedFuture(false)
+        if (!ready || source.careType != null) return CompletableFuture.completedFuture(FarmCareStartResult.STATE_CHANGED)
         val token = work.lifecycleToken()
-        val result = CompletableFuture<Boolean>()
+        val result = CompletableFuture<FarmCareStartResult>()
         pendingStarts[zoneSettings.id] = result
         fun current() = pendingStarts[zoneSettings.id] === result && runtime.settings === zoneSettings &&
             runtimes().any { it === runtime } && runtime.state.sequence == source.sequence &&
@@ -262,21 +265,23 @@ internal class FarmCareController(
         var preparedPlan: FarmCarePlan? = null
         plans.selectAsync(runtime, preferredType, actor).thenCompose { selected ->
             work.callSync(token) {
-                if (!current() || selected == null) return@callSync CompletableFuture.completedFuture(false)
+                if (!current()) return@callSync CompletableFuture.completedFuture(FarmCareStartResult.STATE_CHANGED)
+                if (selected == null) return@callSync CompletableFuture.completedFuture(FarmCareStartResult.NO_PLACEMENT)
                 preparedPlan = selected
                 starts.prepareAsync(runtime, selected).thenCompose { prepared ->
                     work.callSync(token) {
-                        if (!prepared || !current()) {
-                            if (prepared) starts.rollback(runtime, selected)
-                            return@callSync false
+                        if (!current()) {
+                            if (prepared) starts.rollback(sourceRuntime, selected)
+                            return@callSync FarmCareStartResult.STATE_CHANGED
                         }
+                        if (!prepared) return@callSync FarmCareStartResult.PREPARATION_FAILED
                         val transition = FarmShiftEngine.startCare(runtime.state, selected.type, selected.targets, selected.goal)
-                        if (!transition.accepted) { starts.rollback(runtime, selected); return@callSync false }
+                        if (!transition.accepted) { starts.rollback(sourceRuntime, selected); return@callSync FarmCareStartResult.STATE_CHANGED }
                         transitions.apply(runtime, transition, actor)
                         if (selected.type == FarmCareType.DISEASE) disease.start(runtime, clock())
                         ensure(runtime)
                         state.persistAsync()
-                        true
+                        FarmCareStartResult.STARTED
                     }
                 }
             }.thenCompose { it }
@@ -284,11 +289,13 @@ internal class FarmCareController(
             // Native completion/rollback is itself lifecycle fenced. A disabled runtime retains
             // committed scene journals for the next generation's existing recovery path.
             work.callSync(token) {
+                val stale = !current()
                 if (pendingStarts[zoneSettings.id] === result) {
                     pendingStarts.remove(zoneSettings.id)
-                    if (failure != null) preparedPlan?.let { starts.rollback(runtime, it) }
+                    if (failure != null) preparedPlan?.let { starts.rollback(sourceRuntime, it) }
                 }
-                if (failure == null) result.complete(accepted == true) else result.completeExceptionally(failure)
+                if (failure == null) result.complete(accepted)
+                else if (stale) result.complete(FarmCareStartResult.STATE_CHANGED) else result.completeExceptionally(failure)
             }.whenComplete { _, dispatchFailure -> if (dispatchFailure != null) result.completeExceptionally(dispatchFailure) }
         }
         return result
@@ -298,25 +305,27 @@ internal class FarmCareController(
         runtime: FarmRuntime,
         actor: Player?,
         preferredType: FarmCareType? = null,
-    ): Boolean {
+    ): Boolean = initializeDetailed(runtime, actor, preferredType) == FarmCareStartResult.STARTED
+
+    fun initializeDetailed(runtime: FarmRuntime, actor: Player?, preferredType: FarmCareType? = null): FarmCareStartResult {
         val sourceReady = if (preferredType == FarmCareType.SEEDER) {
             runtime.state.phase == FarmPhase.PREPARATION
         } else {
             runtime.state.phase == FarmPhase.HARVESTING
         }
-        if (!sourceReady || runtime.state.careType != null) return false
-        val selected = plans.select(runtime, preferredType, actor) ?: return false
-        if (!starts.prepare(runtime, selected)) return false
+        if (!sourceReady || runtime.state.careType != null) return FarmCareStartResult.STATE_CHANGED
+        val selected = plans.select(runtime, preferredType, actor) ?: return FarmCareStartResult.NO_PLACEMENT
+        if (!starts.prepare(runtime, selected)) return FarmCareStartResult.PREPARATION_FAILED
         val result = FarmShiftEngine.startCare(runtime.state, selected.type, selected.targets, selected.goal)
         if (!result.accepted) {
             starts.rollback(runtime, selected)
-            return false
+            return FarmCareStartResult.STATE_CHANGED
         }
         transitions.apply(runtime, result, actor)
         if (selected.type == FarmCareType.DISEASE) disease.start(runtime, clock())
         ensure(runtime)
         state.persistAsync()
-        return true
+        return FarmCareStartResult.STARTED
     }
 
     private fun interact(player: Player, entity: Entity, zoneId: String) {

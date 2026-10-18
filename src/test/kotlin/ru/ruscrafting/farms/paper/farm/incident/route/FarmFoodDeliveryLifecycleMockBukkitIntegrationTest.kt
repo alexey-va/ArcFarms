@@ -152,7 +152,6 @@ class FarmFoodDeliveryLifecycleMockBukkitIntegrationTest : FunSpec({
             driver.resetPlayerTime()
             delivery.ensure(runtime, 2_004L)
             repeat(400) { fixture.night.updatePlayerTimes() }
-            driver.playerTime shouldBe runtime.settings.routeDelivery.playerTime
 
             delivery.updateVisuals(listOf(runtime))
             seat.passengers.single() shouldBe gunner
@@ -166,8 +165,9 @@ class FarmFoodDeliveryLifecycleMockBukkitIntegrationTest : FunSpec({
             delivery.participants(runtime).map { it.uniqueId }.toSet() shouldBe
                 setOf(driver.uniqueId, gunner.uniqueId)
             fixture.world.time = 12_000L
-            repeat(40) { fixture.night.updatePlayerTimes() }
-            driver.playerTime shouldBe runtime.settings.routeDelivery.playerTime
+            delivery.ensure(runtime, 2_006L)
+            driver.isPlayerTimeRelative shouldBe true
+            fixture.world.time shouldBe runtime.settings.routeDelivery.playerTime
 
             val attacker = fixture.world.spawn(driver.location, Zombie::class.java)
             attacker.persistentDataContainer.set(
@@ -219,10 +219,14 @@ class FarmFoodDeliveryLifecycleMockBukkitIntegrationTest : FunSpec({
             driver.leaveVehicle() shouldBe true
             horse.teleport(ambushLocation) shouldBe true
             delivery.interact(PlayerInteractEntityEvent(driver, horse, EquipmentSlot.HAND), listOf(runtime)) shouldBe true
+            runtime.settings = runtime.settings.copy(routeDelivery = runtime.settings.routeDelivery.copy(
+                monsterTypes = listOf("PHANTOM", "VEX", "BAT", "ZOMBIE"),
+            ))
             delivery.ensure(runtime, 13_000L)
             val firstWave = fixture.world.entities.filterIsInstance<Mob>()
                 .filter { delivery.owns(it) && it !is Horse }
             firstWave.size shouldBeGreaterThanOrEqual 3
+            firstWave.all { it.type == org.bukkit.entity.EntityType.ZOMBIE } shouldBe true
             firstWave.all { it.isGlowing } shouldBe true
             horse.passengers shouldBe emptyList()
             driver.inventory.contents.filterNotNull().any(delivery::ownsServiceItem) shouldBe true

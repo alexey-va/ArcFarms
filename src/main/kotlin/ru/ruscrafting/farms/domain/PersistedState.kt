@@ -57,6 +57,8 @@ data class ArcFarmsState(
     val stats: Map<UUID, PlayerActivityStats> = emptyMap(),
     val pendingFarmRewards: List<PendingFarmReward> = emptyList(),
     val claimedFarmRewardSequences: Map<String, Long> = emptyMap(),
+    // Nullable because Gson bypasses Kotlin defaults when reading older snapshots.
+    val farmRewardMoneyDeliveries: Map<String, FarmRewardMoneyDelivery>? = emptyMap(),
     // Nullable so Gson can read state files written before temporary farm perks existed.
     val farmPerks: Map<UUID, FarmPlayerPerks>? = emptyMap(),
     // Nullable so pre-enterprise state files remain a normal merge-forward upgrade.
@@ -88,9 +90,19 @@ data class PendingFarmReward(
     val fixedItemUnits: Int = 0,
     val commands: List<String> = emptyList(),
     val bundleIds: List<String> = emptyList(),
+    // A primitive is zero in legacy Gson payloads; never infer an old worker entitlement.
+    val workerBonusCents: Long = 0,
 ) {
     val claimKey: String get() = "$zoneId:$playerId"
 }
+
+enum class FarmRewardMoneyState { PREPARED, APPLIED, REJECTED, MANUAL_REVIEW }
+
+/** Retains the frozen grant even when an attempted Vault operation has an unknown outcome. */
+data class FarmRewardMoneyDelivery(
+    val reward: PendingFarmReward,
+    val state: FarmRewardMoneyState,
+)
 
 data class PendingMineBlock(
     val id: String,

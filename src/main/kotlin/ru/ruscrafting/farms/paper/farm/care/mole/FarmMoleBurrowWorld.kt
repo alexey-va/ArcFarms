@@ -194,21 +194,30 @@ internal class FarmMoleBurrowWorld(
         placementSequence: Long): CompletableFuture<Boolean> {
         val work = tasks ?: return CompletableFuture.completedFuture(prepare(runtime, targets, placementSequence))
         val selected = targets.filter { it.role == ru.ruscrafting.farms.domain.FarmCareRole.MOLE_MOUND }
-        if (selected.isEmpty()) return CompletableFuture.completedFuture(false)
         val token = work.lifecycleToken()
         val sequence = runtime.state.sequence
+        fun reject(reason: String, details: String = ""): Boolean {
+            logger.warning("Could not prepare mole burrows: zone=${runtime.settings.id} sequence=$sequence " +
+                "activity=MOLES world=${runtime.region.world.name} placement=$placementSequence " +
+                "requested=${selected.size} reason=$reason $details")
+            return false
+        }
+        if (selected.isEmpty()) return CompletableFuture.completedFuture(reject("no_targets"))
         return preparedSceneOwner.hasZoneRecordsAsync(runtime.region.world, runtime.settings.id, sequence).thenCompose { existing ->
-            if (existing) CompletableFuture.completedFuture(false)
+            if (existing) CompletableFuture.completedFuture(reject("existing_journal"))
             else {
                 var chain = CompletableFuture.completedFuture(mutableListOf<FarmMoleBurrowScene>())
                 selected.forEach { target -> chain = chain.thenCompose { scenes ->
                     previewDetailedAsync(runtime, target.position, placementSequence, target.id).thenApply { preview ->
-                        preview.scene?.let(scenes::add)
+                        if (preview.scene != null) scenes += preview.scene
+                        else reject("layout_unavailable", "burrow=${target.id} surface=${target.position.x},${target.position.y},${target.position.z} " +
+                            "probes=${preview.layoutAttempts} rejections=${preview.rejectionSummary()}")
                         scenes
                     }
                 } }
                 chain.thenCompose { scenes -> work.callSync(token) {
-                    if (runtime.state.sequence != sequence || scenes.size != selected.size) CompletableFuture.completedFuture(false)
+                    if (runtime.state.sequence != sequence) CompletableFuture.completedFuture(reject("state_changed"))
+                    else if (scenes.size != selected.size) CompletableFuture.completedFuture(false)
                     else prepareScenesAsync(scenes)
                 }.thenCompose { it } }
             }

@@ -428,9 +428,9 @@ open class ArcFarmsPlugin : JavaPlugin() {
         if (provider != null) return VaultFarmEconomyGateway(provider)
         require(
             settings.farms.none { it.rewards.requiresEconomy } &&
-                settings.enterprises.values.none { it.mode == ru.ruscrafting.farms.config.WorksiteEnterpriseMode.LIVE },
+                settings.enterprises.values.none { it.workerPayoutEnabled || it.mode == ru.ruscrafting.farms.config.WorksiteEnterpriseMode.LIVE },
         ) {
-            "Vault and an economy provider are required because money rewards or LIVE enterprise funding is configured"
+            "Vault and an economy provider are required because money rewards, worker payments or LIVE enterprise funding is configured"
         }
         return NoOpFarmEconomyGateway
     }

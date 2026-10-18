@@ -2,12 +2,14 @@ package ru.ruscrafting.farms.paper
 
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.FunSpec
+import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import io.mockk.every
 import io.mockk.mockk
 import ru.arc.paper.testing.MockBukkitTestRuntime
 import ru.ruscrafting.farms.config.ArcFarmsConfig
 import ru.ruscrafting.farms.config.CuboidBounds
+import ru.ruscrafting.farms.domain.ActivityKind
 import ru.ruscrafting.farms.domain.ArcFarmsState
 import ru.ruscrafting.farms.domain.FarmCropDamage
 import ru.ruscrafting.farms.domain.FarmLocationOverrides
@@ -18,11 +20,49 @@ import ru.ruscrafting.farms.domain.FarmPointKind
 import ru.ruscrafting.farms.domain.FarmPointPosition
 import ru.ruscrafting.farms.domain.FarmShiftState
 import ru.ruscrafting.farms.domain.FarmSpecialIncidentState
+import ru.ruscrafting.farms.domain.enterprise.WorksiteEnterpriseReservation
+import ru.ruscrafting.farms.domain.enterprise.WorksiteEnterpriseSnapshot
 import ru.ruscrafting.farms.persistence.FixedFarmCropJournal
 import ru.ruscrafting.farms.persistence.MineRecoveryJournal
 import java.nio.file.Files
+import java.lang.reflect.InvocationTargetException
 
 class ArcFarmsRuntimeValidatorTest : FunSpec({
+    test("worker payment requires Vault before startup even when ordinary rewards and commercial funding are off") {
+        MockBukkitTestRuntime.open().use { paper ->
+            val plugin = paper.server.pluginManager.loadPlugin(ArcFarmsPlugin::class.java) as ArcFarmsPlugin
+            val candidate = candidateWith("worker-payout:\n      enabled: false", "worker-payout:\n      enabled: true")
+            candidate.farms.all { !it.rewards.requiresEconomy } shouldBe true
+            val resolve = ArcFarmsPlugin::class.java.getDeclaredMethod("resolveEconomy", ArcFarmsConfig::class.java)
+                .apply { isAccessible = true }
+
+            shouldThrow<InvocationTargetException> { resolve.invoke(plugin, candidate) }
+                .cause!!.message shouldContain "worker payments"
+        }
+    }
+
+    test("runtime reload validation requires Vault when the worker payment gate is enabled") {
+        val candidate = candidateWith("worker-payout:\n      enabled: false", "worker-payout:\n      enabled: true")
+
+        shouldThrow<IllegalArgumentException> { validator(economyAvailable = false).validateRuntime(candidate) }
+            .message shouldContain "Worker payments"
+    }
+
+    test("frozen accepted worker payments still require Vault after the current gate is disabled") {
+        val candidate = candidateWith("server-id: spawn", "server-id: spawn")
+        candidate.enterprises.getValue(ActivityKind.FARM).workerPayoutEnabled shouldBe false
+        val reservation = WorksiteEnterpriseReservation("enterprise:farm:communal_farm:8", ActivityKind.FARM,
+            "communal_farm", "communal_farm", "bakery_supply", 8, 1_000_000, 1_800_000_000_000,
+            workerPayoutEnabled = true)
+        val persisted = ArcFarmsState(worksiteEnterprise = WorksiteEnterpriseSnapshot(
+            reservations = mapOf("farm:communal_farm" to reservation)))
+
+        shouldThrow<IllegalArgumentException> { validator(economyAvailable = false).validatePersisted(candidate, persisted) }
+            .message shouldContain "Accepted enterprise worker payments"
+        shouldThrow<IllegalArgumentException> { validator(economyAvailable = false).validateReload(candidate, persisted) }
+            .message shouldContain "Accepted enterprise worker payments"
+    }
+
     test("runtime validation rejects an unknown configured back item") {
         val candidate = candidateWith(
             "  menu-back:\n    material: ARROW",
@@ -289,9 +329,9 @@ class ArcFarmsRuntimeValidatorTest : FunSpec({
     }
 })
 
-private fun validator(regionGateway: RegionGateway = mockk(relaxed = true)): ArcFarmsRuntimeValidator = ArcFarmsRuntimeValidator(
+private fun validator(regionGateway: RegionGateway = mockk(relaxed = true), economyAvailable: Boolean = true): ArcFarmsRuntimeValidator = ArcFarmsRuntimeValidator(
     regionGateway = regionGateway,
-    economyAvailable = { true },
+    economyAvailable = { economyAvailable },
     fixedCropJournal = mockk<FixedFarmCropJournal>(relaxed = true),
     mineJournal = mockk<MineRecoveryJournal>(relaxed = true),
 )

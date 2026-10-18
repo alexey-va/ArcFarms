@@ -1,6 +1,7 @@
 package ru.ruscrafting.farms.paper.farm.incident.route
 
 import io.kotest.core.spec.style.FunSpec
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.doubles.plusOrMinus
 import io.kotest.matchers.shouldBe
@@ -29,6 +30,31 @@ import ru.ruscrafting.farms.paper.platform.FarmRouteChunkLoader
 import java.util.concurrent.CompletableFuture
 
 class FarmFoodDeliveryRecoveryMockBukkitTest : FunSpec({
+    test("inactive delivery retries its world clock after the session has already been removed") {
+        requiredMockBukkitScenario { FarmIncidentScenarioFixture.open().use { fixture ->
+            fixture.world.fullTime = 54_000L
+            val runtime = fixture.runtime(FarmShiftState(
+                phase = FarmPhase.INCIDENT, sequence = 903, orderId = "bakery_supply",
+                incidentType = FarmIncidentType.FOOD_DELIVERY,
+            ))
+            val route = listOf(
+                FarmPointPosition(fixture.world.name, 8.5, 65.0, 32.5, -90f, 0f),
+                FarmPointPosition(fixture.world.name, 12.5, 65.0, 32.5, -90f, 0f),
+            )
+            val delivery = fixture.foodDelivery(runtime, route)
+            delivery.ensure(runtime, 1_000L)
+            val key = NamespacedKey(fixture.plugin, "farm_food_delivery_night_v1")
+            fixture.world.persistentDataContainer.set(key, PersistentDataType.LONG_ARRAY, longArrayOf(6_000L))
+            runtime.state = FarmShiftState(sequence = 903)
+            shouldThrow<IllegalStateException> { delivery.ensure(runtime, 1_001L) }
+            fixture.world.entities.filter(delivery::owns).shouldHaveSize(0)
+            fixture.world.persistentDataContainer.set(key, PersistentDataType.LONG_ARRAY, longArrayOf(54_000L, 1L))
+            delivery.ensure(runtime, 1_002L)
+            fixture.world.fullTime shouldBe 54_000L
+            fixture.world.persistentDataContainer.has(key, PersistentDataType.LONG_ARRAY) shouldBe false
+        } }
+    }
+
     test("reload recovers a progressed delivery when its resume chunk was unloaded") {
         requiredMockBukkitScenario { FarmIncidentScenarioFixture.open().use { fixture ->
             val supervisor = RuntimeTaskSupervisor(TestTaskScheduler()).apply(RuntimeTaskSupervisor::activate)
@@ -92,9 +118,8 @@ class FarmFoodDeliveryRecoveryMockBukkitTest : FunSpec({
             loadRequests shouldBe 1
             runtime.state.incidentProgress shouldBe persistedProgress
             fixture.world.entities.filter(delivery::owns).shouldHaveSize(2)
-            fixture.world.time = 6_000L
-            repeat(400) { fixture.night.updatePlayerTimes() }
-            player.playerTime shouldBe runtime.settings.routeDelivery.playerTime
+            fixture.world.time shouldBe runtime.settings.routeDelivery.playerTime
+            player.isPlayerTimeRelative shouldBe true
 
             // Portal rendering is independent of the missing cart and of farm-region membership.
             player.teleport(org.bukkit.Location(fixture.world, 12.5, 65.0, 12.5))
@@ -132,8 +157,9 @@ class FarmFoodDeliveryRecoveryMockBukkitTest : FunSpec({
             fixture.world.entities.filterIsInstance<Horse>().count(delivery::owns) shouldBe 1
 
             fixture.world.time = 6_000L
-            repeat(400) { fixture.night.updatePlayerTimes() }
-            player.playerTime shouldBe runtime.settings.routeDelivery.playerTime
+            delivery.ensure(runtime, 2_002L)
+            fixture.world.time shouldBe runtime.settings.routeDelivery.playerTime
+            player.isPlayerTimeRelative shouldBe true
 
             val ids = fixture.world.entities.filter(delivery::owns).mapTo(linkedSetOf()) { it.uniqueId }
             delivery.ensure(runtime, 2_001L)

@@ -730,9 +730,9 @@ internal class FarmShiftCoordinator(
                 ),
             )
         }
-        val enterpriseChanged = enterprise.orderCompleted(runtime.settings.id, runtime.state.sequence, contributors, commercialEligible)
+        val enterpriseCompletion = enterprise.orderCompleted(runtime.settings.id, runtime.state.sequence, contributors, commercialEligible)
         stats.recordCompletion(ActivityKind.FARM, contributors)
-        rewards.queueCompletion(runtime, contributors)
+        rewards.queueCompletion(runtime, contributors, enterpriseCompletion.workerCreditsCents)
         port.broadcast(
             listOf(runtime.region),
             MessageKey.FARM_COMPLETED,
@@ -747,7 +747,7 @@ internal class FarmShiftCoordinator(
             actor?.name,
             players(runtime).mapTo(mutableSetOf(), Player::getUniqueId),
         )
-        val personal = if (enterpriseChanged && commercialEligible) contributors.keys.mapNotNull { id ->
+        val personal = if (enterpriseCompletion.changed && commercialEligible && !enterpriseCompletion.workerPayoutEnabled) contributors.keys.mapNotNull { id ->
             enterprise.playerView(id)?.let { id to it }
         }.toMap() else emptyMap()
         val token = tasks.lifecycleToken()

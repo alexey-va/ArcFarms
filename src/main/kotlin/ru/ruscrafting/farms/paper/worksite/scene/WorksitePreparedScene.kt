@@ -34,6 +34,19 @@ internal data class WorksitePreparedSceneRecord(
     val totalRecords: Int,
 )
 
+internal class WorksitePreparedScenePlacementConflict(
+    val record: WorksitePreparedSceneRecord,
+    val actualData: String,
+) : IllegalStateException(
+    "Prepared scene placement changed before commit: world=${record.world} " +
+        "x=${record.x} y=${record.y} z=${record.z} zone=${record.zoneId} " +
+        "sequence=${record.sequence} scene=${record.sceneId} expected=${record.originalData} actual=$actualData",
+)
+
+private fun WorksitePreparedSceneRecord.requireOriginalData(actualData: String) {
+    if (actualData != originalData) throw WorksitePreparedScenePlacementConflict(this, actualData)
+}
+
 internal data class WorksitePreparedScene(
     val world: World,
     val zoneId: String,
@@ -473,9 +486,7 @@ internal class WorksitePreparedSceneOwner(
                         if (!pending.hasNext()) true else {
                             val record = pending.next()
                             check(world.isChunkLoaded(record.x shr 4, record.z shr 4))
-                            require(world.getBlockAt(record.x, record.y, record.z).blockData.asString == record.originalData) {
-                                "Prepared scene placement changed before commit"
-                            }
+                            record.requireOriginalData(world.getBlockAt(record.x, record.y, record.z).blockData.asString)
                             !pending.hasNext()
                         }
                     }
@@ -1136,9 +1147,7 @@ internal class WorksitePreparedSceneOwner(
                 require(current.none { Triple(it.x, it.y, it.z) in positions }) { "Prepared scene journal overlaps another scene" }
                 require(!codec.foreignJournalOverlaps(chunk, positions)) { "Foreign temporary journal overlaps another scene" }
                 additions.forEach { record ->
-                    require(scene.world.getBlockAt(record.x, record.y, record.z).blockData.asString == record.originalData) {
-                        "Prepared scene placement changed before commit"
-                    }
+                    record.requireOriginalData(scene.world.getBlockAt(record.x, record.y, record.z).blockData.asString)
                 }
                 val encoded = encode(chunk, current + additions)
                 prepared[chunk] = chunk.persistentDataContainer.get(journalKey, PersistentDataType.BYTE_ARRAY) to encoded

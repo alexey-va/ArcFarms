@@ -12,6 +12,8 @@ import ru.ruscrafting.farms.domain.FarmRewardItem
 import ru.ruscrafting.farms.domain.FarmRewardDifficulty
 import ru.ruscrafting.farms.domain.FarmRewardLedger
 import ru.ruscrafting.farms.domain.FarmRewardLedgerSnapshot
+import ru.ruscrafting.farms.domain.FarmRewardMoneyDelivery
+import ru.ruscrafting.farms.domain.FarmRewardMoneyState
 import ru.ruscrafting.farms.domain.FarmRewardPlanner
 import ru.ruscrafting.farms.domain.FarmRewardRecipient
 import ru.ruscrafting.farms.domain.PendingFarmReward
@@ -45,6 +47,7 @@ internal class FarmRewardService(
     private sealed interface LedgerOperation {
         data class Enqueue(val rewards: List<PendingFarmReward>) : LedgerOperation
         data class Claim(val players: Map<UUID, Player>) : LedgerOperation
+        data object PersistLedger : LedgerOperation
     }
 
     private data class ActiveOperation(
@@ -58,19 +61,42 @@ internal class FarmRewardService(
     private val operations = ArrayDeque<LedgerOperation>()
     private var activeOperation: ActiveOperation? = null
     private var operationGeneration = 0L
+    private var deliveringClaim = false
+    private val reportedMoneyFailures = mutableSetOf<String>()
 
-    fun replace(pending: Collection<PendingFarmReward>, claimed: Map<String, Long>) {
+    fun replace(
+        pending: Collection<PendingFarmReward>,
+        claimed: Map<String, Long>,
+        moneyDeliveries: Map<String, FarmRewardMoneyDelivery> = emptyMap(),
+    ) {
         operationGeneration++
         activeOperation = null
         operations.clear()
-        ledger.replace(pending, claimed)
+        reportedMoneyFailures.clear()
+        ledger.replace(pending, claimed, moneyDeliveries)
+        val recovered = ledger.recoverPreparedMoney()
+        recovered.forEach { delivery ->
+            plugin.logger.warning("Farm money grant=${delivery.reward.id} cents=${delivery.reward.moneyCents} " +
+                "state=MANUAL_REVIEW reason=recovered_prepared; provider outcome is unknown, no automatic retry")
+        }
+        if (recovered.isNotEmpty()) operations.addLast(LedgerOperation.PersistLedger)
     }
 
-    override fun snapshot(): FarmRewardLedgerSnapshot = ledger.snapshot()
+    override fun snapshot(): FarmRewardLedgerSnapshot {
+        val current = ledger.snapshot()
+        // A completion may be queued behind a slow claim write. Every state snapshot must already own its grant.
+        val queued = operations.filterIsInstance<LedgerOperation.Enqueue>().flatMap { it.rewards }
+        return if (queued.isEmpty()) current else current.copy(
+            pending = (current.pending + queued).filterNot { ledger.isClaimed(it.claimKey, it.sequence) }
+                .distinctBy(PendingFarmReward::id),
+        )
+    }
 
     override fun enqueueRewards(rewards: List<PendingFarmReward>) = enqueue(LedgerOperation.Enqueue(rewards))
 
-    fun queueCompletion(runtime: FarmRuntime, contributors: Map<UUID, Int>) {
+    fun queueCompletion(runtime: FarmRuntime, contributors: Map<UUID, Int>, workerCreditsCents: Map<UUID, Long> = emptyMap()) {
+        require(workerCreditsCents.keys.all { (contributors[it] ?: 0) > 0 })
+        require(workerCreditsCents.values.all { it >= 0L })
         val order = runtime.state.orderId?.let(runtime.orders::get)
         val difficultyMultiplier = order?.let {
             FarmRewardDifficulty.multiplierPercent(it, runtime.rules, runtime.state.sequence)
@@ -94,7 +120,10 @@ internal class FarmRewardService(
                 rewardMultiplierPercent = difficultyMultiplier,
                 moneyMultiplierPercent = (playerMultiplier(playerId, runtime) + runtime.state.rewardMoneyBonusPercent)
                     .coerceIn(100, 300),
-            ).takeUnless { grant -> ledger.contains(grant.id) }
+            ).let { grant ->
+                val workerBonus = workerCreditsCents[playerId] ?: 0L
+                grant.copy(moneyCents = Math.addExact(grant.moneyCents, workerBonus), workerBonusCents = workerBonus)
+            }.takeUnless { grant -> snapshot().pending.any { it.id == grant.id } }
         }
         enqueue(LedgerOperation.Enqueue(planned))
     }
@@ -104,6 +133,9 @@ internal class FarmRewardService(
     fun deliverPending(players: Collection<Player>) {
         val online = players.filter(Player::isOnline).distinctBy(Player::getUniqueId).associateBy(Player::getUniqueId)
         if (online.isEmpty()) return
+        ledger.snapshot().moneyDeliveries.values.filter { it.reward.playerId in online }.forEach { delivery ->
+            online[delivery.reward.playerId]?.let { reportMoneyFailure(it, delivery) }
+        }
         enqueue(LedgerOperation.Claim(online))
     }
 
@@ -116,7 +148,7 @@ internal class FarmRewardService(
         operationGeneration++
         activeOperation?.let { active ->
             if (active.operation is LedgerOperation.Claim) {
-                ledger.replace(active.before.pending, active.before.claimed)
+                ledger.replace(active.before.pending, active.before.claimed, active.before.moneyDeliveries)
             }
         }
         operations.filterIsInstance<LedgerOperation.Enqueue>().forEach { queued -> ledger.enqueue(queued.rewards) }
@@ -135,21 +167,23 @@ internal class FarmRewardService(
                 operations.removeLast()
                 operations.addLast(LedgerOperation.Claim(tail.players + operation.players))
             }
+            tail == LedgerOperation.PersistLedger && operation == LedgerOperation.PersistLedger -> Unit
             else -> operations.addLast(operation)
         }
         drainOperations()
     }
 
     private fun drainOperations() {
-        if (activeOperation != null || !operational()) return
+        if (activeOperation != null || deliveringClaim || !operational()) return
         while (operations.isNotEmpty()) {
             val operation = operations.removeFirst()
             val before = ledger.snapshot()
             val committed = when (operation) {
                 is LedgerOperation.Enqueue -> ledger.enqueue(operation.rewards)
                 is LedgerOperation.Claim -> ledger.claim(operation.players.keys) {}.rewards
+                LedgerOperation.PersistLedger -> emptyList()
             }
-            if (committed.isEmpty() && ledger.snapshot() == before) continue
+            if (committed.isEmpty() && ledger.snapshot() == before && operation != LedgerOperation.PersistLedger) continue
             ActiveOperation(operation, before, committed).also {
                 activeOperation = it
                 persistActive(it)
@@ -206,9 +240,20 @@ internal class FarmRewardService(
                                 .filter(Player::isOnline),
                         )
                     }
-                    is LedgerOperation.Claim -> active.committedRewards.forEach { reward ->
-                        operation.players[reward.playerId]?.takeIf(Player::isOnline)?.let { deliverClaimed(it, reward) }
+                    is LedgerOperation.Claim -> {
+                        deliveringClaim = true
+                        try {
+                            val unsent = active.committedRewards.filter { operation.players[it.playerId]?.isOnline != true }
+                            ledger.deferUnsent(unsent, active.before)
+                            if (unsent.isNotEmpty()) enqueue(LedgerOperation.PersistLedger)
+                            active.committedRewards.filterNot { it in unsent }.forEach { reward ->
+                                operation.players[reward.playerId]?.let { deliverClaimed(it, reward) }
+                            }
+                        } finally {
+                            deliveringClaim = false
+                        }
                     }
+                    LedgerOperation.PersistLedger -> Unit
                 }
                 drainOperations()
             }
@@ -217,23 +262,33 @@ internal class FarmRewardService(
 
     private fun deliverClaimed(player: Player, reward: PendingFarmReward) {
         if (reward.experience > 0) player.giveExp(reward.experience)
-        val moneySuccess = if (reward.moneyCents == 0L) {
-            true
-        } else {
+        val moneyOutcome = if (reward.moneyCents == 0L) null else {
             val auditToken = ArcEconomyAuditBridge.mark(
                 player.uniqueId,
                 reward.moneyCents / 100.0,
                 reward.id,
             )
-            val deposited = runCatching {
-                economy.deposit(player, reward.moneyCents / 100.0)
-            }.onFailure { failure ->
+            val outcome = try {
+                if (economy.deposit(player, reward.moneyCents / 100.0)) FarmRewardMoneyState.APPLIED
+                else FarmRewardMoneyState.REJECTED
+            } catch (failure: Exception) {
                 plugin.logger.log(Level.SEVERE, "Farm reward ${reward.id} economy provider failed", failure)
-            }.getOrDefault(false)
-            if (!deposited) ArcEconomyAuditBridge.cancel(player.uniqueId, auditToken)
-            deposited
+                FarmRewardMoneyState.MANUAL_REVIEW
+            }
+            if (outcome == FarmRewardMoneyState.REJECTED) ArcEconomyAuditBridge.cancel(player.uniqueId, auditToken)
+            ledger.recordMoneyOutcome(reward.id, outcome)
+            plugin.logger.info("Farm money grant=${reward.id} zone=${reward.zoneId} sequence=${reward.sequence} " +
+                "player=${reward.playerId} total_cents=${reward.moneyCents} worker_bonus_cents=${reward.workerBonusCents} " +
+                "state=$outcome")
+            enqueue(LedgerOperation.PersistLedger)
+            outcome
         }
-        if (!moneySuccess) plugin.logger.severe("Farm reward ${reward.id} could not deposit ${reward.moneyCents} cents")
+        val moneySuccess = moneyOutcome == null || moneyOutcome == FarmRewardMoneyState.APPLIED
+        if (!moneySuccess) {
+            plugin.logger.severe("Farm money grant=${reward.id} cents=${reward.moneyCents} state=$moneyOutcome; " +
+                "payment is not confirmed and will not be replayed automatically")
+            ledger.snapshot().moneyDeliveries[reward.id]?.let { reportMoneyFailure(player, it) }
+        }
 
         var overflow = false
         reward.items.forEach { item ->
@@ -278,6 +333,10 @@ internal class FarmRewardService(
                 mapOf("amount" to locale.text(BigDecimal.valueOf(reward.moneyCents, 2).stripTrailingZeros().toPlainString())),
             )
         }
+        if (reward.workerBonusCents > 0 && moneySuccess) {
+            parts += locale.render(MessageKey.FARM_REWARD_WORKER_BONUS, player,
+                mapOf("amount" to locale.text(BigDecimal.valueOf(reward.workerBonusCents, 2).stripTrailingZeros().toPlainString())))
+        }
         reward.bundleIds.forEach { bundleId ->
             parts += locale.render(
                 MessageKey.FARM_REWARD_BUNDLE,
@@ -316,6 +375,8 @@ internal class FarmRewardService(
             "experience" to reward.experience,
             "money_cents" to reward.moneyCents,
             "money_success" to moneySuccess,
+            "money_state" to moneyOutcome,
+            "worker_bonus_cents" to reward.workerBonusCents,
             "item_units" to reward.items.sumOf { it.amount },
             "commands" to reward.commands.size,
             "overflow" to overflow,
@@ -323,6 +384,17 @@ internal class FarmRewardService(
         if (moneySuccess && successfulCommands == reward.commands.size) {
             ArcProductTelemetryBridge.rewardClaimed(player.uniqueId, reward.id)
         }
+    }
+
+    private fun reportMoneyFailure(player: Player, delivery: FarmRewardMoneyDelivery) {
+        if (delivery.state !in setOf(FarmRewardMoneyState.REJECTED, FarmRewardMoneyState.MANUAL_REVIEW) ||
+            !reportedMoneyFailures.add(delivery.reward.id)) return
+        port.sendChat(player,
+            if (delivery.state == FarmRewardMoneyState.REJECTED) MessageKey.FARM_REWARD_MONEY_REJECTED
+            else MessageKey.FARM_REWARD_MONEY_UNCONFIRMED,
+            mapOf("amount" to locale.text(BigDecimal.valueOf(delivery.reward.moneyCents, 2).toPlainString()),
+                "order" to locale.text(delivery.reward.sequence)),
+        )
     }
 
     private fun fixedRewardItems(reward: PendingFarmReward): List<FarmRewardItem> {

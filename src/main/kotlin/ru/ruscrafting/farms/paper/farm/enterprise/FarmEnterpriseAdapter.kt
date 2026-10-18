@@ -15,6 +15,12 @@ import ru.ruscrafting.farms.paper.ArcFarmsDebug
 import ru.ruscrafting.farms.paper.FarmRuntime
 import java.util.UUID
 
+internal data class FarmEnterpriseCompletion(
+    val changed: Boolean,
+    val workerCreditsCents: Map<UUID, Long> = emptyMap(),
+    val workerPayoutEnabled: Boolean = false,
+)
+
 internal interface FarmEnterprisePort {
     fun orderPremium(worksiteId: String, sequence: Long): ru.ruscrafting.farms.domain.enterprise.WorksiteEnterpriseOrderPremium? = null
     fun orderPool(worksiteId: String, orders: List<ru.ruscrafting.farms.domain.FarmOrder>): List<ru.ruscrafting.farms.domain.FarmOrder> = orders
@@ -30,7 +36,7 @@ internal interface FarmEnterprisePort {
         sequence: Long,
         contributors: Map<UUID, Int>,
         commercialEligible: Boolean,
-    ): Boolean
+    ): FarmEnterpriseCompletion
 }
 
 /** Farm-only event translation around the reusable worksite enterprise kernel. */
@@ -50,13 +56,13 @@ internal class FarmEnterpriseAdapter(
 
     fun companyView(): WorksiteEnterpriseCompanyView? {
         val configured = settings()
-        if (configured.mode == WorksiteEnterpriseMode.OFF && !companyExists(configured)) return null
+        if (configured.mode == WorksiteEnterpriseMode.OFF && !configured.workerPayoutEnabled && !companyExists(configured)) return null
         return ledger.companyView(configured.policy(), configured.weekStartEpochDay(clock()))
     }
 
     override fun orderStarted(worksiteId: String, orderId: String, sequence: Long, startedAt: Long): Boolean {
         val configured = settings()
-        val acceptsCommercialOrder = configured.mode == WorksiteEnterpriseMode.SHADOW && shadowEligible(configured) ||
+        val acceptsCommercialOrder = configured.workerPayoutEnabled || configured.mode == WorksiteEnterpriseMode.SHADOW && shadowEligible(configured) ||
             configured.mode == WorksiteEnterpriseMode.LIVE && commerciallyActive(configured)
         if (!acceptsCommercialOrder || worksiteId != configured.worksiteId) return false
         val decision = ledger.reserve(
@@ -92,15 +98,16 @@ internal class FarmEnterpriseAdapter(
         sequence: Long,
         contributors: Map<UUID, Int>,
         commercialEligible: Boolean,
-    ): Boolean {
+    ): FarmEnterpriseCompletion {
         val configured = settings()
         val acceptedBeforeModeChange = ledger.hasReservation(configured.activity, worksiteId, sequence)
-        if (!acceptedBeforeModeChange && (
+        if (!acceptedBeforeModeChange && worksiteId != configured.worksiteId) return FarmEnterpriseCompletion(false)
+        if (!acceptedBeforeModeChange && !configured.workerPayoutEnabled && (
                 configured.mode == WorksiteEnterpriseMode.OFF ||
                     configured.mode == WorksiteEnterpriseMode.LIVE && !commerciallyActive(configured) ||
                     worksiteId != configured.worksiteId
             )
-        ) return false
+        ) return FarmEnterpriseCompletion(false)
         val acceptedContributors = contributors.filterValues { it > 0 }
         val decision = if (commercialEligible && acceptedContributors.isNotEmpty()) {
             ledger.settle(
@@ -114,7 +121,7 @@ internal class FarmEnterpriseAdapter(
             ledger.excludeCompletion(configured.policy(), worksiteId, sequence)
         }
         debugSettlement(worksiteId, sequence, commercialEligible, acceptedContributors.size, decision)
-        return decision.changed
+        return FarmEnterpriseCompletion(decision.changed, decision.rewardWorkerCreditsCents, decision.workerPayoutEnabled)
     }
 
     fun reconcileRuntimes(
@@ -134,7 +141,7 @@ internal class FarmEnterpriseAdapter(
                 businessWeekStartEpochDay = configured.weekStartEpochDay(startedAt),
             )
         }
-        val acceptsNewOrders = configured.mode == WorksiteEnterpriseMode.SHADOW && shadowEligible(configured) ||
+        val acceptsNewOrders = configured.workerPayoutEnabled || configured.mode == WorksiteEnterpriseMode.SHADOW && shadowEligible(configured) ||
             configured.mode == WorksiteEnterpriseMode.LIVE && commerciallyActive(configured)
         val acceptedOrders = if (acceptsNewOrders) {
             activeOrders
@@ -203,6 +210,7 @@ private fun WorksiteEnterpriseSettings.policy(): WorksiteEnterprisePolicy = Work
     dividendPercent = dividendPercent,
     weeklyUpkeepCents = weeklyUpkeepCents,
     retainedReportWeeks = retainedReportWeeks,
+    workerPayoutEnabled = workerPayoutEnabled,
 )
 
 internal fun WorksiteEnterpriseSettings.weekStartEpochDay(timestampMillis: Long): Long =

@@ -242,7 +242,8 @@ internal class FarmShiftStartService(
         if (pending.player.isOnline) {
             val premium = enterprise.orderPremium(zoneId, runtime.state.sequence)
             if (premium != null) audience.sendChat(pending.player,
-                if (premium.simulated) MessageKey.COMPANY_ORDER_SHADOW else MessageKey.COMPANY_ORDER_PREMIUM,
+                if (premium.paidAtCompletion) MessageKey.COMPANY_ORDER_COMPLETION_PREMIUM
+                else if (premium.simulated) MessageKey.COMPANY_ORDER_SHADOW else MessageKey.COMPANY_ORDER_PREMIUM,
                 mapOf("amount" to net.kyori.adventure.text.Component.text(java.math.BigDecimal.valueOf(premium.workerPoolCents, 2).toPlainString())))
             else if (enterprise.projectView(zoneId) != null) audience.sendChat(pending.player, MessageKey.COMPANY_ORDER_NO_PREMIUM)
         }

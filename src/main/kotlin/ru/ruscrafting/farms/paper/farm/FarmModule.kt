@@ -304,6 +304,7 @@ internal class FarmModule(
         }
         runtimes.forEach { runtime ->
             tasks.guarded("farm:${runtime.settings.id}") {
+                foodDelivery.retryInactiveNight(runtime)
                 if (isAdminEditing(runtime)) return@guarded
                 if (shiftStart.isPending(runtime.settings.id)) return@guarded
                 if (

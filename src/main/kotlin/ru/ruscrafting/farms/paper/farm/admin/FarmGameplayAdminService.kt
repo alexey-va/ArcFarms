@@ -35,6 +35,7 @@ import ru.ruscrafting.farms.paper.block
 import ru.ruscrafting.farms.paper.farm.FarmShiftLauncher
 import ru.ruscrafting.farms.paper.farm.FarmTransitionSink
 import ru.ruscrafting.farms.paper.farm.care.FarmCareController
+import ru.ruscrafting.farms.paper.farm.care.FarmCareStartResult
 import ru.ruscrafting.farms.paper.farm.delivery.FarmDeliveryController
 import ru.ruscrafting.farms.paper.farm.enterprise.FarmEnterprisePort
 import ru.ruscrafting.farms.paper.farm.field.FarmFieldController
@@ -130,14 +131,19 @@ internal class FarmGameplayAdminService(
         )
         val sequence = runtime.state.sequence
         val placement = runtime.state.placementSequence
-        return care.initializeAsync(runtime, player, type).thenApply { accepted ->
-            if (!runtimes().any { it === runtime } || runtime.state.sequence != sequence) return@thenApply false
-            if (!accepted) {
-                if (runtime.state.placementSequence != placement) return@thenApply false
+        return care.initializeDetailedAsync(runtime, player, type).thenApply { outcome ->
+            if (!runtimes().any { it === runtime } || runtime.state.sequence != sequence) {
+                reportCareStartFailure(player, runtime, type, FarmCareStartResult.STATE_CHANGED)
+                return@thenApply false
+            }
+            if (outcome != FarmCareStartResult.STARTED) {
+                if (runtime.state.placementSequence != placement || outcome == FarmCareStartResult.STATE_CHANGED) {
+                    reportCareStartFailure(player, runtime, type, FarmCareStartResult.STATE_CHANGED)
+                    return@thenApply false
+                }
                 runtime.state = runtime.state.copy(placementSequence = runtime.state.nextPlacementSequence())
                 persistAsync()
-                if (player.isOnline) port.sendChat(player,
-                    if (type == FarmCareType.MOLES) MessageKey.ADMIN_MOLES_UNAVAILABLE else MessageKey.ADMIN_CARE_UNAVAILABLE)
+                reportCareStartFailure(player, runtime, type, outcome)
                 false
             } else {
                 persistAsync()
@@ -481,20 +487,35 @@ internal class FarmGameplayAdminService(
             plantingProgress = if (seeder) 0 else prepared.plantingProgress,
             careType = null, careTargets = emptyList(), careGoal = null, incidentType = null,
         )
-        if (!care.initialize(runtime, player, type)) {
+        val outcome = care.initializeDetailed(runtime, player, type)
+        if (outcome != FarmCareStartResult.STARTED) {
             // Consume the failed spatial attempt as well. Otherwise an administrator
             // retrying an unavailable scene would probe the exact same locations forever.
-            runtime.state = runtime.state.copy(placementSequence = runtime.state.nextPlacementSequence())
-            persistAsync()
-            port.sendChat(
-                player,
-                if (type == FarmCareType.MOLES) MessageKey.ADMIN_MOLES_UNAVAILABLE else MessageKey.ADMIN_CARE_UNAVAILABLE,
-            )
+            if (outcome != FarmCareStartResult.STATE_CHANGED) {
+                runtime.state = runtime.state.copy(placementSequence = runtime.state.nextPlacementSequence())
+                persistAsync()
+            }
+            reportCareStartFailure(player, runtime, type, outcome)
             return false
         }
         persistAsync()
         port.sendChat(player, MessageKey.ADMIN_STAGE_SET, mapOf("stage" to locale.renderPath("admin.stage.$stage", player)))
         return true
+    }
+
+    private fun reportCareStartFailure(player: Player, runtime: FarmRuntime, type: FarmCareType, outcome: FarmCareStartResult) {
+        val message = if (type != FarmCareType.MOLES) MessageKey.ADMIN_CARE_UNAVAILABLE else {
+            state.log(java.util.logging.Level.WARNING,
+                "Could not start mole care: zone=${runtime.settings.id} sequence=${runtime.state.sequence} " +
+                    "activity=MOLES world=${runtime.region.world.name} placement=${runtime.state.placementSequence} outcome=$outcome")
+            when (outcome) {
+                FarmCareStartResult.NO_PLACEMENT -> MessageKey.ADMIN_MOLES_UNAVAILABLE
+                FarmCareStartResult.PREPARATION_FAILED -> MessageKey.ADMIN_MOLES_PREPARE_FAILED
+                FarmCareStartResult.STATE_CHANGED -> MessageKey.ADMIN_MOLES_STATE_CHANGED
+                FarmCareStartResult.STARTED -> error("A started care has no failure message")
+            }
+        }
+        if (player.isOnline) port.sendChat(player, message)
     }
 
     private fun plantingState(runtime: FarmRuntime, events: MutableList<FarmShiftEvent>): FarmShiftState {

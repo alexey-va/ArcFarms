@@ -26,7 +26,7 @@ class FarmEnterpriseAdapterTest : FunSpec({
         val adapter = adapter(settings())
 
         adapter.orderStarted("communal_farm", "bakery_supply", 12, 1_800_000_000_000) shouldBe true
-        adapter.orderCompleted("communal_farm", 12, mapOf(playerId to 4), commercialEligible = true) shouldBe true
+        adapter.orderCompleted("communal_farm", 12, mapOf(playerId to 4), commercialEligible = true).changed shouldBe true
 
         adapter.snapshot().weeks.values.single().apply {
             completedOrders shouldBe 1
@@ -39,7 +39,7 @@ class FarmEnterpriseAdapterTest : FunSpec({
         val adapter = adapter(settings())
         adapter.orderStarted("communal_farm", "bakery_supply", 13, 1_800_000_000_000)
 
-        adapter.orderCompleted("communal_farm", 13, mapOf(playerId to 40), commercialEligible = false) shouldBe true
+        adapter.orderCompleted("communal_farm", 13, mapOf(playerId to 40), commercialEligible = false).changed shouldBe true
 
         adapter.snapshot().weeks.values.single().completedOrders shouldBe 0
         adapter.snapshot().excludedCompletionsByCompany.getValue("farm:communal_farm") shouldBe 1L
@@ -81,7 +81,7 @@ class FarmEnterpriseAdapterTest : FunSpec({
         adapter.orderStarted("communal_farm", "bakery_supply", 2, 1_800_000_000_000) shouldBe true
         configured = configured.copy(mode = WorksiteEnterpriseMode.OFF)
 
-        adapter.orderCompleted("communal_farm", 2, mapOf(playerId to 1), commercialEligible = true) shouldBe true
+        adapter.orderCompleted("communal_farm", 2, mapOf(playerId to 1), commercialEligible = true).changed shouldBe true
 
         adapter.snapshot().weeks.values.single().completedOrders shouldBe 1
     }
@@ -130,6 +130,56 @@ class FarmEnterpriseAdapterTest : FunSpec({
 
         adapter.snapshot().reservations.values.single().sequence shouldBe 4L
         adapter.snapshot().releasedReservationsByCompany shouldBe emptyMap()
+    }
+
+    test("worker payment applies only to new reservations and survives a gate or terms change") {
+        var configured = settings()
+        val adapter = FarmEnterpriseAdapter({ configured }, ArcFarmsDebug({ false }) {}, { 1_800_000_000_000 })
+        val second = UUID(0, 10)
+        val contributors = mapOf(playerId to 2, second to 1)
+        adapter.orderStarted("communal_farm", "bakery_supply", 1, 1_800_000_000_000) shouldBe true
+        configured = configured.copy(workerPayoutEnabled = true)
+        val legacy = adapter.orderCompleted("communal_farm", 1, contributors, true)
+        legacy.workerPayoutEnabled shouldBe false
+        legacy.workerCreditsCents shouldBe emptyMap()
+
+        adapter.orderStarted("communal_farm", "bakery_supply", 2, 1_800_000_000_000) shouldBe true
+        configured = configured.copy(mode = WorksiteEnterpriseMode.OFF, workerPayoutEnabled = false, workerBonusPercent = 10)
+        val restored = FarmEnterpriseAdapter({ configured }, ArcFarmsDebug({ false }) {}, { 1_800_000_000_000 })
+        restored.replace(adapter.snapshot())
+        val completion = restored.orderCompleted("communal_farm", 2, contributors, true)
+
+        completion.workerPayoutEnabled shouldBe true
+        completion.workerCreditsCents shouldBe mapOf(playerId to 160_000L, second to 80_000L)
+        restored.orderCompleted("communal_farm", 2, contributors, true).workerCreditsCents shouldBe emptyMap()
+        restored.snapshot().weeks.values.single().apply {
+            projectedWorkerCreditsCents shouldBe mapOf(playerId to 160_000L, second to 80_000L)
+            rewardWorkerCreditsCents shouldBe mapOf(playerId to 160_000L, second to 80_000L)
+            workerBonusCents shouldBe 480_000L
+        }
+    }
+
+    test("direct worker payment keeps exact cents and uses the existing lifetime gross budget") {
+        val configured = settings().copy(mode = WorksiteEnterpriseMode.OFF, workerPayoutEnabled = true,
+            licenseGrossEnvelopeCents = 1_000_004, defaultGrossTariffCents = 1_000_004)
+        val adapter = adapter(configured)
+        val second = UUID(0, 10)
+        adapter.orderStarted("communal_farm", "bakery_supply", 1, 1_800_000_000_000) shouldBe true
+        val result = adapter.orderCompleted("communal_farm", 1, mapOf(playerId to 1, second to 1), true)
+
+        result.workerCreditsCents shouldBe mapOf(playerId to 120_001L, second to 120_000L)
+        adapter.orderStarted("communal_farm", "bakery_supply", 2, 1_800_000_000_000) // true means a persisted rejection counter changed
+        adapter.snapshot().reservations shouldBe emptyMap()
+        adapter.snapshot().rejectedReservationsByCompany.getValue("farm:communal_farm") shouldBe 1L
+        adapter.snapshot().weeks.values.single().projectedWorkerCreditsCents shouldBe emptyMap()
+        adapter.snapshot().settledGrossByCompany.getValue("farm:communal_farm") shouldBe 1_000_004L
+    }
+
+    test("administrative completion cannot pay a reserved worker premium") {
+        val adapter = adapter(settings().copy(workerPayoutEnabled = true))
+        adapter.orderStarted("communal_farm", "bakery_supply", 1, 1_800_000_000_000)
+        adapter.orderCompleted("communal_farm", 1, mapOf(playerId to 10), false).workerCreditsCents shouldBe emptyMap()
+        adapter.snapshot().weeks.values.single().rewardWorkerCreditsCents shouldBe emptyMap()
     }
 })
 

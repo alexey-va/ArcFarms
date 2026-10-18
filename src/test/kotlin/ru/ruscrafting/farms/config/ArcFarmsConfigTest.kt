@@ -173,6 +173,7 @@ class ArcFarmsConfigTest : FunSpec({
 
     test("bundled farm enterprise is safe by default and keeps complete tariff examples") {
         val settings = ArcFarmsConfig.inspect(resourceTree()).enterprises.getValue(ActivityKind.FARM)
+        settings.workerPayoutEnabled shouldBe false
 
         settings.mode shouldBe WorksiteEnterpriseMode.OFF
         settings.companyId shouldBe "communal_farm"
@@ -205,6 +206,18 @@ class ArcFarmsConfigTest : FunSpec({
 
         ArcFarmsConfig.inspect(root).enterprises.getValue(ActivityKind.FARM).mode shouldBe
             WorksiteEnterpriseMode.OFF
+    }
+
+    test("worker payment has a separate explicit gate without changing the commercial mode") {
+        val root = resourceTree()
+        Config(root, "config.yml").apply {
+            setBoolean("enterprises.farm.worker-payout.enabled", true)
+            saveStrict()
+        }
+        ArcFarmsConfig.inspect(root).enterprises.getValue(ActivityKind.FARM).apply {
+            workerPayoutEnabled shouldBe true
+            mode shouldBe WorksiteEnterpriseMode.OFF
+        }
     }
 
     test("farm enterprise rejects unsafe modes, policy steps, unknown tariffs, and underfunded licenses") {
@@ -679,7 +692,7 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().routeDelivery.monsterWaveMin shouldBe 5
         settings.farms.single().routeDelivery.monsterWaveMax shouldBe 8
         settings.farms.single().routeDelivery.monsterMaxAlive shouldBe 12
-        settings.farms.single().routeDelivery.monsterTypes shouldBe listOf("HUSK", "ZOMBIE", "SKELETON", "SPIDER", "PHANTOM")
+        settings.farms.single().routeDelivery.monsterTypes shouldBe listOf("HUSK", "ZOMBIE", "SKELETON", "SPIDER")
         settings.farms.single().routeDelivery.monsterLightLevel shouldBe 15
         settings.farms.single().routeDelivery.rifleMaterial shouldBe "CROSSBOW"
         settings.farms.single().routeDelivery.rifleCustomModelData shouldBe 2_100_103

@@ -8,11 +8,11 @@ import org.bukkit.attribute.Attribute
 import org.bukkit.entity.EntityType
 import org.bukkit.entity.Horse
 import org.bukkit.entity.Mob
-import org.bukkit.entity.Phantom
 import org.bukkit.entity.Player
 import org.bukkit.inventory.ItemStack
 import org.bukkit.util.Vector
 import ru.ruscrafting.farms.config.MessageKey
+import ru.ruscrafting.farms.config.ROUTE_MONSTER_TYPES
 import ru.ruscrafting.farms.domain.FarmPointPosition
 import ru.ruscrafting.farms.paper.ArcFarmsDebug
 import ru.ruscrafting.farms.paper.FarmNightShiftController
@@ -63,6 +63,12 @@ internal class FarmFoodDeliveryAmbush(
         val rider = horse.passengers.filterIsInstance<Player>().firstOrNull() ?: return
         session.riderId = rider.uniqueId
         if (config.monsterMaxAlive == 0) return
+        // Runtime settings can survive a reload or come from a legacy persisted fixture.
+        val monsterTypes = config.monsterTypes.filter { it in ROUTE_MONSTER_TYPES }
+        if (monsterTypes.isEmpty()) {
+            session.pendingAmbushCheckpoints.clear()
+            return
+        }
         val checkpoint = session.pendingAmbushCheckpoints.firstOrNull() ?: return
         if (runtime.state.incidentProgress < checkpoint) return
         // The recorded route may start deep inside a large farm. The farm itself
@@ -83,21 +89,14 @@ internal class FarmFoodDeliveryAmbush(
             )
             val ground = safeSurface(anchor.clone().add(cos(angle) * distance, 0.0, sin(angle) * distance)) ?: return@repeat
             if (runtime.region.contains(ground)) return@repeat
-            val type = EntityType.valueOf(config.monsterTypes[random.nextInt(config.monsterTypes.size)])
-            val spawn = if (type == EntityType.PHANTOM) {
-                ground.clone().add(0.0, config.phantomSpawnHeight, 0.0)
-            } else ground
-            val monster = spawn.world.spawnEntity(spawn, type) as Mob
+            val type = EntityType.valueOf(monsterTypes[random.nextInt(monsterTypes.size)])
+            val monster = ground.world.spawnEntity(ground, type) as Mob
             monster.isPersistent = false
             mobDespawns.setRemoveWhenFarAway(monster, true)
             monster.isGlowing = true
             monster.target = rider
             monster.getAttribute(Attribute.MOVEMENT_SPEED)?.baseValue = config.monsterMovementSpeed
-            if (monster is Phantom) {
-                monster.setShouldBurnInDay(false)
-                monster.anchorLocation = ground
-                monster.size = 1
-            } else if (type == EntityType.HUSK || type == EntityType.ZOMBIE) {
+            if (type == EntityType.HUSK || type == EntityType.ZOMBIE) {
                 monster.equipment.setItemInMainHand(ItemStack(Material.TORCH), true)
                 monster.equipment.itemInMainHandDropChance = 0.0f
             } else if (type == EntityType.SKELETON) {

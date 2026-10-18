@@ -14,6 +14,7 @@ internal data class WorksiteEnterprisePolicy(
     val dividendPercent: Int,
     val weeklyUpkeepCents: Long,
     val retainedReportWeeks: Int = 16,
+    val workerPayoutEnabled: Boolean = false,
 ) {
     init {
         require(ENTERPRISE_ID.matches(companyId)) { "Invalid enterprise company id: $companyId" }
@@ -64,6 +65,8 @@ data class WorksiteEnterpriseReservation(
     val businessWeekStartEpochDay: Long? = null,
     // Nullable only for state written by the first SHADOW build before terms were snapshotted.
     val terms: WorksiteEnterpriseTerms? = null,
+    // Frozen only for new reservations. Absent legacy Gson primitive fields are false.
+    val workerPayoutEnabled: Boolean = false,
 )
 
 data class WorksiteEnterpriseWeek(
@@ -77,6 +80,8 @@ data class WorksiteEnterpriseWeek(
     val retainedProfitCents: Long = 0,
     val uniqueContributors: Set<UUID> = emptySet(),
     val projectedWorkerCreditsCents: Map<UUID, Long> = emptyMap(),
+    // Allocated to completion grants, never to the weekly investment account. Legacy Gson may yield null.
+    val rewardWorkerCreditsCents: Map<UUID, Long>? = emptyMap(),
     // The whole business week keeps the policy accepted by its first settled order.
     val terms: WorksiteEnterpriseTerms? = null,
 ) {
@@ -126,6 +131,7 @@ data class WorksiteEnterpriseCompanyView(
     val workerBonusPercent: Int,
     val dividendPercent: Int,
     val weeklyUpkeepCents: Long,
+    val rewardWorkerBonusThisWeekCents: Long = 0,
 )
 
 internal enum class EnterpriseReservationOutcome {
@@ -157,6 +163,8 @@ internal data class EnterpriseSettlementDecision(
     val operatingBurnCents: Long = 0,
     val workerBonusCents: Long = 0,
     val retainedProfitCents: Long = 0,
+    val rewardWorkerCreditsCents: Map<UUID, Long> = emptyMap(),
+    val workerPayoutEnabled: Boolean = false,
 )
 
 /**
@@ -168,7 +176,9 @@ internal class WorksiteEnterpriseLedger {
 
     fun replace(snapshot: WorksiteEnterpriseSnapshot) {
         validate(snapshot)
-        state = snapshot
+        state = snapshot.copy(weeks = snapshot.weeks.mapValues { (_, week) ->
+            if (week.rewardWorkerCreditsCents == null) week.copy(rewardWorkerCreditsCents = emptyMap()) else week
+        })
     }
 
     fun snapshot(): WorksiteEnterpriseSnapshot = state
@@ -203,6 +213,7 @@ internal class WorksiteEnterpriseLedger {
             workerBonusPercent = effectiveTerms.workerBonusPercent,
             dividendPercent = effectiveTerms.dividendPercent,
             weeklyUpkeepCents = effectiveTerms.weeklyUpkeepCents,
+            rewardWorkerBonusThisWeekCents = week?.rewardWorkerCreditsCents.orEmpty().values.sum(),
         )
     }
 
@@ -287,6 +298,7 @@ internal class WorksiteEnterpriseLedger {
             reservedAt = order.reservedAt,
             businessWeekStartEpochDay = order.businessWeekStartEpochDay,
             terms = acceptedTerms,
+            workerPayoutEnabled = policy.workerPayoutEnabled,
         )
         val policyWeekKey = weekKey(policy.activity, policy.companyId, order.businessWeekStartEpochDay)
         val policyWeek = state.weeks[policyWeekKey] ?: WorksiteEnterpriseWeek(
@@ -368,7 +380,10 @@ internal class WorksiteEnterpriseLedger {
             workerBonusCents = safeMoneyAdd(currentWeek.workerBonusCents, workerBonus),
             retainedProfitCents = safeMoneyAdd(currentWeek.retainedProfitCents, retainedProfit),
             uniqueContributors = uniqueContributors,
-            projectedWorkerCreditsCents = mergeCredits(currentWeek.projectedWorkerCreditsCents, credits),
+            projectedWorkerCreditsCents = if (reservation.workerPayoutEnabled) currentWeek.projectedWorkerCreditsCents
+                else mergeCredits(currentWeek.projectedWorkerCreditsCents, credits),
+            rewardWorkerCreditsCents = if (reservation.workerPayoutEnabled)
+                mergeCredits(currentWeek.rewardWorkerCreditsCents.orEmpty(), credits) else currentWeek.rewardWorkerCreditsCents.orEmpty(),
         )
         val weeks = pruneWeeks(
             state.weeks + (weekKey to nextWeek),
@@ -392,6 +407,8 @@ internal class WorksiteEnterpriseLedger {
             operatingBurn,
             workerBonus,
             retainedProfit,
+            if (reservation.workerPayoutEnabled) credits else emptyMap(),
+            reservation.workerPayoutEnabled,
         )
     }
 
@@ -620,7 +637,8 @@ internal class WorksiteEnterpriseLedger {
                 require(week.uniqueContributors.size <= MAX_ENTERPRISE_CONTRIBUTORS) {
                     "Enterprise unique contributor set is unbounded"
                 }
-                require(week.projectedWorkerCreditsCents.size <= MAX_ENTERPRISE_CONTRIBUTORS) {
+                require(week.projectedWorkerCreditsCents.size <= MAX_ENTERPRISE_CONTRIBUTORS &&
+                    week.rewardWorkerCreditsCents.orEmpty().size <= MAX_ENTERPRISE_CONTRIBUTORS) {
                     "Enterprise projected worker credits are unbounded"
                 }
                 listOf(
@@ -629,7 +647,8 @@ internal class WorksiteEnterpriseLedger {
                     week.workerBonusCents,
                     week.retainedProfitCents,
                 ).forEach { require(it in 0..MAX_ENTERPRISE_MONEY_CENTS) { "Enterprise week money is invalid" } }
-                require(week.projectedWorkerCreditsCents.values.all { it in 0..MAX_ENTERPRISE_MONEY_CENTS }) {
+                require((week.projectedWorkerCreditsCents.values + week.rewardWorkerCreditsCents.orEmpty().values)
+                    .all { it in 0..MAX_ENTERPRISE_MONEY_CENTS }) {
                     "Enterprise projected worker credit is invalid"
                 }
                 week.terms?.let(::validateTerms)
@@ -640,12 +659,13 @@ internal class WorksiteEnterpriseLedger {
                     ) == week.grossRevenueCents,
                 ) { "Enterprise week money does not conserve gross revenue" }
                 require(
-                    week.projectedWorkerCreditsCents.values.fold(0L) { total, cents -> safeMoneyAdd(total, cents) } ==
+                    (week.projectedWorkerCreditsCents.values + week.rewardWorkerCreditsCents.orEmpty().values)
+                        .fold(0L) { total, cents -> safeMoneyAdd(total, cents) } ==
                         week.workerBonusCents,
                 ) {
                     "Enterprise worker credits do not conserve the worker bonus"
                 }
-                require(week.uniqueContributors == week.projectedWorkerCreditsCents.keys) {
+                require(week.uniqueContributors == week.projectedWorkerCreditsCents.keys + week.rewardWorkerCreditsCents.orEmpty().keys) {
                     "Enterprise contributor identities do not match worker credits"
                 }
             }

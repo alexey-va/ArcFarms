@@ -11,6 +11,7 @@ import ru.arc.paper.testing.MockBukkitTestRuntime
 import ru.ruscrafting.farms.config.ArcFarmsLocale
 import ru.ruscrafting.farms.config.CuboidBounds
 import ru.ruscrafting.farms.config.FarmZoneSettings
+import ru.ruscrafting.farms.config.MessageKey
 import ru.ruscrafting.farms.domain.FarmIncidentType
 import ru.ruscrafting.farms.domain.FarmCareType
 import ru.ruscrafting.farms.domain.FarmOrder
@@ -28,6 +29,7 @@ import ru.ruscrafting.farms.paper.WorksiteRuntimePort
 import ru.ruscrafting.farms.paper.farm.FarmShiftLauncher
 import ru.ruscrafting.farms.paper.farm.FarmTransitionSink
 import ru.ruscrafting.farms.paper.farm.care.FarmCareController
+import ru.ruscrafting.farms.paper.farm.care.FarmCareStartResult
 import ru.ruscrafting.farms.paper.farm.delivery.FarmDeliveryController
 import ru.ruscrafting.farms.paper.farm.enterprise.FarmEnterprisePort
 import ru.ruscrafting.farms.paper.farm.field.FarmFieldController
@@ -48,6 +50,53 @@ import ru.ruscrafting.farms.paper.farm.supply.FarmSupplyController
 import java.util.concurrent.CompletableFuture
 
 class FarmGameplayAdminServiceTest : FunSpec({
+    test("mole startup reports placement preparation and state failures separately on both admin paths") {
+        MockBukkitTestRuntime.open().use { paper ->
+            val world = paper.server.addSimpleWorld("sp11")
+            world.getChunkAt(0, 0).load()
+            val player = paper.addPlayer("MoleOperator")
+            player.teleport(org.bukkit.Location(world, 4.5, 65.0, 4.5))
+            val plot = FarmPlotPosition(world.name, 4, 64, 4)
+            world.getBlockAt(plot.x, plot.y, plot.z).type = Material.FARMLAND
+            val order = FarmOrder("mole_order", mapOf("WHEAT" to 64))
+            val messages = mapOf(
+                FarmCareStartResult.NO_PLACEMENT to MessageKey.ADMIN_MOLES_UNAVAILABLE,
+                FarmCareStartResult.PREPARATION_FAILED to MessageKey.ADMIN_MOLES_PREPARE_FAILED,
+                FarmCareStartResult.STATE_CHANGED to MessageKey.ADMIN_MOLES_STATE_CHANGED,
+            )
+            for (async in listOf(false, true)) for ((outcome, expected) in messages) {
+                val runtime = FarmRuntime(
+                    mockk<FarmZoneSettings>(relaxed = true) {
+                        every { id } returns "communal_farm"
+                        every { preparationPatchMaxSize } returns 16
+                        every { fieldCompletionPercent } returns 100
+                    },
+                    CuboidActivityRegion(world, "farm", CuboidBounds(0, 0, 0, 15, 128, 15)),
+                    mapOf(order.id to order), listOf(order), FarmRules(listOf(50), 1, 1_000),
+                    FarmShiftState(phase = FarmPhase.HARVESTING, sequence = 5, placementSequence = 8,
+                        orderId = order.id, preparationCrop = "WHEAT", preparationPatch = listOf(plot)),
+                )
+                val port = mockk<WorksiteRuntimePort>(relaxed = true)
+                val care = mockk<FarmCareController>(relaxed = true) {
+                    every { clear(any(), any()) } returns true
+                    every { initializeDetailed(runtime, player, FarmCareType.MOLES) } returns outcome
+                    every { initializeDetailedAsync(runtime, player, FarmCareType.MOLES) } returns CompletableFuture.completedFuture(outcome)
+                }
+                val field = mockk<FarmFieldController>(relaxed = true) {
+                    every { selectPatch(runtime, any(), false, any(), any()) } returns listOf(plot)
+                }
+                val service = cycleService(runtime, port, mockk(relaxed = true), mockk(relaxed = true), field = field, care = care)
+                if (async) service.setStageAsync(player, runtime.settings.id, "moles").join() shouldBe false
+                else service.setStage(player, runtime.settings.id, "moles") shouldBe false
+                verify(exactly = 1) { port.sendChat(player, expected, any()) }
+                messages.values.filterNot { it == expected }.forEach { wrong ->
+                    verify(exactly = 0) { port.sendChat(player, wrong, any()) }
+                }
+                runtime.state.placementSequence shouldBe if (outcome == FarmCareStartResult.STATE_CHANGED) 8 else 9
+            }
+        }
+    }
+
     test("starting an order cycle while the operator is already inside launches a shift immediately") {
         val paper = MockBukkitTestRuntime.open()
         try {
@@ -363,7 +412,7 @@ private fun cycleService(
     enterprise = enterprise,
     scene = mockk<FarmContractSceneController>(relaxed = true),
     supplies = mockk<FarmSupplyController>(relaxed = true),
-    harvest = mockk<FarmHarvestController>(relaxed = true),
+    harvest = mockk<FarmHarvestController>(relaxed = true) { every { nextRequiredCrop(any(), any()) } returns null },
     placement = mockk<FarmPlacementService>(relaxed = true),
     guidance = mockk<FarmGuidanceController>(relaxed = true),
     ledger = mockk<FarmBlockLedger>(relaxed = true),

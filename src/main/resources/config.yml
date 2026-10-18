@@ -221,11 +221,14 @@ state:
     maximum-retry-seconds: 30
     log-every-attempts: 5
 
-# OFF disables the company, SHADOW observes without money, LIVE enables durable funding and payouts.
+# Commercial company mode: OFF disables it, SHADOW models capital, LIVE enables investment funding.
+# Worker completion payments have their own explicit gate; they never enable shares or dividends.
 # Keep LIVE off until the shadow report has been reviewed. The same policy shape fits future worksites.
 enterprises:
   farm:
     mode: "OFF"
+    worker-payout:
+      enabled: false
     company-id: communal_farm
     worksite-id: communal_farm
     license-gross-envelope: 2000000.00
@@ -678,7 +681,7 @@ farm-zones:
         spawn-min-multiplier: 0.8
         spawn-max-multiplier: 1.15
         phantom-spawn-height: 7.0
-        types: [HUSK, ZOMBIE, SKELETON, SPIDER, PHANTOM]
+        types: [HUSK, ZOMBIE, SKELETON, SPIDER]
         movement-speed: 0.25
         light-level: 15
       gunner:

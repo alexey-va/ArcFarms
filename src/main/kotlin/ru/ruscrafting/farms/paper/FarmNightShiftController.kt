@@ -237,6 +237,14 @@ internal class FarmNightShiftController(
         playerTimes.values.filter { it.zoneId == ownerId }.forEach { it.returning = true }
     }
 
+    /** Delivery now owns world time; retire only its old client overrides immediately. */
+    fun resetAmbientTime(ownerId: String) {
+        playerTimes.filterValues { it.zoneId == ownerId }.keys.toList().forEach { playerId ->
+            Bukkit.getPlayer(playerId)?.resetPlayerTime()
+            playerTimes.remove(playerId)
+        }
+    }
+
     fun syncAmbientWeather(ownerId: String, players: Collection<Player>, downfall: Boolean) {
         val expected = players.mapTo(hashSetOf(), Player::getUniqueId)
         playerWeatherOwners.filterValues { it == ownerId }.keys.filter { it !in expected }.forEach { playerId ->

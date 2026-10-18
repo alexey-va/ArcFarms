@@ -132,7 +132,13 @@ internal class FarmCarePlanService(
             !patchIterator.hasNext() && !bedIterator.hasNext()
         }.thenCompose {
             // Orchard anchors stay valid when their canopy covers the crop patch.
-            if (patch.isEmpty() && type != FarmCareType.APPLE_HARVEST) return@thenCompose CompletableFuture.completedFuture(null)
+            if (patch.isEmpty() && type != FarmCareType.APPLE_HARVEST) {
+                if (type == FarmCareType.MOLES) log(Level.WARNING,
+                    "Could not plan mole burrow: zone=${zoneSettings.id} sequence=${runtime.state.sequence} " +
+                        "activity=MOLES world=$worldName placement=$placementSequence " +
+                        "beds=${farmBeds.size} candidates=0 selected=0 rejections=no_outdoor_patch:1")
+                return@thenCompose CompletableFuture.completedFuture(null)
+            }
             val salt = WorksiteDeterministicSeed.derive(
                 WorksiteDeterministicSeed.derive(placementSequence, type.ordinal * 17L + 101L), random.nextLong(),
             )
@@ -268,6 +274,12 @@ internal class FarmCarePlanService(
                                 "beds" to beds.size, "candidates" to candidates.size, "tested" to tested,
                                 "layout_probes" to probes, "requested" to requested, "selected" to selected.size,
                                 "rejections" to rejections.toString(), "elapsed_ms" to (System.nanoTime() - startedAt) / 1_000_000L)
+                            if (selected.size < requested) log(Level.WARNING,
+                                "Could not plan mole burrow: zone=${runtime.settings.id} sequence=${runtime.state.sequence} " +
+                                    "activity=MOLES world=${runtime.region.world.name} placement=$placementSequence " +
+                                    "beds=${beds.size} candidates=${candidates.size} tested=$tested layout_probes=$probes " +
+                                    "requested=$requested selected=${selected.size} depth=${rules.minDepth}-${rules.maxDepth} " +
+                                    "rejections=${rejections.entries.joinToString(",") { (reason, count) -> "$reason:$count" }.ifEmpty { "none" }}")
                             return CompletableFuture.completedFuture(selected.takeIf { it.size == requested })
                         }
                         val candidate = candidates[tested++]

@@ -206,7 +206,9 @@ internal class FarmMoleAsyncScenes(
             }
             !materials.hasNext()
         }.thenCompose { attempt(0) }.whenComplete { preview, failure -> tasks.callSync(token) {
-            if (failure == null) result.complete(preview) else { previews.remove(key, result); result.completeExceptionally(failure) }
+            // Coalesce only in-flight work: preparation must capture fresh originalData after candidate selection.
+            previews.remove(key, result)
+            if (failure == null) result.complete(preview) else result.completeExceptionally(failure)
         }.exceptionally { result.completeExceptionally(it); null } }
         return result
     }

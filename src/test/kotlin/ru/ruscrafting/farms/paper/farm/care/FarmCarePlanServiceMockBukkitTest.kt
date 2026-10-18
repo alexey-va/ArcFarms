@@ -9,6 +9,9 @@ import org.bukkit.Material
 import ru.arc.paper.testing.MockBukkitTestRuntime
 import ru.ruscrafting.farms.config.CuboidBounds
 import ru.ruscrafting.farms.config.FarmZoneSettings
+import ru.ruscrafting.farms.config.FarmMoleBurrowSettings
+import ru.ruscrafting.farms.config.FarmCareVisualSettings
+import ru.ruscrafting.farms.config.FarmItemDisplayTransform
 import ru.ruscrafting.farms.domain.FarmCareRole
 import ru.ruscrafting.farms.domain.FarmCareType
 import ru.ruscrafting.farms.domain.FarmDeliveryPosition
@@ -27,12 +30,51 @@ import ru.ruscrafting.farms.paper.FarmBlockRegistry
 import ru.ruscrafting.farms.paper.FarmRuntime
 import ru.ruscrafting.farms.paper.farm.FarmPointProvider
 import ru.ruscrafting.farms.paper.farm.care.mole.FarmMoleBurrowWorld
+import ru.ruscrafting.farms.paper.farm.care.mole.FarmMoleBurrowPreview
 import ru.ruscrafting.farms.paper.farm.placement.FarmPlacementService
 import ru.ruscrafting.farms.paper.fixtures.FarmAsyncHarness
 import java.util.random.RandomGenerator
 import kotlin.math.abs
+import java.util.concurrent.CompletableFuture
+import java.util.logging.Level
 
 class FarmCarePlanServiceMockBukkitTest : FunSpec({
+    test("async mole placement rejection remains diagnosable with debug disabled") {
+        FarmAsyncHarness("MolePlanningDiagnostics").use { h ->
+            val world = h.paper.server.addSimpleWorld("sp11")
+            world.getChunkAt(0, 0).load()
+            val bed = FarmPlotPosition(world.name, 4, 64, 4)
+            world.getBlockAt(bed.x, bed.y, bed.z).type = Material.FARMLAND
+            val rules = FarmMoleBurrowSettings(cells = 8, minDepth = 10, maxDepth = 56, tunnelHeight = 3,
+                blocksPerTick = 48, candidateAttempts = 4, lightSpacing = 5, lightLevel = 11,
+                lairVisual = FarmCareVisualSettings("RABBIT_HIDE", 0, FarmItemDisplayTransform.FIXED, 1.6f, .6))
+            val settings = mockk<FarmZoneSettings> {
+                every { id } returns "communal_farm"
+                every { moleBurrow } returns rules
+            }
+            val order = FarmOrder("mole_order", mapOf("WHEAT" to 64))
+            val runtime = FarmRuntime(settings, CuboidActivityRegion(world, "farm", CuboidBounds(0, 60, 0, 15, 70, 15)),
+                mapOf(order.id to order), listOf(order), FarmRules(listOf(50), 1, 1_000),
+                FarmShiftState(phase = FarmPhase.HARVESTING, sequence = 5, placementSequence = 8,
+                    orderId = order.id, preparationPatch = listOf(bed)))
+            val warnings = mutableListOf<String>()
+            val service = FarmCarePlanService(ArcFarmsDebug({ false }) {},
+                mockk<FarmBlockRegistry> { every { beds("communal_farm") } returns setOf(bed) },
+                mockk(relaxed = true), FarmPointProvider { _, _ -> error("No fixed point expected for moles") }, { FarmLocationOverrides() }, java.util.Random(41L),
+                mockk<FarmMoleBurrowWorld> {
+                    every { previewDetailedAsync(runtime, any(), any(), any()) } returns CompletableFuture.completedFuture(
+                        FarmMoleBurrowPreview(null, 64, mapOf("journal_occupied" to 64)))
+                }, { 1 }, { level, message -> if (level == Level.WARNING) warnings += message }, h.tasks)
+            val result = service.selectAsync(runtime, FarmCareType.MOLES, null)
+            h.until { result.isDone }
+            result.join() shouldBe null
+            warnings.size shouldBe 1
+            listOf("zone=communal_farm", "sequence=5", "activity=MOLES", "world=sp11", "placement=9",
+                "candidates=1", "tested=1", "requested=1", "selected=0", "depth=10-56", "journal_occupied:64")
+                .forEach { (it in warnings.single()) shouldBe true }
+        }
+    }
+
     test("apple harvest uses orchard leaves when the crop patch is covered by their canopy") {
         FarmAsyncHarness("OrchardCanopyTest").use { h ->
             val world = h.paper.server.addSimpleWorld("sp11")

@@ -7,7 +7,7 @@ plugins {
     jacoco
 }
 group = "ru.ruscrafting"
-version = "0.45.42"
+version = "0.45.43"
 description = "Shared farm, lumbermill, and mine activities for RusCrafting"
 
 val integrationTestSourceSet = sourceSets.create("integrationTest") {
@@ -67,7 +67,7 @@ dependencies {
         exclude(group = "io.netty")
     }
     testImplementation("net.luckperms:api:5.5")
-    testRuntimeOnly("com.github.MilkBowl:VaultAPI:1.7") {
+    testImplementation("com.github.MilkBowl:VaultAPI:1.7") {
         exclude(group = "org.bukkit", module = "bukkit")
     }
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")

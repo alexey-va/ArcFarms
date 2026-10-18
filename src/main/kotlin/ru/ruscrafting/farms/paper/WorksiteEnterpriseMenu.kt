@@ -362,7 +362,9 @@ internal class WorksiteEnterpriseMenu(
             view.issuedShares + view.reservedShares + shares <= view.totalShares
 
     private fun companyStatus(player: Player, ownership: WorksiteEnterpriseOwnershipView?): Component = when (ownership?.phase) {
-        null -> locale.render(MessageKey.COMPANIES_SHADOW, player)
+        null -> locale.render(
+            if (settings().enterprises[ActivityKind.FARM]?.workerPayoutEnabled == true)
+                MessageKey.COMPANIES_WORKER_PAYMENTS else MessageKey.COMPANIES_SHADOW, player)
         WorksiteEnterpriseCapitalPhase.FUNDING -> locale.render(
             MessageKey.COMPANY_LIVE_FUNDING,
             player,
@@ -456,13 +458,20 @@ internal class WorksiteEnterpriseMenu(
     ): ItemStack {
         val lore = mutableListOf(
             locale.render(MessageKey.COMPANY_WORKERS_BONUS, player, mapOf("percent" to locale.text(view.workerBonusPercent))),
-            locale.render(MessageKey.COMPANY_WORKERS_ACCRUED, player, mapOf("amount" to money(view.workerBonusThisWeekCents))),
+            locale.render(
+                if (playerView?.workerPayoutEnabled == true) MessageKey.COMPANY_WORKERS_DIRECT_ACCRUED else MessageKey.COMPANY_WORKERS_ACCRUED,
+                player, mapOf("amount" to money(if (playerView?.workerPayoutEnabled == true)
+                    view.rewardWorkerBonusThisWeekCents else view.workerBonusThisWeekCents))),
         )
         playerView?.let {
-            lore += locale.render(MessageKey.COMPANY_WORKERS_PERSONAL_ACCRUED, player, mapOf("amount" to money(it.workerAccruedCents)))
-            lore += locale.render(MessageKey.COMPANY_WORKERS_PROJECTED, player, mapOf("amount" to money(it.projectedDividendCents)))
-            lore += locale.render(MessageKey.COMPANY_WORKERS_AVAILABLE, player, mapOf("amount" to money(it.availableThisWeekCents)))
-            lore += locale.render(MessageKey.COMPANY_WORKERS_SETTLEMENT, player, mapOf("time" to locale.text(settlementTime(it.nextSettlementMillis))))
+            lore += locale.render(
+                if (it.workerPayoutEnabled) MessageKey.COMPANY_WORKERS_DIRECT_PERSONAL else MessageKey.COMPANY_WORKERS_PERSONAL_ACCRUED,
+                player, mapOf("amount" to money(if (it.workerPayoutEnabled) it.workerRewardAllocatedCents else it.workerAccruedCents)))
+            if (!it.workerPayoutEnabled) lore += locale.render(MessageKey.COMPANY_WORKERS_PROJECTED, player, mapOf("amount" to money(it.projectedDividendCents)))
+            lore += locale.render(if (it.workerPayoutEnabled) MessageKey.COMPANY_WORKERS_DIRECT_AVAILABLE else MessageKey.COMPANY_WORKERS_AVAILABLE,
+                player, mapOf("amount" to money(it.availableThisWeekCents)))
+            lore += if (it.workerPayoutEnabled) locale.render(MessageKey.COMPANY_WORKERS_AT_COMPLETION, player)
+                else locale.render(MessageKey.COMPANY_WORKERS_SETTLEMENT, player, mapOf("time" to locale.text(settlementTime(it.nextSettlementMillis))))
             lore += locale.render(
                 MessageKey.COMPANY_WORKERS_CONTRIBUTION,
                 player,
