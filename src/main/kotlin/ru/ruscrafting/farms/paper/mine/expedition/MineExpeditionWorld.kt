@@ -79,7 +79,7 @@ internal class MineExpeditionWorld(
     blockDataDecoder: WorksitePreparedSceneBlockDataDecoder,
     private val receipts: MineExpeditionSceneRepository = MineExpeditionSceneRepository(plugin.dataFolder.toPath()),
 ) : AutoCloseable, MineExpeditionSceneLoader {
-    internal class Pending(val key: Long, val startedAt: Long = System.currentTimeMillis()) {
+    internal class Pending(val key: Long) {
         val leases = mutableListOf<AutoCloseable>()
         var nextChunk = 0
         var inFlight = 0
@@ -102,7 +102,6 @@ internal class MineExpeditionWorld(
     private val scenes = linkedMapOf<Long, MineExpeditionScene>()
     private val stock = MineExpeditionStock(receipts, tasks, state, this)
     private val failures = ConcurrentHashMap<Long, Pair<Long, String>>()
-    private val buildingSince = hashMapOf<Long, Long>()
     private val announcedReady = hashSetOf<Long>()
     private var initializing = false
     private var storageLoaded = false
@@ -235,12 +234,8 @@ internal class MineExpeditionWorld(
     fun process(limit: Int = 1_024): Int {
         require(limit in 1..4_096)
         if (!storageLoaded) return 0
-        val now = System.currentTimeMillis()
-        pending.values.filter { now - it.startedAt > PREPARATION_TIMEOUT }.forEach {
-            failPreparation(it.key, IllegalStateException("Expedition chunk preparation timed out"))
-        }
         receipts.records().filter { it.restoring && !restoringLeases.containsKey(it.journalSequence) }.forEach(::prepare)
-        if (prewarm) stock.maintain(now)
+        if (prewarm) stock.maintain(System.currentTimeMillis())
         val floorProcessed = processFactoryFloorRepairs(minOf(limit, FACTORY_FLOOR_BATCH))
         val baselineProcessed = processBaseline(limit - floorProcessed)
         val preparedBudget = limit - floorProcessed - baselineProcessed
@@ -253,12 +248,7 @@ internal class MineExpeditionWorld(
             refreshReady(scene)
             if (scene.ready) stock.markBuilt(scene)
             if (scene.ready && announcedReady.add(scene.journalSequence)) {
-                buildingSince.remove(scene.journalSequence)
                 state.log(Level.INFO, "Mine expedition ready kind=${scene.kind} journal=${scene.journalSequence} reserve=${scene.reserved}")
-            } else if (!scene.ready && now - (buildingSince[scene.journalSequence] ?: now) > PREPARATION_TIMEOUT) {
-                buildingSince.remove(scene.journalSequence)
-                failPreparation(scene.journalSequence, IllegalStateException("Expedition block preparation timed out"))
-                receipts.findJournal(scene.journalSequence)?.let(stock::retire)
             }
         }
         finishRestores()
@@ -293,7 +283,6 @@ internal class MineExpeditionWorld(
         initializing = false
         storageLoaded = false
         failures.clear()
-        buildingSince.clear()
         announcedReady.clear()
         pending.values.forEach { pending -> pending.leases.forEach { lease -> runCatching(lease::close) } }
         restoringLeases.values.forEach { leases -> leases.forEach { lease -> runCatching(lease::close) } }
@@ -424,7 +413,6 @@ internal class MineExpeditionWorld(
             )
             scenes[key] = scene
             if (!receipt.restoring) {
-                buildingSince[key] = System.currentTimeMillis()
                 val baseline = if (receipt.placement.geometryVersion >= 3) emptyList() else baselineChanges(receipt, plan, recovered)
                 if (baseline.isEmpty()) baselineRepairs.remove(key)
                 else baselineRepairs[key] = ArrayDeque(baseline)
@@ -643,7 +631,6 @@ internal class MineExpeditionWorld(
             records,
         )
         val admission = prepared.prepareAllAsync(listOf(preparedScene))
-        buildingSince[key] = System.currentTimeMillis()
         val scene = MineExpeditionScene(
             plan, receipt.placement, world, receipt.zoneId, receipt.sequence, receipt.objectiveNonce, receipt.journalSequence, surface,
             preparedScene, receipt.completedAt, receipt.reserved,
@@ -655,7 +642,6 @@ internal class MineExpeditionWorld(
             capturing.leases.forEach { lease -> runCatching(lease::close) }
             if (failure != null || committed != true) {
                 scenes.remove(key, scene)
-                buildingSince.remove(key)
                 failPreparation(key, failure ?: IllegalStateException("Could not commit expedition scene preparation"))
             }
         } }
@@ -719,7 +705,6 @@ internal class MineExpeditionWorld(
 
     companion object {
         const val MAX_CHUNK_REQUESTS = 8
-        const val PREPARATION_TIMEOUT = 180_000L
         const val FACTORY_STATIC_JOURNAL = 18L
         private const val FACTORY_FLOOR_BATCH = 128
     }
