@@ -1,6 +1,7 @@
 package ru.ruscrafting.farms.paper.worksite.scene
 
 import io.kotest.core.spec.style.FunSpec
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.shouldBe
 import org.bukkit.Bukkit
 import org.bukkit.Location
@@ -11,9 +12,14 @@ import ru.arc.core.BoundedAsyncExecutor
 import ru.arc.core.BukkitTaskScheduler
 import ru.arc.paper.testing.MockBukkitTestRuntime
 import ru.ruscrafting.farms.paper.RuntimeTaskSupervisor
+import ru.ruscrafting.farms.paper.computeWorksiteTask
 import ru.ruscrafting.farms.paper.farm.care.mole.FarmMoleBurrowWorksiteSceneCodec
 import ru.ruscrafting.farms.paper.worksite.WorksiteTaskPort
 import java.util.concurrent.CompletableFuture
+import java.util.concurrent.CompletionException
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.RejectedExecutionException
+import java.util.Collections
 import java.util.concurrent.atomic.AtomicInteger
 
 class WorksitePreparedSceneAsyncTest : FunSpec({
@@ -123,21 +129,140 @@ class WorksitePreparedSceneAsyncTest : FunSpec({
             h.nativeDecodeCalls.get() shouldBe 0
         }
     }
+
+    test("more than 256 empty chunk callbacks do not submit worker work or invalidate pending recovery") {
+        SceneHarness().use { h ->
+            val scene = h.scene(1)
+            h.writeJournal(scene.records)
+            val blocker = CompletableFuture<Unit>()
+            h.computeGate = blocker
+            val recovery = h.recover(scene)
+            h.until { h.pendingComputations.get() > 0 }
+            val computations = h.pendingComputations.get()
+            val captures = h.captureSubmissions
+
+            repeat(300) { x -> h.owner.onChunkLoad(h.world.getChunkAt(x + 10, 10), { _, _ -> true }) }
+
+            h.pendingComputations.get() shouldBe computations
+            h.captureSubmissions shouldBe captures
+            recovery.isDone shouldBe false
+            blocker.complete(Unit)
+            h.until { recovery.isDone }
+            recovery.join()?.records shouldBe scene.records
+            h.world.getBlockAt(0, 64, 0).type shouldBe Material.AIR
+            h.owner.restoring(scene.zoneId) shouldBe false
+        }
+    }
+
+    test("one restoration rescans a real journal revision and finishes without a second admission") {
+        SceneHarness().use { h ->
+            val scene = h.scene(1)
+            val first = scene.records.single().copy(totalRecords = 2)
+            val second = first.copy(x = 16)
+            h.writeJournal(listOf(first))
+            val blocker = CompletableFuture<Unit>()
+            h.computeGate = blocker
+            h.owner.beginRestore(h.world, scene.zoneId, scene.sequence)
+            h.until { h.pendingComputations.get() > 0 }
+
+            h.writeJournal(listOf(second))
+            h.owner.onChunkLoad(h.world.getChunkAt(1, 0), { _, _ -> false })
+            blocker.complete(Unit)
+
+            h.until { !h.owner.restoring(scene.zoneId) }
+            listOf(0, 16).forEach { x ->
+                h.world.getBlockAt(x, 64, 0).type shouldBe Material.STONE
+                h.world.getChunkAt(x shr 4, 0).persistentDataContainer.get(h.key, PersistentDataType.BYTE_ARRAY) shouldBe null
+            }
+        }
+    }
+
+    test("a confirmed partial recovery can restore its originals after its future completes") {
+        SceneHarness().use { h ->
+            val scene = h.scene(1)
+            h.writeJournal(listOf(scene.records.single().copy(totalRecords = 2)))
+            val recovery = h.recover(scene)
+            recovery.isDone shouldBe false
+            h.until { recovery.isDone }
+            recovery.join() shouldBe null
+            h.owner.restoring(scene.zoneId) shouldBe false
+            h.world.getBlockAt(0, 64, 0).type shouldBe Material.AIR
+
+            h.owner.beginRestore(h.world, scene.zoneId, scene.sequence)
+            h.until { !h.owner.restoring(scene.zoneId) }
+            h.world.getBlockAt(0, 64, 0).type shouldBe Material.STONE
+        }
+    }
+
+    test("actual worker overload retains calculations until admission succeeds once") {
+        SceneHarness(workerCapacity = 1).use { h ->
+            val blocker = CompletableFuture<Unit>()
+            h.computeGate = blocker
+            val effects = AtomicInteger()
+            val results = List(5) { h.compute { effects.incrementAndGet() } }
+            h.until { h.rejectedAdmissions.get() > 0 }
+            results.all { !it.isDone } shouldBe true
+            blocker.complete(Unit)
+
+            h.until { results.all { it.isDone } }
+            results.map { it.join() }.toSet() shouldBe (1..5).toSet()
+            effects.get() shouldBe 5
+            h.attemptsByOperation.values.forEach { ticks -> ticks.distinct().size shouldBe ticks.size }
+        }
+    }
+
+    test("task-thrown rejection is terminal and shutdown cancels an unadmitted retry") {
+        SceneHarness().use { h ->
+            val effects = AtomicInteger()
+            val failure = h.compute<Int> { effects.incrementAndGet(); throw RejectedExecutionException("task failure") }
+            h.until { failure.isDone }
+            shouldThrow<CompletionException> { failure.join() }.cause?.message shouldBe "task failure"
+            effects.get() shouldBe 1
+
+            h.rejectComputations = true
+            val pending = h.compute { effects.incrementAndGet() }
+            h.tick()
+            pending.isDone shouldBe false
+            h.stopRuntime()
+            pending.isCompletedExceptionally shouldBe true
+            effects.get() shouldBe 1
+        }
+    }
+
+    test("clearing discovery while decoding is delayed terminates recovery without retiring its journal") {
+        SceneHarness().use { h ->
+            val scene = h.scene(1)
+            h.writeJournal(scene.records)
+            h.computeGate = CompletableFuture()
+            val recovery = h.recover(scene)
+            h.until { h.pendingComputations.get() > 0 }
+            h.owner.clearQueues()
+            recovery.isCompletedExceptionally shouldBe true
+            h.computeGate?.complete(Unit)
+            h.until { h.pendingComputations.get() == 0 }
+            h.world.getBlockAt(0, 64, 0).type shouldBe Material.AIR
+            (h.world.getChunkAt(0, 0).persistentDataContainer.get(h.key, PersistentDataType.BYTE_ARRAY) != null) shouldBe true
+        }
+    }
 })
 
 private const val NATIVE_STEP_BUDGET = 512
 
-private class SceneHarness : AutoCloseable {
+private class SceneHarness(workerCapacity: Int = 256) : AutoCloseable {
     private val nativeThread = Thread.currentThread()
     val paper = MockBukkitTestRuntime.open()
     val world = paper.server.addSimpleWorld("prepared_async")
     val plugin = paper.createSimplePlugin("PreparedAsyncTest")
     val key = NamespacedKey(plugin, "mine_working_v1")
     private val supervisor = RuntimeTaskSupervisor(BukkitTaskScheduler(plugin)).also { it.activate() }
-    private val worker = BoundedAsyncExecutor("prepared-scene-test")
+    private val worker = BoundedAsyncExecutor("prepared-scene-test", capacity = workerCapacity)
     val workerCalls = AtomicInteger()
     val nativeDecodeCalls = AtomicInteger()
     val pendingComputations = AtomicInteger()
+    val rejectedAdmissions = AtomicInteger()
+    var rejectComputations = false
+    val attemptsByOperation = ConcurrentHashMap<Int, MutableList<Int>>()
+    private val nextOperation = AtomicInteger()
     var computeGate: CompletableFuture<Unit>? = null
     var failNextCapture: Throwable? = null
     var captureSubmissions = 0
@@ -160,12 +285,18 @@ private class SceneHarness : AutoCloseable {
         override fun <T> compute(task: () -> T): CompletableFuture<T> {
             pendingComputations.incrementAndGet()
             val gate = computeGate
-            return worker.submit {
-                check(Thread.currentThread() !== nativeThread)
-                gate?.join()
-                workerCalls.incrementAndGet()
-                task()
-            }.whenComplete { _, _ -> pendingComputations.decrementAndGet() }
+            val operation = nextOperation.getAndIncrement()
+            return computeWorksiteTask(supervisor, { action ->
+                attemptsByOperation.getOrPut(operation) { Collections.synchronizedList(mutableListOf()) } += Bukkit.getCurrentTick()
+                val admission = if (rejectComputations) CompletableFuture.failedFuture(RejectedExecutionException("admission closed"))
+                else worker.submit {
+                    check(Thread.currentThread() !== nativeThread)
+                    gate?.join()
+                    workerCalls.incrementAndGet()
+                    action()
+                }
+                admission.whenComplete { _, failure -> if (failure is RejectedExecutionException) rejectedAdmissions.incrementAndGet() }
+            }, task).whenComplete { _, _ -> pendingComputations.decrementAndGet() }
         }
         override fun runSync(token: RuntimeTaskSupervisor.Token, task: () -> Unit) = supervisor.runSync(token, task) != null
         override fun runAsync(token: RuntimeTaskSupervisor.Token, task: () -> Unit) = supervisor.runAsync(token, task) != null
@@ -202,6 +333,23 @@ private class SceneHarness : AutoCloseable {
         return WorksitePreparedScene(world, "mine_zone", 1, 0,
             Location(world, 0.5, 65.0, 0.5), Location(world, 0.5, 64.0, 0.5), Location(world, 1.5, 64.0, 0.5), records)
     }
+
+    fun writeJournal(records: List<WorksitePreparedSceneRecord>) {
+        records.groupBy { it.x shr 4 to (it.z shr 4) }.forEach { (position, chunkRecords) ->
+            val chunk = world.getChunkAt(position.first, position.second)
+            chunk.load()
+            chunkRecords.forEach { world.getBlockAt(it.x, it.y, it.z).type = Material.AIR }
+            chunk.persistentDataContainer.set(key, PersistentDataType.BYTE_ARRAY,
+                realCodec.encode(chunkRecords, world.name, chunk.x, chunk.z, world.minHeight, world.maxHeight))
+        }
+    }
+
+    fun recover(scene: WorksitePreparedScene) = owner.sceneAsync(world, scene.zoneId, scene.sequence, scene.sceneId,
+        scene.surface, 0, scene.start, scene.end)
+
+    fun <T> compute(task: () -> T) = tasks.compute(task)
+
+    fun stopRuntime() = supervisor.close()
 
     fun tick(beforeTick: () -> Unit = {}) {
         nativeCalls = 0

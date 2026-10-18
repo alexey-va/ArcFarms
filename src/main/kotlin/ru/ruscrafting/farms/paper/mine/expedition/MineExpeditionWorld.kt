@@ -390,10 +390,29 @@ internal class MineExpeditionWorld(
         coordinates: List<WorksiteChunkCoordinate>,
     ) {
         val world = receiptWorld(receipt) ?: return failPreparation(key, IllegalStateException("Expedition world disappeared"))
-        prepared.scene(
+        val capturing = pending[key] ?: return
+        val token = tasks.lifecycleToken()
+        prepared.sceneAsync(
             world, receipt.journalOwner, receipt.journalSequence, receipt.sceneId, surfaceFor(receipt, world), 0,
             start = at(world, receipt.placement, plan.spawn), end = at(world, receipt.placement, plan.exit),
-        )?.let { recovered ->
+        ).whenComplete { recovered, failure -> tasks.callSync(token) {
+            if (pending[key] !== capturing || receiptWorld(receipt) !== world) return@callSync
+            val current = receipts.findJournal(key) ?: return@callSync
+            if (current.journalOwner != receipt.journalOwner || current.sceneId != receipt.sceneId || current.placement != receipt.placement) return@callSync
+            if (failure != null) { failPreparation(key, failure); return@callSync }
+            captureRecoveredSnapshot(current, plan, key, coordinates, world, recovered)
+        } }
+    }
+
+    private fun captureRecoveredSnapshot(
+        receipt: MineExpeditionSceneReceipt,
+        plan: MineExpeditionPlan,
+        key: Long,
+        coordinates: List<WorksiteChunkCoordinate>,
+        world: World,
+        recovered: WorksitePreparedScene?,
+    ) {
+        if (recovered != null) {
             val leases = pending.remove(key)?.leases.orEmpty()
             val scene = MineExpeditionScene(
                 plan, receipt.placement, world, receipt.zoneId, receipt.sequence, receipt.objectiveNonce,

@@ -32,6 +32,9 @@ import ru.ruscrafting.farms.paper.worksite.WorksiteTaskPort
 import java.time.Duration
 import java.util.UUID
 import java.util.concurrent.CompletableFuture
+import java.util.concurrent.CompletionException
+import java.util.concurrent.RejectedExecutionException
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.logging.Level
 
 /** Shared Paper presentation and infrastructure adapter for every worksite type. */
@@ -350,13 +353,8 @@ internal class PaperWorksiteAdapter(
     override fun <T> callSync(token: RuntimeTaskSupervisor.Token, task: () -> T): CompletableFuture<T> =
         lifecycleSupervisor.callSync(token, task)
 
-    override fun <T> compute(task: () -> T): CompletableFuture<T> {
-        val result = CompletableFuture<T>()
-        calculate { result.complete(task()) }.whenComplete { _, failure ->
-            if (failure != null) result.completeExceptionally(failure)
-        }
-        return result
-    }
+    override fun <T> compute(task: () -> T): CompletableFuture<T> =
+        computeWorksiteTask(lifecycleSupervisor, calculate, task)
 
     override fun lifecycleToken(): RuntimeTaskSupervisor.Token = lifecycleSupervisor.token()
     override fun runSync(token: RuntimeTaskSupervisor.Token, task: () -> Unit): Boolean =
@@ -378,4 +376,51 @@ internal class PaperWorksiteAdapter(
         val SUCCESS_COLOR: Color = Color.fromRGB(85, 217, 139)
         val TITLE_SUBTITLES = SCREEN_TITLE_SUBTITLES
     }
+}
+
+/** Keep rejected, unstarted calculations owned by the existing native/lifecycle queue. */
+internal fun <T> computeWorksiteTask(
+    supervisor: RuntimeTaskSupervisor,
+    calculate: (() -> Unit) -> CompletableFuture<Unit>,
+    task: () -> T,
+): CompletableFuture<T> {
+    val result = CompletableFuture<T>()
+    val token = runCatching(supervisor::token).getOrElse { return CompletableFuture.failedFuture(it) }
+    val retryReady = AtomicBoolean()
+    val retryScheduled = AtomicBoolean()
+    fun attempt() {
+        retryReady.set(false)
+        val started = AtomicBoolean()
+        val admission = runCatching { calculate { started.set(true); result.complete(task()) } }
+            .getOrElse { CompletableFuture.failedFuture(it) }
+        admission.whenComplete { _, failure ->
+            if (failure == null) return@whenComplete
+            var cause = failure
+            while (cause is CompletionException && cause.cause != null) cause = cause.cause!!
+            if (started.get() || cause !is RejectedExecutionException) {
+                result.completeExceptionally(failure)
+            } else {
+                retryReady.set(true)
+                if (retryScheduled.compareAndSet(false, true)) {
+                    supervisor.callSync(token) {
+                        var lastAttemptTick = Bukkit.getCurrentTick()
+                        supervisor.capture(token, { true }) {
+                            if (result.isDone) true else {
+                                val tick = Bukkit.getCurrentTick()
+                                if (retryReady.get() && lastAttemptTick != tick) {
+                                    lastAttemptTick = tick
+                                    attempt()
+                                }
+                                result.isDone
+                            }
+                        }
+                    }.thenCompose { it }.whenComplete { _, cancelled ->
+                        if (cancelled != null) result.completeExceptionally(cancelled)
+                    }
+                }
+            }
+        }
+    }
+    attempt()
+    return result
 }

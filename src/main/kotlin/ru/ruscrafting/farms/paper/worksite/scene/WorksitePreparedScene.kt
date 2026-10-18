@@ -666,6 +666,23 @@ internal class WorksitePreparedSceneOwner(
         end = end,
     )
 
+    /** Distinguish a confirmed partial journal from an asynchronous recovery still in flight. */
+    fun sceneAsync(
+        world: World,
+        zoneId: String,
+        sequence: Long,
+        sceneId: Int,
+        surface: Location,
+        recoveryRadius: Int,
+        start: Location,
+        end: Location,
+    ): CompletableFuture<WorksitePreparedScene?> {
+        val recovered = scene(world, zoneId, sequence, sceneId, surface, recoveryRadius, start, end)
+        if (recovered != null || tasks == null) return CompletableFuture.completedFuture(recovered)
+        val key = SceneKey(world.name, zoneId, sequence, sceneId)
+        return sceneRecoveries[key]?.thenApply { scenes[key] } ?: CompletableFuture.completedFuture(null)
+    }
+
     fun beginRestore(world: World, zoneId: String, sequence: Long) = beginRestoreInternal(world, zoneId, sequence, null)
 
     /** Narrow restore scope for owners that can retain multiple scenes in one shift sequence. */
@@ -879,9 +896,18 @@ internal class WorksitePreparedSceneOwner(
         isActiveScene: (WorksitePreparedSceneRecord) -> Boolean = { true },
     ) {
         if (tasks != null) {
+            val key = Triple(chunk.world.name, chunk.x, chunk.z)
+            if (!chunk.persistentDataContainer.has(journalKey, PersistentDataType.BYTE_ARRAY)) {
+                // Empty chunk waves do not change scene discovery or allocate worker tasks.
+                val cached = journalCache[key]
+                if (key in loadingJournals || cached != null && (cached.records.isNotEmpty() || cached.worldId != chunk.world.uid)) {
+                    invalidateCache(key)
+                }
+                return
+            }
             warmedWorlds.remove(chunk.world.uid)
             worldDiscoveryRevisions[chunk.world.uid] = (worldDiscoveryRevisions[chunk.world.uid] ?: 0L) + 1
-            invalidateCache(Triple(chunk.world.name, chunk.x, chunk.z))
+            invalidateCache(key)
             reconcileChunkAsync(chunk, active, isActiveScene)
             return
         }
@@ -997,6 +1023,8 @@ internal class WorksitePreparedSceneOwner(
     }
 
     fun clearQueues() {
+        val pendingWarmups = worldWarmups.values.toList()
+        val pendingRecoveries = sceneRecoveries.values.toList()
         preparationReceipts.values.forEach { it.completeExceptionally(java.util.concurrent.CancellationException("Scene owner closed")) }
         preparationReceipts.clear()
         mutationEpoch++
@@ -1031,6 +1059,8 @@ internal class WorksitePreparedSceneOwner(
         projectionChunks.clear()
         scenePositions.clear()
         scenes.clear()
+        pendingWarmups.forEach { it.cancel(false) }
+        pendingRecoveries.forEach { it.cancel(false) }
         ticketedChunks.entries.toList().forEach { (key, _) -> releaseTicket(key) }
     }
 
@@ -1287,28 +1317,37 @@ internal class WorksitePreparedSceneOwner(
         if (id in warmedWorlds) return CompletableFuture.completedFuture(Unit)
         worldWarmups[id]?.let { return it }
         val epoch = cacheEpoch
-        val discoveryRevision = worldDiscoveryRevisions[id] ?: 0L
         val token = work.lifecycleToken()
-        val chunks = world.loadedChunks.iterator()
-        val reads = mutableListOf<CompletableFuture<JournalSnapshot>>()
         val result = CompletableFuture<Unit>()
         worldWarmups[id] = result
-        work.capture(token, { cacheEpoch == epoch && Bukkit.getWorld(id) === world }) {
-            if (chunks.hasNext()) {
-                val chunk = chunks.next()
-                if (world.isChunkLoaded(chunk.x, chunk.z)) reads += readAsync(chunk)
-            }
-            !chunks.hasNext()
-        }.thenCompose { CompletableFuture.allOf(*reads.toTypedArray()) }
-            .thenCompose { work.callSync(token) {
-                check(cacheEpoch == epoch && Bukkit.getWorld(id) === world &&
-                    (worldDiscoveryRevisions[id] ?: 0L) == discoveryRevision) { "Scene world discovery superseded" }
-                warmedWorlds += id
-                Unit
-            } }.whenComplete { _, failure -> work.callSync(token) {
-                worldWarmups.remove(id, result)
-                if (failure == null) result.complete(Unit) else result.completeExceptionally(failure)
-            }.exceptionally { result.completeExceptionally(it); null } }
+        fun current() = !result.isDone && worldWarmups[id] === result && cacheEpoch == epoch && Bukkit.getWorld(id) === world
+        fun scan() {
+            if (!current()) { worldWarmups.remove(id, result); result.cancel(false); return }
+            val revision = worldDiscoveryRevisions[id] ?: 0L
+            val chunks = world.loadedChunks.iterator()
+            val reads = mutableListOf<CompletableFuture<JournalSnapshot>>()
+            work.capture(token, ::current) {
+                if (chunks.hasNext()) {
+                    val chunk = chunks.next()
+                    if (world.isChunkLoaded(chunk.x, chunk.z)) reads += readAsync(chunk)
+                }
+                !chunks.hasNext()
+            }.thenCompose { CompletableFuture.allOf(*reads.toTypedArray()) }
+                .whenComplete { _, failure -> work.callSync(token) {
+                    if (!current()) { worldWarmups.remove(id, result); result.cancel(false); return@callSync }
+                    var cause = failure
+                    while (cause is CompletionException && cause.cause != null) cause = cause.cause!!
+                    if ((failure == null && (worldDiscoveryRevisions[id] ?: 0L) != revision) || cause is CancellationException) {
+                        // A real chunk change invalidated this scan, not the caller's recovery intent.
+                        scan()
+                    } else {
+                        worldWarmups.remove(id, result)
+                        if (failure == null) { warmedWorlds += id; result.complete(Unit) }
+                        else result.completeExceptionally(failure)
+                    }
+                }.exceptionally { result.completeExceptionally(it); null } }
+        }
+        scan()
         return result
     }
 
@@ -1645,9 +1684,9 @@ internal class WorksitePreparedSceneOwner(
         loadingJournals[key] = result
         work.compute { snapshot(codec.decode(raw, key.first, key.second, key.third, minimum, maximum)) }
             .thenCompose { decoded -> work.callSync(token) {
-                check(cacheEpoch == epoch && Bukkit.getWorld(key.first) === world && world.isChunkLoaded(key.second, key.third) &&
-                    ((chunkRevisions[key] ?: 0L) == revision || journalCache[key] != null)) {
-                    "Prepared scene journal capture superseded"
+                if (cacheEpoch != epoch || Bukkit.getWorld(key.first) !== world || !world.isChunkLoaded(key.second, key.third) ||
+                    ((chunkRevisions[key] ?: 0L) != revision && journalCache[key] == null)) {
+                    throw CancellationException("Prepared scene journal capture superseded")
                 }
                 // An admitted owner write always publishes its newer immutable snapshot.
                 journalCache[key] ?: run { cache(chunk, decoded); journalCache.getValue(key) }
@@ -1656,7 +1695,9 @@ internal class WorksitePreparedSceneOwner(
                     loadingJournals.remove(key, result)
                     if (failure == null) result.complete(decoded)
                     else {
-                        logger.log(Level.SEVERE, "Could not decode prepared scene journal in $key", failure)
+                        var cause = failure
+                        while (cause is CompletionException && cause.cause != null) cause = cause.cause!!
+                        if (cause !is CancellationException) logger.log(Level.SEVERE, "Could not decode prepared scene journal in $key", failure)
                         result.completeExceptionally(failure)
                     }
                 }.exceptionally { result.completeExceptionally(it); null }
