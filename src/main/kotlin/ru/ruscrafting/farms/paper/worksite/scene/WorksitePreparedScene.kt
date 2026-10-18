@@ -1179,7 +1179,9 @@ internal class WorksitePreparedSceneOwner(
             if (encoded == null) chunk.persistentDataContainer.remove(journalKey)
             else chunk.persistentDataContainer.set(journalKey, PersistentDataType.BYTE_ARRAY, encoded)
             cache(chunk, remaining)
-            if (remaining.records.isEmpty()) releaseTicket(chunk)
+            if (remaining.records.isEmpty() && sceneChunkPositions.none { (scene, chunks) ->
+                scene.world == key.first && (key.second to key.third) in chunks
+            }) releaseTicket(chunk)
             true
         } }.whenComplete { applied, failure ->
             work.callSync(token) {

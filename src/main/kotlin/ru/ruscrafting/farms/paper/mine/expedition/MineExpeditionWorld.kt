@@ -79,7 +79,7 @@ internal class MineExpeditionWorld(
     blockDataDecoder: WorksitePreparedSceneBlockDataDecoder,
     private val receipts: MineExpeditionSceneRepository = MineExpeditionSceneRepository(plugin.dataFolder.toPath()),
 ) : AutoCloseable, MineExpeditionSceneLoader {
-    private class Pending(val key: Long, val startedAt: Long = System.currentTimeMillis()) {
+    internal class Pending(val key: Long, val startedAt: Long = System.currentTimeMillis()) {
         val leases = mutableListOf<AutoCloseable>()
         var nextChunk = 0
         var inFlight = 0
@@ -313,9 +313,7 @@ internal class MineExpeditionWorld(
 
     private fun schedulePreparation(receipt: MineExpeditionSceneReceipt) {
         val key = receipt.journalSequence
-        failures.remove(key)
-        val work = Pending(key)
-        if (pending.putIfAbsent(key, work) != null) return
+        val work = beginPreparation(key) ?: return
         val token = tasks.lifecycleToken()
         if (!tasks.runAsync(token) {
             val result = runCatching { MineExpeditionGenerator.plan(receipt.kind, receipt.placement.seed, receipt.placement.geometryVersion) }
@@ -325,6 +323,12 @@ internal class MineExpeditionWorld(
                     .onFailure { failure -> failPreparation(key, failure) }
             }) return@runAsync // Lifecycle invalidation owns lease cleanup on the Paper thread.
         }) failPreparation(key, IllegalStateException("Could not schedule expedition planning"))
+    }
+
+    internal fun beginPreparation(key: Long): Pending? {
+        failures.remove(key)
+        val work = Pending(key)
+        return if (pending.putIfAbsent(key, work) == null) work else null
     }
 
     private fun capturePlan(receipt: MineExpeditionSceneReceipt, plan: MineExpeditionPlan, key: Long) {
@@ -455,8 +459,7 @@ internal class MineExpeditionWorld(
             plan = { snapshot -> records(receipt, plan, snapshot) },
             complete = { result ->
                 if (pending[key] !== capturing) return@submit
-                pending.remove(key)?.leases?.forEach { lease -> runCatching(lease::close) }
-                result.fold({ records -> runCatching { install(receipt, plan, records) }
+                result.fold({ records -> runCatching { install(receipt, plan, records, capturing) }
                     .onFailure { failure -> failPreparation(key, failure) } }, { failure -> failPreparation(key, failure) })
             },
         )
@@ -627,8 +630,11 @@ internal class MineExpeditionWorld(
         )
     }.sortedWith(compareBy(WorksitePreparedSceneRecord::x, WorksitePreparedSceneRecord::y, WorksitePreparedSceneRecord::z))
 
-    private fun install(receipt: MineExpeditionSceneReceipt, plan: MineExpeditionPlan, records: List<WorksitePreparedSceneRecord>) {
-        val world = receiptWorld(receipt) ?: return
+    internal fun install(receipt: MineExpeditionSceneReceipt, plan: MineExpeditionPlan,
+        records: List<WorksitePreparedSceneRecord>, capturing: Pending) {
+        val world = checkNotNull(receiptWorld(receipt)) { "Expedition world disappeared before preparation" }
+        val key = receipt.journalSequence
+        val token = tasks.lifecycleToken()
         val surface = surfaceFor(receipt, world)
         val preparedScene = WorksitePreparedScene(
             world, receipt.journalOwner, receipt.journalSequence, receipt.sceneId, surface,
@@ -636,12 +642,23 @@ internal class MineExpeditionWorld(
             Location(world, receipt.placement.originX + plan.exit.x + 0.5, receipt.placement.originY + plan.exit.y.toDouble(), receipt.placement.originZ + plan.exit.z + 0.5),
             records,
         )
-        check(prepared.prepareIncrementally(preparedScene)) { "Could not begin expedition scene preparation" }
-        buildingSince[receipt.journalSequence] = System.currentTimeMillis()
-        scenes[receipt.journalSequence] = MineExpeditionScene(
+        val admission = prepared.prepareAllAsync(listOf(preparedScene))
+        buildingSince[key] = System.currentTimeMillis()
+        val scene = MineExpeditionScene(
             plan, receipt.placement, world, receipt.zoneId, receipt.sequence, receipt.objectiveNonce, receipt.journalSequence, surface,
             preparedScene, receipt.completedAt, receipt.reserved,
         )
+        scenes[key] = scene
+        // Preload ownership spans immutable planning, native ticket capture and journal commit.
+        admission.whenComplete { committed, failure -> tasks.callSync(token) {
+            if (!pending.remove(key, capturing)) return@callSync
+            capturing.leases.forEach { lease -> runCatching(lease::close) }
+            if (failure != null || committed != true) {
+                scenes.remove(key, scene)
+                buildingSince.remove(key)
+                failPreparation(key, failure ?: IllegalStateException("Could not commit expedition scene preparation"))
+            }
+        } }
     }
 
     private fun surfaceFor(receipt: MineExpeditionSceneReceipt, fallbackWorld: World): Location =

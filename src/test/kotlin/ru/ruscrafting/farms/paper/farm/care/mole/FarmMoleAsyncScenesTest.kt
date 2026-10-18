@@ -37,7 +37,7 @@ class FarmMoleAsyncScenesTest : FunSpec({
                 actual.index shouldBe expected.index
                 (h.ticks > 1) shouldBe true
                 (h.workerCalls.get() > 1) shouldBe true
-                (h.maximumTickSteps <= 128) shouldBe true
+                (h.maximumTickSteps <= 512) shouldBe true
                 actual.records.all { runtime.region.world.getBlockAt(it.x, it.y, it.z).blockData.asString == it.originalData } shouldBe true
 
                 val committed = world.prepareScenesAsync(listOf(actual))

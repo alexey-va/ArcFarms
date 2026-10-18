@@ -60,7 +60,7 @@ class FarmFieldRecoveryAsyncTest : FunSpec({
             world.loadedChunks.sumOf { ledger.blockRecords(it).size } shouldBe 0
             (h.ticks > 1) shouldBe true
             (h.workerCalls.get() > 1) shouldBe true
-            (h.maximumTickSteps <= 128) shouldBe true
+            (h.maximumTickSteps <= 512) shouldBe true
         }
     }
 

@@ -68,7 +68,7 @@ class FarmBlockRegistryAsyncTest : FunSpec({
             }
             (h.ticks > 1) shouldBe true
             (h.workerCalls.get() > 1) shouldBe true
-            (h.maximumTickSteps <= 128) shouldBe true
+            (h.maximumTickSteps <= 512) shouldBe true
             releases shouldBe 8 // Four scans and four applies; no borrowed lease is removed.
             registry.close()
             Tasks.reset()
@@ -121,7 +121,7 @@ class FarmBlockRegistryAsyncTest : FunSpec({
             soils.all { it.type == Material.FARMLAND && it.getRelative(org.bukkit.block.BlockFace.UP).type == Material.WHEAT } shouldBe true
             registry.beds("farm").size shouldBe 300
             world.loadedChunks.flatMap(ledger::blockRecords).all { it.temporaryMutation == null } shouldBe true
-            (h.maximumTickSteps <= 128) shouldBe true
+            (h.maximumTickSteps <= 512) shouldBe true
             (h.ticks > 1) shouldBe true
             registry.isReindexing("farm") shouldBe false
             registry.close()

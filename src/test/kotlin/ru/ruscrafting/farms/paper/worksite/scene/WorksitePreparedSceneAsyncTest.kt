@@ -7,6 +7,9 @@ import org.bukkit.Bukkit
 import org.bukkit.Location
 import org.bukkit.Material
 import org.bukkit.NamespacedKey
+import org.bukkit.Chunk
+import org.bukkit.entity.Player
+import org.bukkit.event.block.BlockBreakEvent
 import org.bukkit.persistence.PersistentDataType
 import ru.arc.core.BoundedAsyncExecutor
 import ru.arc.core.BukkitTaskScheduler
@@ -14,6 +17,21 @@ import ru.arc.paper.testing.MockBukkitTestRuntime
 import ru.ruscrafting.farms.paper.RuntimeTaskSupervisor
 import ru.ruscrafting.farms.paper.computeWorksiteTask
 import ru.ruscrafting.farms.paper.farm.care.mole.FarmMoleBurrowWorksiteSceneCodec
+import ru.ruscrafting.farms.paper.mine.expedition.MineExpeditionWorld
+import ru.ruscrafting.farms.paper.mine.expedition.MineExpeditionWorldRegistry
+import ru.ruscrafting.farms.paper.mine.index.MineChunkTicket
+import ru.ruscrafting.farms.domain.ActivityKind
+import ru.ruscrafting.farms.domain.EngineResult
+import ru.ruscrafting.farms.domain.mine.expedition.ExpeditionBounds
+import ru.ruscrafting.farms.domain.mine.expedition.ExpeditionPoint
+import ru.ruscrafting.farms.domain.mine.expedition.MineExpeditionKind
+import ru.ruscrafting.farms.domain.mine.expedition.MineExpeditionPlan
+import ru.ruscrafting.farms.domain.mine.expedition.MineExpeditionPlacement
+import ru.ruscrafting.farms.persistence.MineExpeditionLedgerStorage
+import ru.ruscrafting.farms.persistence.MineExpeditionSceneLedger
+import ru.ruscrafting.farms.persistence.MineExpeditionSceneReceipt
+import ru.ruscrafting.farms.persistence.MineExpeditionSceneRepository
+import ru.ruscrafting.farms.paper.worksite.WorksiteStatePort
 import ru.ruscrafting.farms.paper.worksite.WorksiteTaskPort
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.CompletionException
@@ -21,6 +39,7 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.RejectedExecutionException
 import java.util.Collections
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.logging.Level
 
 class WorksitePreparedSceneAsyncTest : FunSpec({
     test("large scenes encode on worker and apply and restore within the shared native tick budget") {
@@ -244,6 +263,96 @@ class WorksitePreparedSceneAsyncTest : FunSpec({
             (h.world.getChunkAt(0, 0).persistentDataContainer.get(h.key, PersistentDataType.BYTE_ARRAY) != null) shouldBe true
         }
     }
+
+    test("expedition preload ownership survives delayed preparation until the scene retains its chunks") {
+        SceneHarness().use { h ->
+            val (expedition, receipt, plan) = h.expedition()
+            val pending = requireNotNull(expedition.beginPreparation(receipt.journalSequence))
+            val releases = AtomicInteger()
+            pending.leases += h.preloadLease { releases.incrementAndGet() }
+            val blocker = CompletableFuture<Unit>()
+            h.computeGate = blocker
+            expedition.install(receipt, plan, h.scene(1).records.map { it.copy(sceneId = receipt.sceneId) }, pending)
+            h.until { h.pendingComputations.get() > 0 }
+            releases.get() shouldBe 0
+            h.ticketCount(0, 0) shouldBe 1
+            (expedition.prepared(receipt.journalSequence) != null) shouldBe true
+
+            blocker.complete(Unit)
+            h.until { releases.get() == 1 }
+            h.ticketCount(0, 0) shouldBe 1
+            h.until { expedition.prepared(receipt.journalSequence)?.ready == true }
+            releases.get() shouldBe 1
+        }
+    }
+
+    test("failed asynchronous expedition admission removes only its installed scene and releases preload once") {
+        SceneHarness().use { h ->
+            val (expedition, receipt, plan) = h.expedition()
+            val pending = requireNotNull(expedition.beginPreparation(receipt.journalSequence))
+            val releases = AtomicInteger()
+            pending.leases += h.preloadLease { releases.incrementAndGet() }
+            h.failNextCapture = IllegalStateException("Native admission unavailable")
+            expedition.install(receipt, plan, h.scene(1).records.map { it.copy(sceneId = receipt.sceneId) }, pending)
+
+            h.until { expedition.failure(receipt.journalSequence) != null }
+            expedition.prepared(receipt.journalSequence) shouldBe null
+            releases.get() shouldBe 1
+            (expedition.beginPreparation(receipt.journalSequence) != null) shouldBe true
+            expedition.beforeReload()
+            releases.get() shouldBe 1
+        }
+    }
+
+    test("reload closes delayed expedition preload once and its stale completion cannot publish") {
+        SceneHarness().use { h ->
+            val (expedition, receipt, plan) = h.expedition()
+            val pending = requireNotNull(expedition.beginPreparation(receipt.journalSequence))
+            val releases = AtomicInteger()
+            pending.leases += h.preloadLease { releases.incrementAndGet() }
+            h.computeGate = CompletableFuture()
+            expedition.install(receipt, plan, h.scene(1).records.map { it.copy(sceneId = receipt.sceneId) }, pending)
+            h.until { h.pendingComputations.get() > 0 }
+            expedition.beforeReload()
+            releases.get() shouldBe 1
+            h.computeGate?.complete(Unit)
+            h.until { h.pendingComputations.get() == 0 }
+            repeat(3) { h.tick() }
+            expedition.prepared(receipt.journalSequence) shouldBe null
+            releases.get() shouldBe 1
+        }
+    }
+
+    test("retiring an empty journal keeps the chunk ticket needed by another scene preparation") {
+        SceneHarness().use { h ->
+            val old = h.scene(1)
+            h.owner.prepareIncrementally(old) shouldBe true
+            h.until { old.ready }
+            h.owner.reconcileLoaded({ _, _ -> true }, maintenance = true)
+            val captures = h.captureSubmissions
+            h.owner.beginRestore(h.world, old.zoneId, old.sequence)
+            h.until { h.captureSubmissions > captures && h.pendingComputations.get() == 0 }
+
+            h.world.getBlockAt(1, 64, 0).type = Material.STONE
+            val replacement = old.copy(zoneId = "new_zone", sequence = 2,
+                records = listOf(old.records.single().copy(zoneId = "new_zone", sequence = 2, x = 1)))
+            val blocker = CompletableFuture<Unit>()
+            h.blockNextCapture = blocker
+            val admission = h.owner.prepareAllAsync(listOf(replacement))
+            h.until(processOwner = false) { h.blockNextCapture == null }
+            h.until { h.world.getChunkAt(0, 0).persistentDataContainer.get(h.key, PersistentDataType.BYTE_ARRAY) == null }
+            admission.isDone shouldBe false
+            h.ticketCount(0, 0) shouldBe 1
+
+            blocker.complete(Unit)
+            h.until { admission.isDone && replacement.ready }
+            admission.join() shouldBe true
+            h.ticketCount(0, 0) shouldBe 1
+            h.owner.beginRestore(h.world, replacement.zoneId, replacement.sequence)
+            h.until { !h.owner.restoring(replacement.zoneId) }
+            h.ticketCount(0, 0) shouldBe 0
+        }
+    }
 })
 
 private const val NATIVE_STEP_BUDGET = 512
@@ -265,10 +374,28 @@ private class SceneHarness(workerCapacity: Int = 256) : AutoCloseable {
     private val nextOperation = AtomicInteger()
     var computeGate: CompletableFuture<Unit>? = null
     var failNextCapture: Throwable? = null
+    var blockNextCapture: CompletableFuture<Unit>? = null
     var captureSubmissions = 0
     private var nativeCalls = 0
     var maxNativeCallsPerTick = 0
     var nativeTicks = 0
+    private val retained = mutableMapOf<Pair<Int, Int>, Int>()
+    private val expeditions = mutableListOf<MineExpeditionWorld>()
+    private val tickets = object : MineChunkTicket {
+        override fun retain(chunk: Chunk): Boolean {
+            check(Thread.currentThread() === nativeThread)
+            val key = chunk.x to chunk.z
+            retained[key] = (retained[key] ?: 0) + 1
+            return true
+        }
+        override fun release(chunk: Chunk) {
+            check(Thread.currentThread() === nativeThread)
+            val key = chunk.x to chunk.z
+            val count = requireNotNull(retained[key]) - 1
+            check(count >= 0)
+            if (count == 0) retained.remove(key) else retained[key] = count
+        }
+    }
     private val tasks = object : WorksiteTaskPort {
         override fun guarded(scope: String, task: () -> Unit) = task()
         override fun lifecycleToken() = supervisor.token()
@@ -279,7 +406,9 @@ private class SceneHarness(workerCapacity: Int = 256) : AutoCloseable {
                 failNextCapture = null
                 return CompletableFuture.failedFuture(failure)
             }
-            return supervisor.capture(token, isCurrent, step)
+            val gate = blockNextCapture
+            blockNextCapture = null
+            return supervisor.capture(token, isCurrent) { if (gate != null && !gate.isDone) false else step() }
         }
         override fun <T> callSync(token: RuntimeTaskSupervisor.Token, task: () -> T) = supervisor.callSync(token, task)
         override fun <T> compute(task: () -> T): CompletableFuture<T> {
@@ -315,7 +444,7 @@ private class SceneHarness(workerCapacity: Int = 256) : AutoCloseable {
                 return realCodec.decode(raw, world, chunkX, chunkZ, minHeight, maxHeight)
             }
         },
-        chunkRetention = { check(Thread.currentThread() === nativeThread); AutoCloseable {} },
+        chunkRetention = { tickets.retain(it); AutoCloseable { tickets.release(it) } },
         blockDataDecoder = {
             check(Thread.currentThread() === nativeThread)
             nativeCalls++
@@ -351,26 +480,66 @@ private class SceneHarness(workerCapacity: Int = 256) : AutoCloseable {
 
     fun stopRuntime() = supervisor.close()
 
-    fun tick(beforeTick: () -> Unit = {}) {
+    fun ticketCount(x: Int, z: Int) = retained[x to z] ?: 0
+
+    fun preloadLease(released: () -> Unit): AutoCloseable {
+        val chunk = world.getChunkAt(0, 0)
+        tickets.retain(chunk)
+        return AutoCloseable { tickets.release(chunk); released() }
+    }
+
+    fun expedition(): Triple<MineExpeditionWorld, MineExpeditionSceneReceipt, MineExpeditionPlan> {
+        val repository = MineExpeditionSceneRepository(object : MineExpeditionLedgerStorage {
+            override fun load() = CompletableFuture.completedFuture(MineExpeditionSceneLedger())
+            override fun save(ledger: MineExpeditionSceneLedger) = CompletableFuture.completedFuture(Unit)
+            override fun shutdown() = Unit
+        })
+        val state = object : WorksiteStatePort {
+            override fun traceBlockBreak(event: BlockBreakEvent, activity: ActivityKind, zone: String) = Unit
+            override fun tracePlayerAction(player: Player, activity: ActivityKind, zone: String, action: String, block: Material?) = Unit
+            override fun traceResult(activity: ActivityKind, zone: String, actor: Player?, phase: Any, progress: String?, result: EngineResult<*, *>) = Unit
+            override fun persistAsync() = CompletableFuture.completedFuture(Unit)
+            override fun log(level: Level, message: String, failure: Throwable?) = Unit
+        }
+        val expedition = MineExpeditionWorld(plugin, object : MineExpeditionWorldRegistry {
+            override fun ensureWorld() = world
+        }, tasks, state, tickets, { Bukkit.createBlockData(it) }, repository)
+        expedition.initialize(prewarm = false, maintenance = true)
+        expeditions += expedition
+        val point = ExpeditionPoint(0, 0, 0)
+        val plan = MineExpeditionPlan(MineExpeditionKind.LAST_DESCENT, 1, ExpeditionBounds(point, point),
+            mapOf(point to "minecraft:air"), mapOf("entry" to point, "exit" to point), emptyMap(), emptyList())
+        val receipt = MineExpeditionSceneReceipt("mine_zone", 1, 1, 1, plan.kind,
+            MineExpeditionPlacement(world.name, 0, 64, 0, 1), world.name, 0.5, 65.0, 0.5, reserved = true)
+        repository.commit(receipt).join()
+        return Triple(expedition, receipt, plan)
+    }
+
+    fun tick(beforeTick: () -> Unit = {}, processOwner: Boolean = true) {
         nativeCalls = 0
         beforeTick()
-        owner.process(NATIVE_STEP_BUDGET * 2) { true }
+        if (processOwner) {
+            owner.process(NATIVE_STEP_BUDGET * 2) { true }
+            expeditions.forEach { it.process() }
+        }
         paper.performTicks(1)
         maxNativeCallsPerTick = maxOf(maxNativeCallsPerTick, nativeCalls)
         if (nativeCalls > 0) nativeTicks++
         Thread.sleep(2)
     }
 
-    fun until(beforeTick: () -> Unit = {}, done: () -> Boolean) {
+    fun until(beforeTick: () -> Unit = {}, processOwner: Boolean = true, done: () -> Boolean) {
         val deadline = System.nanoTime() + 10_000_000_000L
         while (!done()) {
             check(System.nanoTime() < deadline) { "Scene did not finish its bounded queue" }
-            tick(beforeTick)
+            tick(beforeTick, processOwner)
         }
     }
 
     override fun close() {
         computeGate?.complete(Unit)
+        blockNextCapture?.complete(Unit)
+        expeditions.forEach { it.close() }
         owner.clearQueues()
         supervisor.close()
         worker.closeAsync().join()

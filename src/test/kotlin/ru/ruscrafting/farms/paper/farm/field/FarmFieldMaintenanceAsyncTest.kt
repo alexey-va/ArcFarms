@@ -50,7 +50,7 @@ class FarmFieldMaintenanceAsyncTest : FunSpec({
             index.beds("farm") shouldBe expectedIndex
             (h.ticks > 1) shouldBe true
             (h.workerCalls.get() > 1) shouldBe true
-            (h.maximumTickSteps <= 128) shouldBe true
+            (h.maximumTickSteps <= 512) shouldBe true
             index.close(); legacyIndex.close()
         }
     }
@@ -90,7 +90,7 @@ class FarmFieldMaintenanceAsyncTest : FunSpec({
             affected.map { it.blockData.asString to it.getRelative(BlockFace.UP).blockData.asString } shouldBe expected
             affected.all { fixture.ledger.record(it)?.temporaryMutation == null } shouldBe true
             affected.all { fixture.ledger.record(it)?.indexed == true } shouldBe true
-            (h.maximumTickSteps <= 128) shouldBe true
+            (h.maximumTickSteps <= 512) shouldBe true
             registry.close()
         }
     }

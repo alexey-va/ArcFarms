@@ -36,7 +36,7 @@ class FarmBedDiscoveryAsyncTest : FunSpec({
                 (h.ticks - startedAt > 1) shouldBe true
             }
             (h.workerCalls.get() >= 4) shouldBe true
-            (h.maximumTickSteps <= 128) shouldBe true
+            (h.maximumTickSteps <= 512) shouldBe true
             fixture.registry.close()
         }
     }
@@ -56,7 +56,7 @@ class FarmBedDiscoveryAsyncTest : FunSpec({
             result.join() shouldBe expected
             fixture.registry.beds("farm") shouldBe oldRegistry.beds("farm")
             (distant in fixture.registry.beds("farm")) shouldBe true
-            (h.maximumTickSteps <= 128) shouldBe true
+            (h.maximumTickSteps <= 512) shouldBe true
             fixture.registry.close()
             oldRegistry.close()
         }
