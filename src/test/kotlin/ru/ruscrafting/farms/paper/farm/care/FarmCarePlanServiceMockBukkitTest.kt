@@ -14,6 +14,7 @@ import ru.ruscrafting.farms.domain.FarmCareType
 import ru.ruscrafting.farms.domain.FarmDeliveryPosition
 import ru.ruscrafting.farms.domain.FarmLocationOverrides
 import ru.ruscrafting.farms.domain.FarmPhase
+import ru.ruscrafting.farms.domain.FarmOrder
 import ru.ruscrafting.farms.domain.FarmPlotPosition
 import ru.ruscrafting.farms.domain.FarmPointKind
 import ru.ruscrafting.farms.domain.FarmPointPosition
@@ -27,10 +28,58 @@ import ru.ruscrafting.farms.paper.FarmRuntime
 import ru.ruscrafting.farms.paper.farm.FarmPointProvider
 import ru.ruscrafting.farms.paper.farm.care.mole.FarmMoleBurrowWorld
 import ru.ruscrafting.farms.paper.farm.placement.FarmPlacementService
+import ru.ruscrafting.farms.paper.fixtures.FarmAsyncHarness
 import java.util.random.RandomGenerator
 import kotlin.math.abs
 
 class FarmCarePlanServiceMockBukkitTest : FunSpec({
+    test("apple harvest uses orchard leaves when the crop patch is covered by their canopy") {
+        FarmAsyncHarness("OrchardCanopyTest").use { h ->
+            val world = h.paper.server.addSimpleWorld("sp11")
+            world.getChunkAt(0, 0).load()
+            val bed = FarmPlotPosition(world.name, 4, 64, 4)
+            world.getBlockAt(bed.x, bed.y, bed.z).type = Material.FARMLAND
+            val leaves = listOf(4, 8, 12).mapTo(linkedSetOf()) { x ->
+                world.getBlockAt(x, 68, 4).type = Material.OAK_LEAVES
+                FarmPlotPosition(world.name, x, 68, 4)
+            }
+            val settings = mockk<FarmZoneSettings> {
+                every { id } returns "communal_farm"
+                every { careTargetsPerPlayer } returns 3
+                every { careTargetsMax } returns 6
+                every { appleTargetCount } returns 3
+                every { applePlacementCount } returns 10
+                every { appleMinSpacing } returns 2.0
+            }
+            val order = mockk<FarmOrder> {
+                every { careTypes } returns listOf(FarmCareType.APPLE_HARVEST)
+            }
+            val runtime = FarmRuntime(settings,
+                CuboidActivityRegion(world, "farm", CuboidBounds(0, 60, 0, 16, 80, 16)),
+                mapOf("orchard" to order), listOf(order), FarmRules(listOf(50), 1, 1_000),
+                FarmShiftState(phase = FarmPhase.HARVESTING, orderId = "orchard", preparationPatch = listOf(bed)),
+            )
+            val service = FarmCarePlanService(
+                debug = ArcFarmsDebug({ false }) {},
+                registry = mockk<FarmBlockRegistry> {
+                    every { beds("communal_farm") } returns setOf(bed)
+                    every { orchardLeaves("communal_farm") } returns leaves
+                },
+                placement = mockk<FarmPlacementService>(relaxed = true),
+                points = FarmPointProvider { _, _ -> error("No crop-bed fixture needed for apples") },
+                overrides = { FarmLocationOverrides() }, random = java.util.Random(41L),
+                moleBurrow = mockk<FarmMoleBurrowWorld>(relaxed = true), participantCount = { 1 },
+                log = { _, _ -> }, tasks = h.tasks,
+            )
+
+            service.targets(runtime, FarmCareType.APPLE_HARVEST, null)?.size shouldBe 3
+            val planned = service.selectAsync(runtime, FarmCareType.APPLE_HARVEST, null)
+            h.until { planned.isDone }
+            planned.join()?.targets?.size shouldBe 3
+            planned.join()?.goal shouldBe 3
+        }
+    }
+
     test("barn return and ditch rescue remain separate animal activities") {
         val paper = MockBukkitTestRuntime.open()
         try {

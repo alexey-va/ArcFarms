@@ -387,22 +387,19 @@ internal class FarmSpecialIncidentController(
     fun handleInventoryDrag(event: InventoryDragEvent): Boolean = marketMenu.handleDrag(event)
 
     fun openMarket(player: Player, runtime: FarmRuntime, special: FarmSpecialIncidentState) {
+        menus.beginFlow(player)
+        showMarket(player, runtime, special)
+    }
+
+    private fun showMarket(player: Player, runtime: FarmRuntime, special: FarmSpecialIncidentState) {
         val crop = MaterialRules.material(requireNotNull(special.crop))
         if (special.marketAccepted) marketMenu.openActive(
-            player,
-            runtime.settings.id,
-            runtime.state.sequence,
-            crop,
-            runtime.state.incidentProgress,
-            runtime.state.incidentRequired,
+            player, runtime.settings.id, runtime.state.sequence, crop,
+            runtime.state.incidentProgress, runtime.state.incidentRequired,
             runtime.settings.specialIncidents.marketMoneyBonusPercent,
             marketTime(runtime, special),
         ) else marketMenu.openPending(
-            player,
-            runtime.settings.id,
-            runtime.state.sequence,
-            crop,
-            runtime.state.incidentRequired,
+            player, runtime.settings.id, runtime.state.sequence, crop, runtime.state.incidentRequired,
             runtime.settings.specialIncidents.marketMoneyBonusPercent,
             marketTime(runtime, special),
         )
@@ -428,7 +425,7 @@ internal class FarmSpecialIncidentController(
             player.closeInventory()
             return
         }
-        openMarket(player, runtime, special)
+        showMarket(player, runtime, special)
     }
 
     fun marketValues(runtime: FarmRuntime, special: FarmSpecialIncidentState, audience: Player?): Map<String, Component> {

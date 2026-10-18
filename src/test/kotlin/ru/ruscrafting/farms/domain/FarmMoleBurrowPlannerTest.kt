@@ -3,6 +3,7 @@ package ru.ruscrafting.farms.domain
 import ru.ruscrafting.farms.domain.worksite.WorksiteDeterministicSeed
 
 import io.kotest.core.spec.style.FunSpec
+import io.kotest.assertions.withClue
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.ints.shouldBeGreaterThan
 import io.kotest.matchers.shouldBe
@@ -92,6 +93,27 @@ class FarmMoleBurrowPlannerTest : FunSpec({
         (first.size < 2_500) shouldBe true
     }
 
+    test("decorative wall niches keep a cave sealed even when the surrounding world is air") {
+        for (width in 1..3) for (height in 2..4) {
+            val layout = FarmMoleBurrowPlanner.widen(
+                FarmMoleBurrowPlanner.plan(cells = 8, seed = 91L, lightSpacing = 5), width,
+            )
+            val open = buildSet {
+                addAll(layout.passages)
+                layout.chambers.forEach { center ->
+                    for (dx in -1..1) for (dz in -1..1) add(FarmMolePassage(center.x + dx, center.z + dz))
+                }
+                for (dx in -2..2) for (dz in -2..2) add(FarmMolePassage(layout.lair.x + dx, layout.lair.z + dz))
+            }
+            val decorations = FarmMoleBurrowDecorationPlanner.plan(
+                open, layout.start, layout.lair, layout.chambers, height, seed = 91L, accentPercent = 28,
+            )
+            withClue("corridor width=$width, height=$height: ") {
+                reachesOutsideCave(decorations, layout.start) shouldBe false
+            }
+        }
+    }
+
 
     test("mole entrances prefer the indexed field interior and adapt to narrow fields") {
         val square = buildList {
@@ -172,4 +194,26 @@ private fun reachable(passages: Set<FarmMolePassage>, start: FarmMolePassage): S
         }
     }
     return found
+}
+
+/** Full blocks seal the cave; plants, carpet and pointed dripstone cannot seal an exposed wall. */
+private fun reachesOutsideCave(decorations: List<FarmMoleDecoration>, start: FarmMolePassage): Boolean {
+    val nonFull = setOf("BROWN_MUSHROOM", "RED_MUSHROOM", "POINTED_DRIPSTONE", "MOSS_CARPET", "HANGING_ROOTS", "SPORE_BLOSSOM")
+    val solid = decorations.filterNot { it.material in nonFull }
+        .mapTo(hashSetOf()) { Triple(it.position.x, it.yOffset, it.position.z) }
+    val xBounds = solid.minOf { it.first }..solid.maxOf { it.first }
+    val yBounds = solid.minOf { it.second }..solid.maxOf { it.second }
+    val zBounds = solid.minOf { it.third }..solid.maxOf { it.third }
+    val origin = Triple(start.x, 0, start.z)
+    val visited = hashSetOf(origin)
+    val queue = ArrayDeque<Triple<Int, Int, Int>>().also { it.add(origin) }
+    while (queue.isNotEmpty()) {
+        val (x, y, z) = queue.removeFirst()
+        if (x !in xBounds || y !in yBounds || z !in zBounds) return true
+        listOf(Triple(x + 1, y, z), Triple(x - 1, y, z), Triple(x, y + 1, z),
+            Triple(x, y - 1, z), Triple(x, y, z + 1), Triple(x, y, z - 1)).forEach { next ->
+            if (next !in solid && visited.add(next)) queue.addLast(next)
+        }
+    }
+    return false
 }

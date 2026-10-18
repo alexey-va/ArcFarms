@@ -73,6 +73,25 @@ class FarmPatchAutoFinisherAsyncTest : FunSpec({
             owner.isPending("farm") shouldBe false
         }
     }
+
+    test("an unloaded chunk keeps whole-patch completion pending until its repair succeeds") {
+        FarmAsyncHarness("AutoFinishUnloaded").use { h ->
+            val fixture = autoFinishFixture(h, "actual", "recorded")
+            val world = fixture.runtime.region.world
+            world.unloadChunk(1, 0, true) shouldBe true
+            val owner = FarmPatchAutoFinisher(fixture.ledger, mockk(relaxed = true), h.tasks)
+            val first = owner.processAsync(fixture.runtime, 300)
+            h.until { first.isDone }
+            first.join() shouldBe 256
+            owner.hasPending(fixture.runtime) shouldBe true
+
+            world.getChunkAt(1, 0).load()
+            val retry = owner.processAsync(fixture.runtime, 300)
+            h.until { retry.isDone }
+            retry.join() shouldBe 44
+            owner.hasPending(fixture.runtime) shouldBe false
+        }
+    }
 })
 
 private data class AutoFinishFixture(val runtime: FarmRuntime, val ledger: FarmBlockLedger)

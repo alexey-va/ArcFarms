@@ -16,6 +16,7 @@ import org.bukkit.entity.Entity
 import org.bukkit.entity.EntityType
 import org.bukkit.entity.Monster
 import org.bukkit.entity.Player
+import org.bukkit.entity.Zombie
 import org.bukkit.event.entity.EntityDamageByEntityEvent
 import org.bukkit.inventory.ItemStack
 import org.bukkit.persistence.PersistentDataType
@@ -393,6 +394,7 @@ internal class FarmNightShiftController(
         settings: FarmSpecialIncidentSettings,
     ): Monster? {
         val entity = anchor.world.spawnEntity(anchor, EntityType.valueOf(settings.nightPatrolEntity)) as? Monster ?: return null
+        if (entity is Zombie) entity.setAdult()
         entity.isPersistent = false
         entity.removeWhenFarAway = false
         entity.setDespawnInPeacefulOverride(TriState.FALSE)

@@ -7,7 +7,7 @@ plugins {
     jacoco
 }
 group = "ru.ruscrafting"
-version = "0.45.40"
+version = "0.45.41"
 description = "Shared farm, lumbermill, and mine activities for RusCrafting"
 
 val integrationTestSourceSet = sourceSets.create("integrationTest") {
@@ -39,6 +39,7 @@ dependencies {
     implementation("ru.ruscrafting.arc:arc-core-paper-menu:$arcCoreVersion")
     implementation("ru.ruscrafting.arc:arc-core-redis:$arcCoreVersion")
     compileOnly("ru.ruscrafting.arc:arc-core-paper-api:$arcCoreVersion")
+    compileOnly("ru.ruscrafting.arc:arc-dungeons-api:0.1.1")
     implementation("com.google.code.gson:gson:2.11.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
     implementation("org.jetbrains.kotlinx:kotlinx-collections-immutable-jvm:0.4.0")
@@ -60,6 +61,7 @@ dependencies {
     testImplementation("io.mockk:mockk:1.14.7")
     testImplementation("ru.ruscrafting.arc:arc-core-paper-testing:$arcCoreVersion")
     testImplementation("ru.ruscrafting.arc:arc-core-paper-api:$arcCoreVersion")
+    testImplementation("ru.ruscrafting.arc:arc-dungeons-api:0.1.1")
     testRuntimeOnly("me.clip:placeholderapi:2.12.3")
     testRuntimeOnly("com.github.retrooper:packetevents-spigot:2.12.1") {
         exclude(group = "io.netty")

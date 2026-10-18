@@ -14,6 +14,51 @@ import ru.ruscrafting.farms.paper.fixtures.FarmAsyncHarness
 import java.util.concurrent.CompletableFuture
 
 class FarmBlockRegistryAsyncTest : FunSpec({
+    listOf(false, true).forEach { async ->
+        test("${if (async) "async" else "sync"} chunk reconciliation recovers unindexed raid journals outside the home region only") {
+            FarmAsyncHarness("FarmRaidOrphanRecovery").use { h ->
+                val world = h.paper.server.addSimpleWorld("raid_orphans")
+                val home = world.getBlockAt(8, 64, 8).also { it.type = Material.DIRT_PATH }
+                val enemy = world.getBlockAt(42, 64, 42).also { it.type = Material.FARMLAND }
+                home.getRelative(org.bukkit.block.BlockFace.UP).type = Material.AIR
+                enemy.getRelative(org.bukkit.block.BlockFace.UP).type = Material.CARROTS
+                val originals = listOf(home, enemy).associateWith {
+                    it.blockData.asString to it.getRelative(org.bukkit.block.BlockFace.UP).blockData.asString
+                }
+                val saved = FarmBlockLedger(h.plugin)
+                saved.beginTemporaryRemoval(listOf(home, enemy), "farm", "raid:farm:7", 100L)
+                val foreign = world.getBlockAt(9, 64, 8).also { it.type = Material.FARMLAND }
+                val otherZone = world.getBlockAt(10, 64, 8).also { it.type = Material.FARMLAND }
+                saved.beginTemporaryRemoval(listOf(foreign), "farm", "tornado:farm:7", 100L)
+                saved.beginTemporaryRemoval(listOf(otherZone), "other", "raid:other:7", 100L)
+                listOf(home, enemy, foreign, otherZone).forEach {
+                    it.chunk.load()
+                    it.type = Material.COARSE_DIRT
+                    it.getRelative(org.bukkit.block.BlockFace.UP).type = Material.FIRE
+                }
+                val ledger = FarmBlockLedger(h.plugin)
+                val registry = FarmBlockRegistry(h.plugin, ledger, tasks = h.tasks.takeIf { async })
+
+                if (async) {
+                    val futures = world.loadedChunks.map { registry.reconcileChunkAsync(definition(world, 15), it) }
+                    h.until { futures.all { it.isDone } }
+                    futures.forEach { it.join() }
+                } else world.loadedChunks.forEach { registry.reconcileChunk(definition(world, 15), it) }
+
+                originals.forEach { (soil, original) ->
+                    (soil.blockData.asString to soil.getRelative(org.bukkit.block.BlockFace.UP).blockData.asString) shouldBe original
+                    ledger.record(soil) shouldBe null
+                }
+                registry.beds("farm") shouldBe emptySet()
+                foreign.type shouldBe Material.COARSE_DIRT
+                ledger.record(foreign)?.temporaryMutation shouldBe "tornado:farm:7"
+                otherZone.type shouldBe Material.COARSE_DIRT
+                ledger.record(otherZone)?.temporaryMutation shouldBe "raid:other:7"
+                registry.close()
+            }
+        }
+    }
+
     test("worker snapshot scan and bounded apply preserve the exact legacy topology and chunk journal") {
         FarmAsyncHarness("FarmIndexAsync").use { h ->
             val world = h.paper.server.addSimpleWorld("farm_index")

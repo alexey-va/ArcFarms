@@ -469,7 +469,7 @@ class ArcFarmsConfigTest : FunSpec({
         settings.farms.single().moleBurrow.decorationPercent shouldBe 28
         settings.farms.single().moleBurrow.lairVisual.material shouldBe "MUD"
         settings.farms.single().proceduralCareFixtures shouldBe true
-        settings.farms.single().careAnimalEntities shouldContainExactly listOf("CHICKEN", "SHEEP")
+        settings.farms.single().careAnimalEntities shouldContainExactly listOf("SHEEP")
         settings.farms.single().music.enabled shouldBe false
         settings.farms.single().contractCartVisual.material shouldBe "MINECART"
         settings.farms.single().contractCartVisual.customModelData shouldBe 0

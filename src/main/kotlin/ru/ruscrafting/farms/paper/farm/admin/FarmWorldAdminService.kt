@@ -1,5 +1,7 @@
 package ru.ruscrafting.farms.paper.farm.admin
 
+import ru.ruscrafting.farms.domain.FarmCareType
+
 import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.JoinConfiguration
 import org.bukkit.Bukkit
@@ -367,6 +369,12 @@ internal class FarmWorldAdminService(
         }
         val previous = runtime.state
         val removal = FarmAdminEdit.removePlots(previous, selected, runtime.settings.fieldCompletionPercent)
+        if (previous.careType == FarmCareType.DITCH_RESCUE &&
+            (removal.shiftRetired || removal.state.careTargets != previous.careTargets) &&
+            !care.clear(runtime, "admin_worldedit_unmanage")) {
+            port.sendChat(player, MessageKey.GENERIC_ERROR)
+            return false
+        }
         runtime.state = removal.state
         if (removal.shiftRetired) enterprise.orderCancelled(runtime.settings.id, previous.sequence)
         persistAsync()

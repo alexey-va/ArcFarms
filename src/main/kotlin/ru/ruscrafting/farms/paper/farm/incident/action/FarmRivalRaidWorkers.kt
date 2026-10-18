@@ -166,6 +166,7 @@ internal class FarmRivalRaidWorkers(
         val indexed = if (runtime.region.contains(Location(world, rival.x, rival.y, rival.z))) {
             beds.discover(runtime).asSequence()
                 .filter { it.world == rival.world && it.horizontalDistanceSquared(rival) <= radiusSquared }
+                .filter { isCombatLocation(runtime, Location(world, it.x + 0.5, it.y.toDouble(), it.z + 0.5), rival) }
                 .filter { eligiblePlot(runtime, world, it) }
                 .toList()
         } else emptyList()
@@ -180,6 +181,7 @@ internal class FarmRivalRaidWorkers(
                         if (!loaded) continue
                         val highestY = world.getHighestBlockYAt(x, z, HeightMap.MOTION_BLOCKING)
                         val soil = world.getBlockAt(x, highestY, z)
+                        if (!isCombatLocation(runtime, soil.location.toCenterLocation(), rival)) continue
                         val crop = soil.getRelative(org.bukkit.block.BlockFace.UP)
                         val head = crop.getRelative(org.bukkit.block.BlockFace.UP)
                         if (FarmRivalFieldPolicy.isEligible(
@@ -199,6 +201,7 @@ internal class FarmRivalRaidWorkers(
 
     /** Discovers the actual local crop patch at impact time instead of relying on the sparse worker sample. */
     fun blastPlots(runtime: FarmRuntime, center: Location, radius: Double, limit: Int): List<FarmPlotPosition> {
+        if (!isCombatLocation(runtime, center)) return emptyList()
         val radiusBlocks = ceil(radius).toInt()
         val radiusSquared = radius * radius
         val candidates = buildList {
@@ -209,6 +212,7 @@ internal class FarmRivalRaidWorkers(
                     if (dx * dx + dz * dz > radiusSquared || !center.world.isChunkLoaded(x shr 4, z shr 4)) continue
                     val highestY = center.world.getHighestBlockYAt(x, z, HeightMap.MOTION_BLOCKING)
                     val plot = FarmPlotPosition(center.world.name, x, highestY, z)
+                    if (!isCombatLocation(runtime, Location(center.world, x + 0.5, highestY.toDouble(), z + 0.5))) continue
                     if (eligiblePlot(runtime, center.world, plot)) add(plot)
                 }
             }
@@ -219,6 +223,21 @@ internal class FarmRivalRaidWorkers(
             radius,
             limit,
         )
+    }
+
+    fun isCombatLocation(
+        runtime: FarmRuntime,
+        location: Location,
+        rival: FarmPointPosition? = runtime.state.specialIncident?.points?.getOrNull(1),
+    ): Boolean {
+        if (rival == null || location.world.name != rival.world) return false
+        val homeColumn = location.clone().apply {
+            y = y.coerceIn(runtime.region.bounds.minY.toDouble(), runtime.region.bounds.maxY.toDouble())
+        }
+        if (runtime.region.contains(homeColumn)) return false
+        val dx = location.x - rival.x
+        val dz = location.z - rival.z
+        return dx * dx + dz * dz <= runtime.settings.rivalRaid.workerRadius * runtime.settings.rivalRaid.workerRadius
     }
 
     fun ids(zoneId: String): Set<UUID> = swarms[zoneId]?.workerIds?.toSet().orEmpty()

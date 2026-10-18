@@ -1,5 +1,7 @@
 package ru.ruscrafting.farms.paper.farm
 
+import ru.ruscrafting.farms.domain.FarmCareType
+
 import ru.ruscrafting.farms.paper.farm.incident.greenhouse.FarmHellGreenhouseIncident
 
 import io.papermc.paper.event.entity.EntityLoadCrossbowEvent
@@ -304,8 +306,9 @@ internal class FarmEventRouter(
         return from != null || to != null || routeRuntime != null
     }
 
-    fun retainOnTeleport(player: Player): Boolean =
-        greenhouse.retains(player) || foodDelivery.participantRuntime(player, runtimes()) != null || actionIncidents.participantRuntime(player) != null
+    fun retainOnTeleport(player: Player, destination: org.bukkit.Location): Boolean =
+        care.isAuthorizedTeleport(player, destination) || greenhouse.retains(player) ||
+            foodDelivery.participantRuntime(player, runtimes()) != null || actionIncidents.participantRuntime(player) != null
 
     fun onQuit(player: Player, releaseReason: WorksitePlayerReleaseReason = WorksitePlayerReleaseReason.QUIT) {
         val reason = "worksite_${releaseReason.name.lowercase()}"
@@ -664,6 +667,9 @@ internal class FarmEventRouter(
         val position = soil.toFarmPlotPosition()
         val previous = runtime.state
         val removal = FarmAdminEdit.removePlot(previous, position, runtime.settings.fieldCompletionPercent)
+        if (previous.careType == FarmCareType.DITCH_RESCUE &&
+            (removal.shiftRetired || removal.state.careTargets != previous.careTargets) &&
+            !care.clear(runtime, "admin_plot_removed")) return
         runtime.state = removal.state
         if (removal.shiftRetired) enterprise.orderCancelled(runtime.settings.id, previous.sequence)
         persistAsync()

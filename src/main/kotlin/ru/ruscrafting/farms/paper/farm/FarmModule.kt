@@ -205,14 +205,16 @@ internal class FarmModule(
         runtimes.forEach { runtime ->
             if (shiftStart.isPending(runtime.settings.id)) return@forEach
             if (field.isPending(runtime)) return@forEach
-            if (!hasRestoreWork(runtime)) return@forEach
             if (hasEditor && isAdminEditing(runtime)) return@forEach
+            if (field.resumeSeederAfterRecovery(runtime)) return@forEach
+            if (!hasRestoreWork(runtime)) return@forEach
             var remaining = runtime.settings.restoreBlocksPerTick
+            val patchLimit = if (runtime.state.mechanizedPreparation) runtime.state.preparationPatch.size.coerceAtLeast(1) else remaining
             if (runtime.state.preparationPatch.isNotEmpty() && !runtime.state.preparationReleased) {
                 val token = tasks.lifecycleToken()
                 val sequence = runtime.state.sequence
                 val patch = runtime.state.preparationPatch
-                field.releaseAsync(runtime, remaining).whenComplete { release, failure -> tasks.runSync(token) {
+                field.releaseAsync(runtime, patchLimit).whenComplete { release, failure -> tasks.runSync(token) {
                     if (runtime.state.sequence != sequence || runtime.state.preparationPatch !== patch) return@runSync
                     if (failure != null) {
                         if (access.allowInteraction("farm-release-failed:${runtime.settings.id}", 10_000))
@@ -226,7 +228,7 @@ internal class FarmModule(
             }
             if (remaining > 0 && field.hasPendingAutomaticQuota(runtime)) {
                 val token = tasks.lifecycleToken()
-                field.finishAutomaticQuotaAsync(runtime, remaining).whenComplete { _, failure -> tasks.runSync(token) {
+                field.finishAutomaticQuotaAsync(runtime, patchLimit).whenComplete { _, failure -> tasks.runSync(token) {
                     if (failure != null && access.allowInteraction("farm-auto-finish:${runtime.settings.id}", 10_000))
                         state.log(java.util.logging.Level.WARNING, "Farm automatic quota will retry: ${runtime.settings.id}", failure)
                 } }
@@ -390,7 +392,7 @@ internal class FarmModule(
     override fun onMove(from: Location, to: Location, player: Player): Boolean =
         events.onMove(PlayerMoveEvent(player, from, to))
 
-    override fun retainOnTeleport(player: Player, destination: org.bukkit.Location): Boolean = events.retainOnTeleport(player)
+    override fun retainOnTeleport(player: Player, destination: org.bukkit.Location): Boolean = events.retainOnTeleport(player, destination)
 
     override fun releasePlayer(player: Player, reason: WorksitePlayerReleaseReason) {
         if (reason == WorksitePlayerReleaseReason.JOIN_STALE) events.onJoin(player)

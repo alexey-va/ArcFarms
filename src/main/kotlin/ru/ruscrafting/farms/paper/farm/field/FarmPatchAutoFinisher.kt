@@ -7,6 +7,7 @@ import ru.ruscrafting.farms.domain.FarmCareType
 import ru.ruscrafting.farms.domain.FarmPhase
 import ru.ruscrafting.farms.domain.FarmPlotPosition
 import ru.ruscrafting.farms.domain.FarmSeederStage
+import ru.ruscrafting.farms.domain.FarmShiftState
 import ru.ruscrafting.farms.paper.ArcFarmsDebug
 import ru.ruscrafting.farms.paper.FarmBlockLedger
 import ru.ruscrafting.farms.paper.FarmRuntime
@@ -42,7 +43,7 @@ internal class FarmPatchAutoFinisher(
         pending[rules.id]?.let { return it }
         val source = runtime.state
         if (!source.preparationReleased || source.preparationPatch.isEmpty()) return CompletableFuture.completedFuture(0)
-        val action = action(runtime) ?: return CompletableFuture.completedFuture(0)
+        val action = action(source) ?: return CompletableFuture.completedFuture(0)
         val key = ActionKey(rules.id, source.sequence, action)
         completedActions.removeIf { it.zoneId == rules.id && it.sequence != source.sequence }
         if (key in completedActions) return CompletableFuture.completedFuture(0)
@@ -55,9 +56,13 @@ internal class FarmPatchAutoFinisher(
         val result = CompletableFuture<Int>()
         pending[rules.id] = result
         var processed = 0
+        var allChunksLoaded = true
+        val wholePatch = limit >= source.preparationPatch.size
         fun current() = epoch == expectedEpoch && pending[rules.id] === result && runtime.state === source &&
             runtime.settings === rules && runtime.region === region
         tasks.compute {
+            if (wholePatch) return@compute source.preparationPatch.filter { it.world == worldName }
+                .groupBy { it.x shr 4 to (it.z shr 4) }.map { it.key to it.value }
             // A quota selects the first matching beds in patch order. Group only consecutive
             // chunk runs: grouping all beds by chunk would change that selection at the limit.
             val runs = arrayListOf<Pair<Pair<Int, Int>, MutableList<FarmPlotPosition>>>()
@@ -66,19 +71,20 @@ internal class FarmPatchAutoFinisher(
                 if (runs.lastOrNull()?.first != coordinate) runs += coordinate to arrayListOf()
                 runs.last().second += position
             }
-            runs.iterator()
+            runs
         }
             .thenCompose { groups -> tasks.callSync(token) {
-                fun next(): CompletableFuture<Unit> {
+                fun processChunk(coordinate: Pair<Int, Int>, positions: List<FarmPlotPosition>): CompletableFuture<Unit> {
                     if (!current()) return CompletableFuture.failedFuture(CancellationException("Farm auto-finish source changed"))
-                    if (!groups.hasNext() || processed >= limit) return CompletableFuture.completedFuture(Unit)
-                    val (coordinate, positions) = groups.next()
                     var loaded: org.bukkit.Chunk? = null
                     return tasks.capture(token, ::current) {
                         if (world.isChunkLoaded(coordinate.first, coordinate.second)) loaded = world.getChunkAt(coordinate.first, coordinate.second)
                         true
                     }.thenCompose {
-                        val chunk = loaded ?: return@thenCompose CompletableFuture.completedFuture(Unit)
+                        val chunk = loaded ?: run {
+                            allChunksLoaded = false
+                            return@thenCompose CompletableFuture.completedFuture(Unit)
+                        }
                         ledger.loadAsync(chunk, tasks, ::current).thenCompose { records ->
                             val iterator = positions.iterator()
                             val selected = arrayListOf<ru.ruscrafting.farms.domain.FarmPlotPosition>()
@@ -108,15 +114,27 @@ internal class FarmPatchAutoFinisher(
                                 }
                             }
                         }
-                    }.thenCompose { next() }
+                    }
                 }
-                next()
+                if (wholePatch) {
+                    CompletableFuture.allOf(*groups.map { (coordinate, positions) ->
+                        processChunk(coordinate, positions)
+                    }.toTypedArray()).thenApply { Unit }
+                } else {
+                    val iterator = groups.iterator()
+                    fun next(): CompletableFuture<Unit> {
+                        if (!iterator.hasNext() || processed >= limit) return CompletableFuture.completedFuture(Unit)
+                        val (coordinate, positions) = iterator.next()
+                        return processChunk(coordinate, positions).thenCompose { next() }
+                    }
+                    next()
+                }
             }.thenCompose { it } }.whenComplete { _, failure ->
                 val delivered = tasks.runSync(token) {
                     if (pending[rules.id] !== result) return@runSync
                     pending.remove(rules.id, result)
                     if (failure != null) result.completeExceptionally(failure) else {
-                        val complete = processed < limit
+                        val complete = allChunksLoaded && (wholePatch || processed < limit)
                         if (complete) completedActions += key
                         debug.event("farm_patch_auto_finish", "zone" to rules.id, "sequence" to source.sequence,
                             "action" to action.name.lowercase(), "processed" to processed, "complete" to complete)
@@ -128,15 +146,15 @@ internal class FarmPatchAutoFinisher(
         return result
     }
 
-    fun hasPending(runtime: FarmRuntime): Boolean {
-        val action = action(runtime) ?: return false
-        return ActionKey(runtime.settings.id, runtime.state.sequence, action) !in completedActions
+    fun hasPending(runtime: FarmRuntime, source: FarmShiftState = runtime.state): Boolean {
+        val action = action(source) ?: return false
+        return ActionKey(runtime.settings.id, source.sequence, action) !in completedActions
     }
 
     fun process(runtime: FarmRuntime, limit: Int): Int {
         require(limit >= 1) { "Farm patch auto-finish limit must be positive" }
         if (!runtime.state.preparationReleased || runtime.state.preparationPatch.isEmpty()) return 0
-        val action = action(runtime) ?: return 0
+        val action = action(runtime.state) ?: return 0
         val key = ActionKey(runtime.settings.id, runtime.state.sequence, action)
         completedActions.removeIf { it.zoneId == runtime.settings.id && it.sequence != runtime.state.sequence }
         if (key in completedActions) return 0
@@ -167,14 +185,13 @@ internal class FarmPatchAutoFinisher(
 
     private data class ActionKey(val zoneId: String, val sequence: Long, val action: Action)
 
-    private fun action(runtime: FarmRuntime): Action? = when {
-        runtime.state.phase == FarmPhase.PLANTING -> Action.TILL
-        runtime.state.phase == FarmPhase.CARE && runtime.state.careType == FarmCareType.SEEDER &&
-            runtime.state.seederStage == FarmSeederStage.PLANTING -> Action.TILL
-        runtime.state.mechanizedPreparation &&
-            runtime.state.plantedPlots.containsAll(runtime.state.preparationPatch) -> Action.RESTORE_RECORDED_CROP
-        (runtime.state.phase == FarmPhase.HARVESTING || runtime.state.phase == FarmPhase.CARE) &&
-            runtime.state.plantedPlots.containsAll(runtime.state.preparationPatch) -> Action.PLANT
+    private fun action(source: FarmShiftState): Action? = when {
+        source.mechanizedPreparation && source.plantedPlots.containsAll(source.preparationPatch) -> Action.RESTORE_RECORDED_CROP
+        (source.phase == FarmPhase.HARVESTING || source.phase == FarmPhase.CARE) &&
+            source.plantedPlots.containsAll(source.preparationPatch) -> Action.PLANT
+        source.phase == FarmPhase.PLANTING -> Action.TILL
+        source.phase == FarmPhase.CARE && source.careType == FarmCareType.SEEDER &&
+            source.seederStage == FarmSeederStage.PLANTING -> Action.TILL
         else -> null
     }
 

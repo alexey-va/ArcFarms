@@ -10,16 +10,81 @@ import org.bukkit.block.BlockFace
 import ru.ruscrafting.farms.config.CuboidBounds
 import ru.ruscrafting.farms.config.FarmZoneSettings
 import ru.ruscrafting.farms.domain.FarmPhase
+import ru.ruscrafting.farms.domain.FarmCareRole
+import ru.ruscrafting.farms.domain.FarmCareTarget
+import ru.ruscrafting.farms.domain.FarmCareType
+import ru.ruscrafting.farms.domain.FarmPointPosition
 import ru.ruscrafting.farms.domain.FarmPlotPosition
 import ru.ruscrafting.farms.domain.FarmShiftState
 import ru.ruscrafting.farms.paper.CuboidActivityRegion
+import ru.ruscrafting.farms.paper.ArcFarmsDebug
 import ru.ruscrafting.farms.paper.FarmBlockLedger
 import ru.ruscrafting.farms.paper.FarmBlockRegistry
 import ru.ruscrafting.farms.paper.FarmRuntime
 import ru.ruscrafting.farms.paper.fixtures.FarmAsyncHarness
+import ru.ruscrafting.farms.paper.farm.care.FarmDitchLayout
+import ru.ruscrafting.farms.paper.farm.care.FarmDitchRescueWorld
 import java.util.concurrent.CompletableFuture
 
 class FarmFieldMaintenanceAsyncTest : FunSpec({
+    test("both maintenance paths preserve every uneven active ditch column including previously planted beds") {
+        FarmAsyncHarness("MaintenanceDitch").use { h ->
+            val world = h.paper.server.addSimpleWorld("ditch_maintenance")
+            world.getChunkAt(0, 0).load()
+            val layout = FarmDitchLayout.cells(12)
+            val soils = layout.mapIndexed { index, cell ->
+                world.getBlockAt(8 + cell.x, 64 + index % 5 - 2, 8 + cell.z).also { soil ->
+                    soil.type = Material.FARMLAND
+                    soil.getRelative(BlockFace.UP).type = Material.WHEAT
+                    (1..cell.depth).forEach { soil.getRelative(BlockFace.DOWN, it).type = Material.STONE }
+                }
+            }
+            val outside = world.getBlockAt(14, 64, 14).also {
+                it.type = Material.FARMLAND
+                it.getRelative(BlockFace.UP).type = Material.CARROTS
+            }
+            val ledger = FarmBlockLedger(h.plugin)
+            ledger.replaceZoneIndex(world.getChunkAt(0, 0), "farm", soils + outside, emptyList(), emptyList())
+            val positions = (soils + outside).map { FarmPlotPosition(world.name, it.x, it.y, it.z) }
+            val prepared = positions.take(positions.size / 2)
+            val settings = mockk<FarmZoneSettings>(relaxed = true) {
+                every { id } returns "farm"
+                every { crops } returns setOf("WHEAT", "CARROTS")
+            }
+            val runtime = FarmRuntime(settings, CuboidActivityRegion(world, "farm", CuboidBounds(0, 54, 0, 15, 72, 15)),
+                emptyMap(), emptyList(), mockk(relaxed = true), FarmShiftState(
+                    phase = FarmPhase.CARE, sequence = 12, placementSequence = 12,
+                    careType = FarmCareType.DITCH_RESCUE, careGoal = 1,
+                    careTargets = listOf(FarmCareTarget(0, FarmCareRole.ANIMAL, FarmPointPosition(world.name, 8.5, 64.0, 8.5))),
+                    preparationPatch = prepared, preparationReleased = true,
+                    tilledPlots = prepared.toSet(), plantedPlots = prepared.toSet(), preparationCrop = "WHEAT",
+                ))
+            val index = FarmBlockRegistry(h.plugin, ledger, tasks = h.tasks)
+            index.addBeds("farm", positions)
+            val ditch = FarmDitchRescueWorld(ledger, mockk(relaxed = true), ArcFarmsDebug({ false }) {})
+            ditch.ensure(runtime)
+            outside.type = Material.DIRT
+            outside.getRelative(BlockFace.UP).type = Material.AIR
+            val owner = FarmFieldMaintenance(ledger, index, h.tasks, mockk(relaxed = true), mockk(relaxed = true))
+
+            repeat(2) { pass ->
+                if (pass == 0) owner.maintain(runtime, false, emptySet()) else {
+                    val pending = owner.maintainAsync(runtime, false, emptySet()) { true }
+                    h.until { pending.isDone }
+                    pending.join()
+                }
+                soils.forEach { soil ->
+                    soil.type shouldBe Material.AIR
+                    soil.getRelative(BlockFace.UP).type shouldBe Material.AIR
+                }
+                index.beds("farm").toSet() shouldBe positions.toSet()
+                outside.type shouldBe Material.FARMLAND
+                outside.getRelative(BlockFace.UP).type shouldBe Material.CARROTS
+            }
+            index.close()
+        }
+    }
+
     test("400 indexed beds retain exact native hydration crop repair and invalid bed removal") {
         FarmAsyncHarness("FieldMaintenance").use { h ->
             val fixture = maintenanceFixture(h)

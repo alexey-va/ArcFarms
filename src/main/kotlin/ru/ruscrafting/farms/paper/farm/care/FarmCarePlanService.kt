@@ -121,6 +121,7 @@ internal class FarmCarePlanService(
         val actorOrigin = actor?.location?.takeIf(runtime.region::contains)?.let { it.x to it.z }
         val explicit = overrides().zones[zoneSettings.id]
         return work.capture(token, current) {
+            if (type == FarmCareType.APPLE_HARVEST) return@capture true
             val iterator = if (patchIterator.hasNext()) patchIterator else bedIterator
             if (!iterator.hasNext()) return@capture true
             val plot = iterator.next()
@@ -130,7 +131,8 @@ internal class FarmCarePlanService(
             }
             !patchIterator.hasNext() && !bedIterator.hasNext()
         }.thenCompose {
-            if (patch.isEmpty()) return@thenCompose CompletableFuture.completedFuture(null)
+            // Orchard anchors stay valid when their canopy covers the crop patch.
+            if (patch.isEmpty() && type != FarmCareType.APPLE_HARVEST) return@thenCompose CompletableFuture.completedFuture(null)
             val salt = WorksiteDeterministicSeed.derive(
                 WorksiteDeterministicSeed.derive(placementSequence, type.ordinal * 17L + 101L), random.nextLong(),
             )
@@ -420,7 +422,7 @@ internal class FarmCarePlanService(
         val patch = runtime.state.preparationPatch.filter { plot ->
             plot.block()?.let(FarmSurfacePolicy::isOutdoorBed) == true
         }
-        if (patch.isEmpty()) return null
+        if (patch.isEmpty() && type != FarmCareType.APPLE_HARVEST) return null
         val farmBeds = registry.beds(runtime.settings.id).filter { plot ->
             plot.block()?.let(FarmSurfacePolicy::isOutdoorBed) == true
         }.ifEmpty { patch }

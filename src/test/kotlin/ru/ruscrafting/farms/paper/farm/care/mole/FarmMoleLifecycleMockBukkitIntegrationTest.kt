@@ -6,13 +6,18 @@ import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.ints.shouldBeGreaterThanOrEqual
 import io.kotest.matchers.shouldBe
 import io.mockk.every
+import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer
 import org.bukkit.entity.ItemDisplay
+import org.bukkit.entity.Player
 import org.bukkit.entity.Rabbit
+import ru.arc.dungeons.api.CompassStrip
+import ru.ruscrafting.farms.paper.ActivityBarKey
 import ru.ruscrafting.farms.domain.FarmPhase
 import ru.ruscrafting.farms.paper.fixtures.FarmMoleScenarioFixture
 import ru.ruscrafting.farms.paper.fixtures.requiredMockBukkitScenario
 import java.util.concurrent.CompletableFuture
+import java.util.UUID
 
 class FarmMoleLifecycleMockBukkitIntegrationTest : FunSpec({
     test("surface burrow entrances are visible across the full field") {
@@ -24,6 +29,49 @@ class FarmMoleLifecycleMockBukkitIntegrationTest : FunSpec({
                 .single { fixture.role(it) == "ENTRANCE" }
             entrance.viewRange shouldBe 3.0f
 
+            fixture.restoreWorld()
+        } }
+    }
+
+    test("underground compass follows the current lair and stops after exit completion or cleanup") {
+        requiredMockBukkitScenario { FarmMoleScenarioFixture.open(burrowCount = 2).use { fixture ->
+            fixture.executeComputeTasks()
+            val scenes = fixture.prepareAndBuild().sortedBy(FarmMoleBurrowScene::burrowId)
+            val first = fixture.paper.addPlayer("CompassScoutOne")
+            val second = fixture.paper.addPlayer("CompassScoutTwo")
+            val titles = mutableMapOf<UUID, Component>()
+            every { fixture.port.updateBar(any(), any(), any(), any(), any(), any()) } answers {
+                val player = firstArg<Player>()
+                titles[player.uniqueId] = thirdArg()
+                arg<MutableSet<ActivityBarKey>>(5).add(ActivityBarKey(player.uniqueId, secondArg()))
+                Unit
+            }
+            fun update(): Set<ActivityBarKey> {
+                titles.clear()
+                return mutableSetOf<ActivityBarKey>().also(fixture.controller::updateGuidance)
+            }
+            val plain = PlainTextComponentSerializer.plainText()
+            fun expectedStrip(yaw: Float) = plain.serialize(CompassStrip.render(yaw, 0.0, "◇", 0xffcf70))
+
+            update() shouldBe emptySet()
+            fixture.enter(first, scenes[0])
+            fixture.enter(second, scenes[1])
+            first.teleport(scenes[0].lair.clone().add(0.0, 0.0, -1.0).apply { yaw = 0f })
+            second.teleport(scenes[1].lair.clone().add(0.0, 0.0, -1.0).apply { yaw = 90f })
+            update().map { it.playerId }.toSet() shouldBe setOf(first.uniqueId, second.uniqueId)
+            plain.serialize(titles.getValue(first.uniqueId)) shouldBe "${expectedStrip(0f)}  До логова: 1 блоков"
+            plain.serialize(titles.getValue(second.uniqueId)) shouldBe "${expectedStrip(90f)}  До логова: 1 блоков"
+
+            fixture.controller.interact(first, fixture.interaction("EXIT", scenes[0].burrowId)) shouldBe true
+            update().map { it.playerId } shouldBe listOf(second.uniqueId)
+            fixture.finish(second, scenes[1])
+            update() shouldBe emptySet()
+
+            fixture.enter(first, scenes[0])
+            update().map { it.playerId } shouldBe listOf(first.uniqueId)
+            fixture.controller.cleanup("reload")
+            update() shouldBe emptySet()
+            titles shouldBe emptyMap()
             fixture.restoreWorld()
         } }
     }

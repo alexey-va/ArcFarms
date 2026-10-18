@@ -24,6 +24,7 @@ object FarmMoleBurrowDecorationPlanner {
         require(accentPercent in 0..60)
         if (openFloor.isEmpty()) return emptyList()
         val result = linkedMapOf<Triple<Int, Int, Int>, FarmMoleDecoration>()
+        val wallNiches = linkedSetOf<FarmMolePassage>()
         fun place(position: FarmMolePassage, yOffset: Int, material: String) {
             result[Triple(position.x, yOffset, position.z)] = FarmMoleDecoration(position, yOffset, material)
         }
@@ -62,7 +63,10 @@ object FarmMoleBurrowDecorationPlanner {
                 .filterNot(openFloor::contains)
                 .take(2)
                 .toList()
-            wallPositions.getOrNull(0)?.let { place(it, 0, ROOM_ACCENTS[index % ROOM_ACCENTS.size]) }
+            wallPositions.getOrNull(0)?.let {
+                place(it, 0, ROOM_ACCENTS[index % ROOM_ACCENTS.size])
+                wallNiches += it
+            }
             if (tunnelHeight >= 3) place(center, tunnelHeight - 1, "SPORE_BLOSSOM")
             wallPositions.getOrNull(1)?.let { crystalWall ->
                 place(
@@ -76,6 +80,20 @@ object FarmMoleBurrowDecorationPlanner {
         LAIR_CORNERS.forEachIndexed { index, (dx, dz) ->
             val point = FarmMolePassage(lair.x + dx, lair.z + dz)
             place(point, 0, if (index % 2 == 0) "MOSS_CARPET" else "BROWN_MUSHROOM")
+        }
+        // A mushroom or dripstone replaces the foot of a wall, not a full block.
+        // Seal its small recess even when the burrow crosses an existing cave.
+        wallNiches.forEach { niche ->
+            place(niche, -1, "ROOTED_DIRT")
+            CARDINALS.forEach { (dx, dz) ->
+                val backing = FarmMolePassage(niche.x + dx, niche.z + dz)
+                if (backing !in openFloor && backing !in wallNiches &&
+                    Triple(backing.x, 0, backing.z) !in result
+                ) {
+                    val mixed = WorksiteDeterministicSeed.gridScore(seed, backing.x, backing.z)
+                    place(backing, 0, WALL[Math.floorMod(mixed, WALL.size.toLong()).toInt()])
+                }
+            }
         }
         return result.values.toList()
     }

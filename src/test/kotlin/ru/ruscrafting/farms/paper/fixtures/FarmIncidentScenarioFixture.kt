@@ -116,7 +116,10 @@ internal class FarmIncidentScenarioFixture private constructor(
         if (result.accepted) runtime.state = result.state
     }
 
-    fun runtime(state: FarmShiftState): FarmRuntime {
+    fun runtime(
+        state: FarmShiftState,
+        bounds: CuboidBounds = CuboidBounds(0, 0, 0, 63, 128, 63),
+    ): FarmRuntime {
         val orders = zone.orders.map { configured ->
             FarmOrder(
                 id = configured.id,
@@ -131,7 +134,7 @@ internal class FarmIncidentScenarioFixture private constructor(
         }
         return FarmRuntime(
             settings = zone,
-            region = CuboidActivityRegion(world, "scenario_farm", CuboidBounds(0, 0, 0, 63, 128, 63)),
+            region = CuboidActivityRegion(world, "scenario_farm", bounds),
             orders = orders.associateBy(FarmOrder::id),
             orderList = orders,
             rules = FarmRules(listOf(50), 1, 1_000L),

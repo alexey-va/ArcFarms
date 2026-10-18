@@ -58,6 +58,7 @@ import ru.ruscrafting.farms.paper.FarmNightShiftController
 import ru.ruscrafting.farms.paper.FarmRuntime
 import ru.ruscrafting.farms.paper.MaterialRules
 import ru.ruscrafting.farms.paper.block
+import ru.ruscrafting.farms.paper.toFarmPlotPosition
 import ru.ruscrafting.farms.paper.farm.FarmPointProvider
 import ru.ruscrafting.farms.paper.farm.FarmIncidentBedProvider
 import ru.ruscrafting.farms.paper.farm.FarmTransitionSink
@@ -143,6 +144,7 @@ internal class FarmRivalRaidController(
     private val raids = mutableMapOf<String, RaidSession>()
     private val portals = FarmActivityPortal(plugin, locale, access, audience, tasks, textDisplays, "farm_raid", rolePrefix = "raid_")
     private val damageGate = FarmRaidDamageGate()
+    private val logger = plugin.logger
     private val workers = FarmRivalRaidWorkers(plugin, locale, beds, mobDespawns, mobNavigation, nightShift)
     private val loadout = FarmRivalRaidLoadout(locale, serviceItems)
     private val seats = FarmRivalRaidSeats(plugin, seatMovement)
@@ -433,14 +435,18 @@ internal class FarmRivalRaidController(
             event.isCancelled = true
             return true
         }
+        val runtime = runtimes().firstOrNull { it.settings.id == zoneId }
+        if (runtime == null || !active(runtime, session.sequence) || !workers.isCombatLocation(runtime, event.entity.location)) {
+            event.isCancelled = true
+            return true
+        }
         if (damageGate.consume(player.uniqueId, event.entity.uniqueId)) return true
         event.isCancelled = true
         val heldIdentity = serviceItems.identity(player.inventory.itemInMainHand)
         if (heldIdentity != null && heldIdentity.itemId in WEAPON_IDS &&
             heldIdentity == identity(zoneId, session, heldIdentity.itemId)
         ) {
-            val runtime = runtimes().firstOrNull { it.settings.id == zoneId }
-            if (runtime != null && active(runtime, session.sequence)) fire(player, runtime, session, heldIdentity.itemId)
+            fire(player, runtime, session, heldIdentity.itemId)
         }
         return true
     }
@@ -527,8 +533,9 @@ internal class FarmRivalRaidController(
     fun clear(zoneId: String, reason: String) {
         val session = raids.remove(zoneId)
         portals.clear(zoneId)
+        val restored = restoreLoadedCraters(zoneId)
+        if (restored > 0) logger.info("Restored $restored raid crater blocks: zone=$zoneId reason=$reason")
         if (session != null) {
-            restoreCrater(zoneId, session, session.craterGenerations.keys)
             session.participantIds.forEach { playerId ->
                 val player = Bukkit.getPlayer(playerId) ?: return@forEach
                 WEAPON_IDS.forEach { itemId ->
@@ -547,7 +554,7 @@ internal class FarmRivalRaidController(
     }
 
     fun cleanup(reason: String) {
-        raids.keys.toSet().forEach { clear(it, reason) }
+        (raids.keys + runtimes().map { it.settings.id }).toSet().forEach { clear(it, reason) }
         blastDebris.cleanup()
         Bukkit.getWorlds().asSequence().flatMap { it.entities.asSequence() }.filter(::owns).forEach(Entity::remove)
     }
@@ -638,7 +645,8 @@ internal class FarmRivalRaidController(
         val direction = Vector(aimed.x, aimed.y, aimed.z)
         val start = eye.clone().add(direction.clone().multiply(config.weaponMuzzleForward))
         val hit = entityRayTrace.trace(start, direction, config.gunRange, config.gunRaySize) { entity ->
-            workers.contains(runtime.settings.id, entity.uniqueId) && entity.isValid && !entity.isDead
+            workers.contains(runtime.settings.id, entity.uniqueId) && entity.isValid && !entity.isDead &&
+                workers.isCombatLocation(runtime, entity.location)
         }
         val end = hit?.hitPosition?.toLocation(player.world) ?: start.clone().add(direction.clone().multiply(config.gunRange))
         renderShot(start, end)
@@ -683,6 +691,7 @@ internal class FarmRivalRaidController(
     }
 
     private fun explode(runtime: FarmRuntime, session: RaidSession, location: Location, shooter: Player) {
+        if (!workers.isCombatLocation(runtime, location)) return
         val config = runtime.settings.rivalRaid
         if (settings().particles) {
             location.world.spawnParticle(Particle.EXPLOSION_EMITTER, location, 1)
@@ -695,7 +704,8 @@ internal class FarmRivalRaidController(
         val radiusSquared = config.grenadeRadius * config.grenadeRadius
         workers.ids(runtime.settings.id).forEach { workerId ->
             val worker = Bukkit.getEntity(workerId) as? Mob ?: return@forEach
-            if (worker.world !== location.world || worker.location.distanceSquared(location) > radiusSquared) return@forEach
+            if (worker.world !== location.world || worker.location.distanceSquared(location) > radiusSquared ||
+                !workers.isCombatLocation(runtime, worker.location)) return@forEach
             worker.noDamageTicks = 0
             val damage = FarmRaidBlastDamage.lethal(config.grenadeDamage, worker.health, worker.absorptionAmount)
             damageGate.authorize(shooter.uniqueId, worker.uniqueId) { worker.damage(damage, shooter) }
@@ -737,12 +747,17 @@ internal class FarmRivalRaidController(
                 soil.world.spawnParticle(Particle.FLAME, crop.location.toCenterLocation(), 5, 0.3, 0.2, 0.3, 0.025)
             }
         }
-        tasks.runLater(config.grenadePreviewTicks.toLong()) {
+        scheduleCraterRestore(runtime, session, plots, generation)
+    }
+
+    private fun scheduleCraterRestore(runtime: FarmRuntime, session: RaidSession, plots: List<FarmPlotPosition>, generation: Long) {
+        tasks.runLater(runtime.settings.rivalRaid.grenadePreviewTicks.toLong()) {
             val current = raids[runtime.settings.id]?.takeIf { it === session } ?: return@runLater
             val expired = plots.filter { current.craterGenerations[it] == generation }
             if (expired.isEmpty()) return@runLater
-            restoreCrater(runtime.settings.id, current, expired)
-            expired.forEach(current.craterGenerations::remove)
+            val restored = restoreCrater(runtime.settings.id, current, expired)
+            restored.forEach(current.craterGenerations::remove)
+            if (restored.size < expired.size) scheduleCraterRestore(runtime, current, expired, generation)
         }
     }
 
@@ -758,8 +773,28 @@ internal class FarmRivalRaidController(
         )
     }
 
-    private fun restoreCrater(zoneId: String, session: RaidSession, plots: Collection<FarmPlotPosition>) {
-        ledger.restoreTemporaryRemovals(plots.mapNotNull(FarmPlotPosition::block), craterOwner(zoneId, session))
+    private fun restoreCrater(zoneId: String, session: RaidSession, plots: Collection<FarmPlotPosition>): Set<FarmPlotPosition> {
+        val soils = plots.mapNotNull(FarmPlotPosition::block)
+        val restored = ledger.restoreTemporaryRemovals(soils, craterOwner(zoneId, session))
+        // A chunk reconciliation may already have consumed the exact journal.
+        return soils.filter { it in restored || ledger.record(it)?.temporaryMutation == null }
+            .mapTo(linkedSetOf()) { it.toFarmPlotPosition() }
+    }
+
+    private fun restoreLoadedCraters(zoneId: String): Int {
+        val world = runtimes().firstOrNull { it.settings.id == zoneId }?.region?.world ?: return 0
+        var restored = 0
+        world.loadedChunks.forEach { chunk ->
+            ledger.blockRecords(chunk)
+                .filter { it.zoneId == zoneId && it.temporaryMutation?.startsWith("raid:$zoneId:") == true }
+                .groupBy { requireNotNull(it.temporaryMutation) }
+                .forEach { (owner, records) ->
+                    restored += ledger.restoreTemporaryRemovals(
+                        records.map { world.getBlockAt(it.x, it.y, it.z) }, owner,
+                    ).size
+                }
+        }
+        return restored
     }
 
     private fun craterOwner(zoneId: String, session: RaidSession): String = "raid:$zoneId:${session.sequence}"

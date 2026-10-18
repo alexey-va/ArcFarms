@@ -2153,7 +2153,7 @@ class ArcFarmsConfig private constructor(
                     scarecrowCarriedYOffset = section.finiteDouble("scarecrow-carried-y-offset", 1.15, 0.0, 3.0),
                     moleBurrow = moleBurrow,
                     careAnimalEntities = section.stringList("care-animal-entities")
-                        .ifEmpty { listOf("CHICKEN", "SHEEP") }
+                        .ifEmpty { listOf("SHEEP") }
                         .map(::entityName)
                         .distinct()
                         .also { require(it.isNotEmpty()) { "Farm zone $id has no care animal entities" } },

@@ -5,11 +5,18 @@ import org.bukkit.Location
 import org.bukkit.Material
 import org.bukkit.block.Block
 import org.bukkit.block.BlockFace
+import org.bukkit.entity.Player
+import org.bukkit.event.player.PlayerTeleportEvent
+import org.bukkit.util.BoundingBox
+import org.bukkit.util.Vector
+import ru.arc.paper.teleport.ScopedTeleportAuthorizer
 import ru.ruscrafting.farms.domain.FarmCareRole
 import ru.ruscrafting.farms.domain.FarmCareTarget
 import ru.ruscrafting.farms.paper.ArcFarmsDebug
 import ru.ruscrafting.farms.paper.FarmBlockLedger
 import ru.ruscrafting.farms.paper.FarmRuntime
+import ru.ruscrafting.farms.paper.platform.FarmBlockPassability
+import ru.ruscrafting.farms.paper.platform.PaperFarmBlockPassability
 import ru.ruscrafting.farms.paper.worksite.WorksiteStatePort
 import java.util.logging.Level
 
@@ -18,7 +25,14 @@ internal class FarmDitchRescueWorld(
     private val ledger: FarmBlockLedger,
     private val state: WorksiteStatePort,
     private val debug: ArcFarmsDebug,
+    private val passability: FarmBlockPassability = PaperFarmBlockPassability,
 ) {
+    private val teleports = ScopedTeleportAuthorizer()
+    private val blockedRestores = mutableSetOf<String>()
+
+    fun isAuthorizedTeleport(player: Player, destination: Location): Boolean =
+        teleports.isAuthorized(player.uniqueId, destination)
+
     fun ensure(runtime: FarmRuntime) {
         val columns = columns(runtime)
         if (columns.size != FarmDitchLayout.cells(runtime.state.placementSequence).size) return
@@ -63,13 +77,14 @@ internal class FarmDitchRescueWorld(
         )
     }
 
-    fun restore(runtime: FarmRuntime) {
+    fun restore(runtime: FarmRuntime): Boolean {
         val columns = columns(runtime)
-        if (columns.isEmpty()) return
+        if (columns.isEmpty()) return runtime.state.careTargets.none { it.role == FarmCareRole.ANIMAL }
         val soils = columns.map { it.second }
         val carved = columns.flatMap { (cell, soil) ->
             (0 until cell.depth).map { depth -> soil.getRelative(BlockFace.DOWN, depth) }
         }.distinct()
+        if (!evacuate(runtime, columns, carved)) return false
         var restored = 0
         carved.sortedBy(Block::getY).forEach { block ->
             val record = ledger.record(block) ?: return@forEach
@@ -86,6 +101,56 @@ internal class FarmDitchRescueWorld(
                 "blocks" to restored,
             )
         }
+        blockedRestores.remove(runtime.settings.id)
+        return true
+    }
+
+    private fun evacuate(runtime: FarmRuntime, columns: List<Pair<FarmDitchLayout.Cell, Block>>, carved: List<Block>): Boolean {
+        val world = columns.first().second.world
+        val cavities = carved.filter { it.type.isAir && ledger.record(it) != null }.map { block ->
+            BoundingBox(block.x.toDouble(), block.y.toDouble(), block.z.toDouble(),
+                block.x + 1.0, block.y + 1.0, block.z + 1.0)
+        }
+        fun inside(player: Player) = cavities.any { it.overlaps(player.boundingBox) }
+        val visitors = world.players.filter(::inside)
+        if (visitors.isEmpty()) return true
+        val footprint = columns.mapTo(hashSetOf()) { it.second.x to it.second.z }
+        val centerY = kotlin.math.floor(runtime.state.careTargets.first { it.role == FarmCareRole.ANIMAL }.position.y).toInt()
+        val surfaces = footprint.flatMap { (x, z) ->
+            listOf(x - 1 to z, x + 1 to z, x to z - 1, x to z + 1)
+        }.distinct().filterNot { it in footprint }.mapNotNull { (x, z) ->
+            if (!world.isChunkLoaded(x shr 4, z shr 4)) return@mapNotNull null
+            FarmDitchLayout.surfaceSearch.firstNotNullOfOrNull { offset ->
+                val y = centerY + offset
+                if (y < world.minHeight || y + 2 >= world.maxHeight) return@firstNotNullOfOrNull null
+                val soil = world.getBlockAt(x, y, z)
+                val feet = soil.getRelative(BlockFace.UP)
+                val head = feet.getRelative(BlockFace.UP)
+                if (soil.type.isSolid && soil.type !in UNSAFE_SURFACES && feet.type !in UNSAFE_SURFACES &&
+                    head.type !in UNSAFE_SURFACES && runtime.region.contains(feet.location) &&
+                    passability.isPassable(feet) && passability.isPassable(head))
+                    Location(world, x + 0.5, soil.y + 1.01, z + 0.5) else null
+            }
+        }
+        for (player in visitors) {
+            val destination = surfaces.minByOrNull { it.distanceSquared(player.location) }?.clone()?.apply {
+                yaw = player.location.yaw
+                pitch = player.location.pitch
+            }
+            val evacuated = destination != null && teleports.authorize(player.uniqueId, destination) {
+                player.teleport(destination, PlayerTeleportEvent.TeleportCause.PLUGIN) &&
+                    player.world === world && player.location.distanceSquared(destination) < 0.01 && !inside(player)
+            }
+            if (!evacuated) {
+                if (blockedRestores.add(runtime.settings.id)) state.log(Level.WARNING,
+                    "Farm ditch restoration deferred: zone=${runtime.settings.id} sequence=${runtime.state.sequence} " +
+                        "player=${player.uniqueId} reason=${if (destination == null) "no_safe_surface" else "teleport_rejected"}")
+                return false
+            }
+            player.fallDistance = 0f
+            player.velocity = Vector()
+        }
+        return world.players.none(::inside)
     }
 
     fun spawnLocation(runtime: FarmRuntime, target: FarmCareTarget): Location? {
@@ -108,7 +173,7 @@ internal class FarmDitchRescueWorld(
                 val x = origin.blockX + cell.x
                 val z = origin.blockZ + cell.z
                 if (!world.isChunkLoaded(x shr 4, z shr 4)) return emptyList()
-                val soil = DITCH_SURFACE_SEARCH.firstNotNullOfOrNull { offset ->
+                val soil = FarmDitchLayout.surfaceSearch.firstNotNullOfOrNull { offset ->
                     world.getBlockAt(x, origin.blockY + offset, z).takeIf(::isDitchSurface)
                 } ?: return emptyList()
                 if (!runtime.region.contains(soil.location)) return emptyList()
@@ -123,6 +188,8 @@ internal class FarmDitchRescueWorld(
         } == true
 
     private companion object {
-        val DITCH_SURFACE_SEARCH = listOf(0, -1, 1, -2, 2)
+        val UNSAFE_SURFACES = setOf(Material.MAGMA_BLOCK, Material.CACTUS, Material.CAMPFIRE, Material.SOUL_CAMPFIRE,
+            Material.FIRE, Material.SOUL_FIRE, Material.LAVA, Material.WATER, Material.BUBBLE_COLUMN,
+            Material.POWDER_SNOW, Material.SWEET_BERRY_BUSH)
     }
 }

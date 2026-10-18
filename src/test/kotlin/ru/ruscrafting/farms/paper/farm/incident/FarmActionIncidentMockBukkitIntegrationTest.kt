@@ -6,6 +6,7 @@ import io.kotest.matchers.shouldBe
 import io.mockk.Runs
 import io.mockk.every
 import io.mockk.just
+import io.mockk.mockk
 import io.mockk.mockkObject
 import io.mockk.unmockkObject
 import io.mockk.verify
@@ -37,7 +38,10 @@ import ru.ruscrafting.farms.domain.FarmPhase
 import ru.ruscrafting.farms.domain.FarmPlotPosition
 import ru.ruscrafting.farms.domain.FarmPointPosition
 import ru.ruscrafting.farms.domain.FarmShiftState
+import ru.ruscrafting.farms.config.CuboidBounds
 import ru.ruscrafting.farms.config.MessageKey
+import ru.ruscrafting.farms.paper.FarmBlockLedger
+import ru.ruscrafting.farms.paper.FarmRuntime
 import ru.ruscrafting.farms.paper.fixtures.FarmIncidentScenarioFixture
 import ru.ruscrafting.farms.paper.fixtures.requiredMockBukkitScenario
 import ru.ruscrafting.farms.paper.farm.presentation.FarmPortalRenderer
@@ -47,21 +51,30 @@ class FarmActionIncidentMockBukkitIntegrationTest : FunSpec({
     test("successive boar starts choose different field points") {
         requiredMockBukkitScenario { FarmIncidentScenarioFixture.open().use { fixture ->
             val beds = plantedField(fixture, 4..44, 4..32)
+            var bedEnumerations = 0
+            val countedBeds = object : Set<FarmPlotPosition> by beds {
+                override fun iterator(): Iterator<FarmPlotPosition> {
+                    bedEnumerations++
+                    return beds.iterator()
+                }
+            }
             val initial = actionState(FarmIncidentType.BOAR_BREAKOUT, 80)
-            val runtime = fixture.runtime(initial)
+            val runtime = fixture.runtime(initial).smallRivalField()
             val controller = fixture.actions(
                 runtime,
-                beds,
+                countedBeds,
                 FarmPointPosition(fixture.world.name, 8.5, 65.0, 20.5),
                 FarmPointPosition(fixture.world.name, 45.5, 65.0, 45.5),
                 random = java.util.Random(73L),
             )
 
             controller.initialize(runtime, FarmIncidentType.BOAR_BREAKOUT) shouldBe FarmIncidentType.BOAR_BREAKOUT
+            bedEnumerations shouldBe 1 // A successful boar plan must not scan the unused raid fallback.
             val first = requireNotNull(runtime.state.specialIncident).plots.toSet()
             controller.clear(runtime, "repeat_test")
             runtime.state = initial
             controller.initialize(runtime, FarmIncidentType.BOAR_BREAKOUT) shouldBe FarmIncidentType.BOAR_BREAKOUT
+            bedEnumerations shouldBe 2
             val second = requireNotNull(runtime.state.specialIncident).plots.toSet()
 
             (first != second) shouldBe true
@@ -71,15 +84,19 @@ class FarmActionIncidentMockBukkitIntegrationTest : FunSpec({
     test("raid portal particles pulse even when the ambient scheduler is out of phase with world time") {
         requiredMockBukkitScenario { FarmIncidentScenarioFixture.open().use { fixture ->
             val beds = plantedField(fixture, 31..53, 31..53)
-            val runtime = fixture.runtime(actionState(FarmIncidentType.RIVAL_RAID, 79))
+            val runtime = raidRuntime(fixture, 79)
+            val boarRandom = mockk<java.util.random.RandomGenerator>()
+            every { boarRandom.nextLong() } returns 1L
             val receiving = FarmPointPosition(fixture.world.name, 10.5, 65.0, 10.5)
             val controller = fixture.actions(
                 runtime,
                 beds,
                 receiving,
                 FarmPointPosition(fixture.world.name, 42.5, 65.0, 42.5),
+                random = boarRandom,
             )
             controller.initialize(runtime, FarmIncidentType.RIVAL_RAID) shouldBe FarmIncidentType.RIVAL_RAID
+            verify(exactly = 0) { boarRandom.nextLong() }
             controller.ensure(runtime)
             fixture.world.fullTime = 1L
             mockkObject(FarmPortalRenderer)
@@ -95,10 +112,43 @@ class FarmActionIncidentMockBukkitIntegrationTest : FunSpec({
         } }
     }
 
+    test("a rejected raid still falls back to the next eligible boar plan") {
+        requiredMockBukkitScenario { FarmIncidentScenarioFixture.open().use { fixture ->
+            val beds = plantedField(fixture, 6..36, 8..24)
+            val runtime = fixture.runtime(actionState(FarmIncidentType.RIVAL_RAID, 91))
+            val controller = fixture.actions(runtime, beds,
+                FarmPointPosition(fixture.world.name, 8.5, 65.0, 20.5),
+                FarmPointPosition("other_world", 45.5, 65.0, 45.5))
+
+            controller.initialize(runtime, FarmIncidentType.RIVAL_RAID) shouldBe FarmIncidentType.BOAR_BREAKOUT
+
+            runtime.state.incidentType shouldBe FarmIncidentType.BOAR_BREAKOUT
+            runtime.state.specialIncident?.plots?.isNotEmpty() shouldBe true
+        } }
+    }
+
+    test("all rejected action plans retain every rejection in candidate order") {
+        requiredMockBukkitScenario { FarmIncidentScenarioFixture.open().use { fixture ->
+            val runtime = fixture.runtime(actionState(FarmIncidentType.RIVAL_RAID, 92))
+            val controller = fixture.actions(runtime, emptySet(),
+                FarmPointPosition(fixture.world.name, 8.5, 65.0, 20.5),
+                FarmPointPosition("other_world", 45.5, 65.0, 45.5))
+
+            controller.initialize(runtime, FarmIncidentType.RIVAL_RAID) shouldBe null
+
+            verify(exactly = 1) {
+                fixture.port.log(java.util.logging.Level.WARNING, match {
+                    it.contains("attempts=RIVAL_RAID:wrong_world(candidates=0), BOAR_BREAKOUT:no_eligible_crops(candidates=0)")
+                })
+            }
+            runtime.state.specialIncident shouldBe null
+        } }
+    }
+
     test("boars acquire a distant player and trample real crops along their charge") {
         requiredMockBukkitScenario { FarmIncidentScenarioFixture.open().use { fixture ->
             val beds = plantedField(fixture, 6..36, 8..24)
-            val runtime = fixture.runtime(actionState(FarmIncidentType.BOAR_BREAKOUT, 81))
+            val runtime = fixture.runtime(actionState(FarmIncidentType.BOAR_BREAKOUT, 81)).smallRivalField()
             val controller = fixture.actions(
                 runtime,
                 beds,
@@ -134,7 +184,7 @@ class FarmActionIncidentMockBukkitIntegrationTest : FunSpec({
     test("raid gives four riders smooth flight and two weapons while workers stay on outdoor beds") {
         requiredMockBukkitScenario { FarmIncidentScenarioFixture.open().use { fixture ->
             val beds = plantedField(fixture, 31..53, 31..53)
-            val runtime = fixture.runtime(actionState(FarmIncidentType.RIVAL_RAID, 82))
+            val runtime = raidRuntime(fixture, 82)
             val receiving = FarmPointPosition(fixture.world.name, 10.5, 65.0, 10.5)
             val rival = FarmPointPosition(fixture.world.name, 42.5, 65.0, 42.5)
             val controller = fixture.actions(runtime, beds, receiving, rival)
@@ -151,7 +201,7 @@ class FarmActionIncidentMockBukkitIntegrationTest : FunSpec({
             fixture.world.entities.filterIsInstance<Mob>().filter { it !is Ghast && controller.owns(it) } shouldHaveSize 0
             val plannedField = requireNotNull(runtime.state.specialIncident).plots
             plannedField shouldHaveSize 192
-            (plannedField.minOf { it.x } <= 32) shouldBe true
+            (plannedField.minOf { it.x } in 36..38) shouldBe true
             (plannedField.maxOf { it.x } >= 52) shouldBe true
             (plannedField.minOf { it.z } <= 32) shouldBe true
             (plannedField.maxOf { it.z } >= 52) shouldBe true
@@ -299,7 +349,7 @@ class FarmActionIncidentMockBukkitIntegrationTest : FunSpec({
             rightClickGunner.inventory.setItemInMainHand(rightClickGrenade)
             controller.interact(PlayerInteractEntityEvent(rightClickGunner, workers.first(), EquipmentSlot.HAND)) shouldBe true
             val projectile = fixture.world.entities.filterIsInstance<Snowball>().single()
-            val blastPlot = beds.first { it !in plannedField }
+            val blastPlot = beds.first { it !in plannedField && it.x > 35 }
             val blastLocation = fixture.world.getBlockAt(blastPlot.x, blastPlot.y + 1, blastPlot.z).location.toCenterLocation()
             workers.take(2).forEach { it.teleport(blastLocation) }
             projectile.teleport(blastLocation)
@@ -351,7 +401,7 @@ class FarmActionIncidentMockBukkitIntegrationTest : FunSpec({
     test("raid starts airborne and switches from fast transit to slow orbit before steering") {
         requiredMockBukkitScenario { FarmIncidentScenarioFixture.open().use { fixture ->
             val beds = plantedField(fixture, 31..53, 31..53)
-            val runtime = fixture.runtime(actionState(FarmIncidentType.RIVAL_RAID, 87))
+            val runtime = raidRuntime(fixture, 87)
             val receiving = FarmPointPosition(fixture.world.name, 10.5, 65.0, 10.5)
             val rival = FarmPointPosition(fixture.world.name, 42.5, 65.0, 42.5)
             val clearFlight = object : ru.ruscrafting.farms.paper.platform.FarmRaidFlightSpace {
@@ -387,7 +437,7 @@ class FarmActionIncidentMockBukkitIntegrationTest : FunSpec({
     test("stuck raid recovery carries the existing rider seat and still cleans up on exit") {
         requiredMockBukkitScenario { FarmIncidentScenarioFixture.open().use { fixture ->
             val beds = plantedField(fixture, 31..53, 31..53)
-            val runtime = fixture.runtime(actionState(FarmIncidentType.RIVAL_RAID, 86))
+            val runtime = raidRuntime(fixture, 86)
             val receiving = FarmPointPosition(fixture.world.name, 10.5, 65.0, 10.5)
             val rival = FarmPointPosition(fixture.world.name, 42.5, 65.0, 42.5)
             val blockedFlight = object : ru.ruscrafting.farms.paper.platform.FarmRaidFlightSpace {
@@ -426,7 +476,7 @@ class FarmActionIncidentMockBukkitIntegrationTest : FunSpec({
     test("raid workers retarget their patrol around the moving ghast") {
         requiredMockBukkitScenario { FarmIncidentScenarioFixture.open().use { fixture ->
             val beds = plantedField(fixture, 2..61, 2..61)
-            val runtime = fixture.runtime(actionState(FarmIncidentType.RIVAL_RAID, 85))
+            val runtime = raidRuntime(fixture, 85)
             val receiving = FarmPointPosition(fixture.world.name, 10.5, 65.0, 10.5)
             val rival = FarmPointPosition(fixture.world.name, 42.5, 65.0, 42.5)
             val controller = fixture.actions(runtime, beds, receiving, rival)
@@ -441,13 +491,13 @@ class FarmActionIncidentMockBukkitIntegrationTest : FunSpec({
             repeat(20) { controller.update(runtime) }
 
             fixture.raidNavigationMoves.clear()
-            val movedFocus = FarmPointPosition(fixture.world.name, 8.5, ghast.location.y, 8.5)
+            val movedFocus = FarmPointPosition(fixture.world.name, 25.5, ghast.location.y, 42.5)
             ghast.eject()
             ghast.teleport(fixture.location(movedFocus)) shouldBe true
             repeat(4) { controller.update(runtime) }
 
             fixture.raidNavigationMoves.isNotEmpty() shouldBe true
-            val focusRadius = fixture.zone.rivalRaid.workerFocusRadius + 0.5
+            val focusRadius = runtime.settings.rivalRaid.workerFocusRadius + 0.5
             val outside = fixture.raidNavigationMoves.filterNot { (_, target, _) ->
                 val dx = target.x - movedFocus.x
                 val dz = target.z - movedFocus.z
@@ -460,7 +510,7 @@ class FarmActionIncidentMockBukkitIntegrationTest : FunSpec({
     test("raid portal counts down by title, cancels on exit, and mounts only the current entry") {
         requiredMockBukkitScenario { FarmIncidentScenarioFixture.open().use { fixture ->
             val beds = plantedField(fixture, 31..53, 31..53)
-            val runtime = fixture.runtime(actionState(FarmIncidentType.RIVAL_RAID, 83))
+            val runtime = raidRuntime(fixture, 83)
             val receiving = FarmPointPosition(fixture.world.name, 10.5, 65.0, 10.5)
             val rival = FarmPointPosition(fixture.world.name, 42.5, 65.0, 42.5)
             val portalPoint = FarmPointPosition(fixture.world.name, 14.5, 65.0, 14.5)
@@ -529,10 +579,145 @@ class FarmActionIncidentMockBukkitIntegrationTest : FunSpec({
         } }
     }
 
-    test("raid resolution immediately restores an active grenade crater") {
+    test("outbound raid grenades leave the home farm and crops beyond the rival field unchanged") {
         requiredMockBukkitScenario { FarmIncidentScenarioFixture.open().use { fixture ->
             val beds = plantedField(fixture, 31..53, 31..53)
-            val runtime = fixture.runtime(actionState(FarmIncidentType.RIVAL_RAID, 84))
+            val protected = plantedField(fixture, 6..10, 6..10) + plantedField(fixture, 34..35, 40..44) +
+                plantedField(fixture, 108..112, 40..44)
+            val originals = protected.associateWith { plot ->
+                val soil = fixture.world.getBlockAt(plot.x, plot.y, plot.z)
+                soil.blockData.asString to soil.getRelative(BlockFace.UP).blockData.asString
+            }
+            val runtime = raidRuntime(fixture, 88)
+            val receiving = FarmPointPosition(fixture.world.name, 10.5, 65.0, 10.5)
+            val rival = FarmPointPosition(fixture.world.name, 42.5, 65.0, 42.5)
+            val controller = fixture.actions(runtime, beds, receiving, rival)
+            val gunner = fixture.paper.addPlayer("OutboundGunner")
+            controller.initialize(runtime, FarmIncidentType.RIVAL_RAID) shouldBe FarmIncidentType.RIVAL_RAID
+            controller.ensure(runtime)
+            val ghast = fixture.world.entities.filterIsInstance<Ghast>().single(controller::owns)
+            controller.interact(PlayerInteractEntityEvent(gunner, ghast, EquipmentSlot.HAND)) shouldBe true
+            val grenade = gunner.inventory.getItem(1)!!
+            gunner.inventory.setItemInMainHand(grenade)
+
+            listOf(8 to 8, 35 to 42, 110 to 42).forEach { (x, z) ->
+                fixture.world.gameTime += runtime.settings.rivalRaid.grenadeCooldownTicks
+                controller.interact(PlayerInteractEvent(gunner, Action.LEFT_CLICK_AIR, grenade, null,
+                    BlockFace.SELF, EquipmentSlot.HAND)) shouldBe true
+                val projectile = fixture.world.entities.filterIsInstance<Snowball>().single()
+                val impact = fixture.world.getBlockAt(x, 65, z)
+                projectile.teleport(impact.location.toCenterLocation())
+                controller.onProjectileHit(ProjectileHitEvent(projectile, impact)) shouldBe true
+                projectile.isValid shouldBe false
+                originals.forEach { (plot, original) ->
+                    val soil = fixture.world.getBlockAt(plot.x, plot.y, plot.z)
+                    (soil.blockData.asString to soil.getRelative(BlockFace.UP).blockData.asString) shouldBe original
+                }
+                fixture.raidDebrisVisuals.fragments shouldHaveSize 0
+                fixture.world.loadedChunks.flatMap(FarmBlockLedger(fixture.plugin)::blockRecords) shouldHaveSize 0
+            }
+        } }
+    }
+
+    test("raid gun and grenade damage do not reach workers or beds inside the home boundary") {
+        requiredMockBukkitScenario { FarmIncidentScenarioFixture.open().use { fixture ->
+            val beds = plantedField(fixture, 31..53, 31..53) + plantedField(fixture, 34..40, 40..44)
+            val runtime = raidRuntime(fixture, 89)
+            val receiving = FarmPointPosition(fixture.world.name, 10.5, 65.0, 10.5)
+            val rival = FarmPointPosition(fixture.world.name, 42.5, 65.0, 42.5)
+            val controller = fixture.actions(runtime, beds, receiving, rival)
+            val gunner = fixture.paper.addPlayer("BoundaryGunner")
+            controller.initialize(runtime, FarmIncidentType.RIVAL_RAID) shouldBe FarmIncidentType.RIVAL_RAID
+            controller.ensure(runtime)
+            val ghast = fixture.world.entities.filterIsInstance<Ghast>().single(controller::owns)
+            controller.interact(PlayerInteractEntityEvent(gunner, ghast, EquipmentSlot.HAND)) shouldBe true
+            controller.updateRaidMotion(runtime)
+            ghast.teleport(fixture.location(rival.copy(y = rival.y + fixture.zone.rivalRaid.flightHeight)))
+            controller.update(runtime)
+            val workers = fixture.world.entities.filterIsInstance<Mob>().filter { it !is Ghast && controller.owns(it) }
+            val protectedWorker = workers[0]
+            val enemyWorker = workers[1]
+            val homeSoil = fixture.world.getBlockAt(35, 64, 42)
+            val original = homeSoil.blockData.asString to homeSoil.getRelative(BlockFace.UP).blockData.asString
+            protectedWorker.teleport(homeSoil.location.clone().add(0.5, 1.0, 0.5))
+            val protectedHealth = protectedWorker.health
+            val enemySoil = fixture.world.getBlockAt(36, 64, 42)
+            gunner.leaveVehicle()
+            val aim = protectedWorker.location.clone().add(0.0, protectedWorker.height * 0.5, -3.0)
+                .subtract(0.0, gunner.eyeHeight, 0.0)
+            aim.yaw = 0f
+            aim.pitch = 0f
+            gunner.teleport(aim)
+            val gun = gunner.inventory.getItem(0)!!
+            val grenade = gunner.inventory.getItem(1)!!
+            gunner.inventory.setItemInMainHand(gun)
+            controller.interact(PlayerInteractEvent(gunner, Action.LEFT_CLICK_AIR, gun, null,
+                BlockFace.SELF, EquipmentSlot.HAND)) shouldBe true
+            fixture.runDelayedTasks() shouldBe listOf(1L, 2L)
+            protectedWorker.health shouldBe protectedHealth
+            (homeSoil.blockData.asString to homeSoil.getRelative(BlockFace.UP).blockData.asString) shouldBe original
+            enemyWorker.teleport(enemySoil.location.clone().add(0.5, 1.0, 0.5))
+
+            gunner.inventory.setItemInMainHand(grenade)
+            controller.interact(PlayerInteractEvent(gunner, Action.LEFT_CLICK_AIR, grenade, null,
+                BlockFace.SELF, EquipmentSlot.HAND)) shouldBe true
+            val projectile = fixture.world.entities.filterIsInstance<Snowball>().single()
+            projectile.teleport(enemyWorker.location)
+            controller.onProjectileHit(ProjectileHitEvent(projectile, enemyWorker)) shouldBe true
+            protectedWorker.health shouldBe protectedHealth
+            (enemyWorker.isDead || enemyWorker.health <= 0.0) shouldBe true
+            (homeSoil.blockData.asString to homeSoil.getRelative(BlockFace.UP).blockData.asString) shouldBe original
+            enemySoil.type shouldBe Material.AIR
+        } }
+    }
+
+    test("raid cleanup without a session restores old home and rival craters but preserves foreign journals") {
+        requiredMockBukkitScenario { FarmIncidentScenarioFixture.open().use { fixture ->
+            val ledger = FarmBlockLedger(fixture.plugin)
+            val home = fixture.world.getBlockAt(8, 64, 8).also { it.type = Material.FARMLAND }
+            val enemy = fixture.world.getBlockAt(42, 64, 42).also { it.type = Material.FARMLAND }
+            val foreign = fixture.world.getBlockAt(9, 64, 8).also { it.type = Material.FARMLAND }
+            home.blockData = (home.blockData as org.bukkit.block.data.type.Farmland).apply { moisture = maximumMoisture }
+            home.getRelative(BlockFace.UP).type = Material.POTATOES
+            home.getRelative(BlockFace.UP).blockData = (home.getRelative(BlockFace.UP).blockData as Ageable).apply { age = maximumAge }
+            enemy.getRelative(BlockFace.UP).type = Material.CARROTS
+            val originals = listOf(home, enemy).associateWith {
+                it.blockData.asString to it.getRelative(BlockFace.UP).blockData.asString
+            }
+            ledger.replaceZoneIndex(home.chunk, fixture.zone.id, listOf(home, foreign), emptyList(), emptyList())
+            ledger.beginTemporaryRemoval(listOf(home, enemy), fixture.zone.id, "raid:${fixture.zone.id}:2", 100L)
+            ledger.beginTemporaryRemoval(listOf(foreign), fixture.zone.id, "tornado:${fixture.zone.id}:2", 100L)
+            listOf(home, enemy, foreign).forEach {
+                it.type = Material.COARSE_DIRT
+                it.getRelative(BlockFace.UP).type = Material.FIRE
+            }
+            val runtime = raidRuntime(fixture, 90)
+            val controller = fixture.actions(runtime, emptySet(),
+                FarmPointPosition(fixture.world.name, 10.5, 65.0, 10.5),
+                FarmPointPosition(fixture.world.name, 42.5, 65.0, 42.5))
+
+            controller.cleanup("service_start")
+
+            originals.forEach { (soil, original) ->
+                (soil.blockData.asString to soil.getRelative(BlockFace.UP).blockData.asString) shouldBe original
+            }
+            val recovered = FarmBlockLedger(fixture.plugin)
+            recovered.record(home)?.temporaryMutation shouldBe null
+            recovered.record(home)?.indexed shouldBe true
+            recovered.record(enemy) shouldBe null
+            foreign.type shouldBe Material.COARSE_DIRT
+            foreign.getRelative(BlockFace.UP).type shouldBe Material.FIRE
+            recovered.record(foreign)?.temporaryMutation shouldBe "tornado:${fixture.zone.id}:2"
+            recovered.record(foreign)?.indexed shouldBe true
+        } }
+    }
+
+    listOf(false, true).forEach { unloadedTimer ->
+    test(if (unloadedTimer) "raid crater timer retains unloaded journals and retries after chunk load"
+        else "raid resolution immediately restores an active grenade crater") {
+        requiredMockBukkitScenario { FarmIncidentScenarioFixture.open().use { fixture ->
+            val beds = plantedField(fixture, 31..53, 31..53)
+            val runtime = raidRuntime(fixture, 84)
             val receiving = FarmPointPosition(fixture.world.name, 10.5, 65.0, 10.5)
             val rival = FarmPointPosition(fixture.world.name, 42.5, 65.0, 42.5)
             val controller = fixture.actions(runtime, beds, receiving, rival)
@@ -561,10 +746,23 @@ class FarmActionIncidentMockBukkitIntegrationTest : FunSpec({
             controller.onProjectileHit(ProjectileHitEvent(projectile, worker)) shouldBe true
 
             blastSoil.type shouldBe Material.AIR
+            if (unloadedTimer) {
+                val chunk = blastSoil.chunk
+                chunk.unload() shouldBe true
+                fixture.runDelayedTasks() shouldBe listOf(fixture.zone.rivalRaid.grenadePreviewTicks.toLong())
+                blastSoil.type shouldBe Material.AIR
+                FarmBlockLedger(fixture.plugin).record(blastSoil)?.temporaryMutation shouldBe "raid:${fixture.zone.id}:84"
+                chunk.load() shouldBe true
+                fixture.runDelayedTasks() shouldBe listOf(fixture.zone.rivalRaid.grenadePreviewTicks.toLong())
+                blastSoil.type shouldBe Material.FARMLAND
+                fixture.runDelayedTasks() shouldBe emptyList()
+            }
             controller.clear(runtime, "incident_resolved")
             blastSoil.type shouldBe Material.FARMLAND
             blastSoil.getRelative(BlockFace.UP).type shouldBe Material.WHEAT
+            fixture.raidDebrisVisuals.fragments.all { it.removed } shouldBe true
         } }
+    }
     }
 })
 
@@ -610,3 +808,12 @@ private fun actionState(type: FarmIncidentType, sequence: Long) = FarmShiftState
     orderId = "bakery_supply",
     incidentType = type,
 )
+
+private fun raidRuntime(fixture: FarmIncidentScenarioFixture, sequence: Long) = fixture.runtime(
+    actionState(FarmIncidentType.RIVAL_RAID, sequence),
+    CuboidBounds(0, 0, 0, 35, 128, 63),
+).smallRivalField()
+
+private fun FarmRuntime.smallRivalField() = apply {
+    settings = settings.copy(rivalRaid = settings.rivalRaid.copy(workerRadius = 16.0, workerFocusRadius = 16.0))
+}

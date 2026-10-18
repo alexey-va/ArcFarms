@@ -22,6 +22,8 @@ import ru.ruscrafting.farms.domain.FarmPlotPosition
 import ru.ruscrafting.farms.domain.FarmSeederStage
 import ru.ruscrafting.farms.domain.FarmShiftEngine
 import ru.ruscrafting.farms.domain.FarmShiftState
+import ru.ruscrafting.farms.domain.EngineResult
+import ru.ruscrafting.farms.domain.FarmShiftEvent
 import ru.ruscrafting.farms.domain.seederStage
 import ru.ruscrafting.farms.paper.ArcFarmsDebug
 import ru.ruscrafting.farms.paper.FarmBlockLedger
@@ -122,7 +124,21 @@ internal class FarmFieldController(
 
     fun finishAutomaticQuotaAsync(runtime: FarmRuntime, limit: Int): CompletableFuture<Int> = autoFinisher.processAsync(runtime, limit)
 
-    fun hasPendingAutomaticQuota(runtime: FarmRuntime): Boolean = autoFinisher.hasPending(runtime)
+    fun hasPendingAutomaticQuota(runtime: FarmRuntime, source: FarmShiftState = runtime.state): Boolean =
+        autoFinisher.hasPending(runtime, source)
+
+    /** A persisted completed seeder stays in CARE until the physical remainder is restored. */
+    fun resumeSeederAfterRecovery(runtime: FarmRuntime): Boolean {
+        val source = runtime.state
+        if (isPending(runtime) || source.phase != FarmPhase.CARE || source.careType != FarmCareType.SEEDER ||
+            source.preparationPatch.isEmpty() || !source.preparationReleased ||
+            !source.plantedPlots.containsAll(source.preparationPatch) || hasPendingAutomaticQuota(runtime)
+        ) return false
+        transitions.apply(runtime, EngineResult(source.copy(
+            phase = FarmPhase.HARVESTING, seederStage = null, careTargets = emptyList(), careGoal = null,
+        ), true, events = listOf(FarmShiftEvent.CARE_RESOLVED)), null)
+        return true
+    }
 
     fun release(runtime: FarmRuntime, limit: Int): FarmPatchReleaseResult {
         require(limit >= 1) { "Farm patch release limit must be positive" }

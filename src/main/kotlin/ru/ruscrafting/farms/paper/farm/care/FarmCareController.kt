@@ -29,7 +29,7 @@ import org.bukkit.plugin.Plugin
 import ru.ruscrafting.farms.config.ArcFarmsConfig
 import ru.ruscrafting.farms.config.ArcFarmsLocale
 import ru.ruscrafting.farms.config.MessageKey
-import ru.ruscrafting.farms.domain.ActivityKind
+import ru.ruscrafting.farms.domain.EngineResult
 import ru.ruscrafting.farms.domain.FarmCarePlanner
 import ru.ruscrafting.farms.domain.FarmCareRole
 import ru.ruscrafting.farms.domain.FarmCareTarget
@@ -41,8 +41,8 @@ import ru.ruscrafting.farms.domain.FarmPollenCharges
 import ru.ruscrafting.farms.domain.FarmPlotPosition
 import ru.ruscrafting.farms.domain.FarmSeederStage
 import ru.ruscrafting.farms.domain.FarmShiftEngine
+import ru.ruscrafting.farms.domain.FarmShiftEvent
 import ru.ruscrafting.farms.domain.seederStage
-import ru.ruscrafting.farms.domain.worksite.ObjectiveTargetRole
 import ru.ruscrafting.farms.paper.ArcFarmsDebug
 import ru.ruscrafting.farms.paper.BukkitFarmEntityLookup
 import ru.ruscrafting.farms.paper.FarmBlockLedger
@@ -116,6 +116,7 @@ internal class FarmCareController(
     private val pendingStarts = mutableMapOf<String, CompletableFuture<Boolean>>()
     private val starts = FarmCareStartService(state, moles)
     private val ditchWorld = FarmDitchRescueWorld(ledger, state, debug)
+    private val rescueRod = FarmDitchRescueRod(serviceItems, access, audience, locale, debug)
     private val zoneKey = NamespacedKey(plugin, "farm_care_zone")
     private val sequenceKey = NamespacedKey(plugin, "farm_care_sequence")
     private val targetKey = NamespacedKey(plugin, "farm_care_target")
@@ -146,8 +147,7 @@ internal class FarmCareController(
         }
         pollenCharges.remove(player.uniqueId)
         runtimes().filter { it.state.careType == FarmCareType.DITCH_RESCUE }.forEach { runtime ->
-            val identity = rescueRodIdentity(runtime)
-            while (serviceItems.consume(player, identity)) Unit
+            rescueRod.remove(player, runtime)
         }
     }
 
@@ -221,6 +221,11 @@ internal class FarmCareController(
 
     fun hasPollen(player: Player, runtime: FarmRuntime): Boolean =
         pollenCharges.remaining(player.uniqueId, runtime.settings.id, runtime.state.sequence) > 0
+
+    fun restoreDitch(runtime: FarmRuntime): Boolean =
+        runtime.state.careType != FarmCareType.DITCH_RESCUE || ditchWorld.restore(runtime)
+
+    fun isAuthorizedTeleport(player: Player, destination: Location): Boolean = ditchWorld.isAuthorizedTeleport(player, destination)
 
     fun cleanup(reason: String) {
         pendingStarts.values.forEach { it.completeExceptionally(CancellationException(reason)) }; pendingStarts.clear()
@@ -433,7 +438,14 @@ internal class FarmCareController(
             moles.ensure(runtime)
             return
         }
-        if (runtime.state.careType == FarmCareType.DITCH_RESCUE) ditchWorld.ensure(runtime)
+        if (runtime.state.careType == FarmCareType.DITCH_RESCUE) {
+            if (runtime.state.careProgress() >= runtime.state.careRequired()) {
+                transitions.apply(runtime, EngineResult(runtime.state.copy(phase = FarmPhase.HARVESTING), true,
+                    events = listOf(FarmShiftEvent.CARE_RESOLVED)), null)
+                return
+            }
+            ditchWorld.ensure(runtime)
+        }
         val activeIds = runtime.state.careTargets.mapTo(mutableSetOf(), FarmCareTarget::id)
         val scarecrowIds = runtime.state.careTargets.asSequence()
             .filter { it.role == FarmCareRole.SCARECROW }
@@ -469,7 +481,7 @@ internal class FarmCareController(
             ensureFarmCareTarget(runtime, target)
         }
         if (runtime.state.careType == FarmCareType.ANIMAL_RESCUE) ensureFarmAnimalPen(runtime)
-        if (runtime.state.careType == FarmCareType.DITCH_RESCUE) ensureRescueRods(runtime)
+        if (runtime.state.careType == FarmCareType.DITCH_RESCUE) rescueRod.ensure(runtime)
         if (runtime.state.careType == FarmCareType.SEEDER) ensureFarmSeeder(runtime)
     }
 
@@ -703,7 +715,7 @@ internal class FarmCareController(
     fun updateAnimals(runtime: FarmRuntime) {
         if (runtime.state.phase != FarmPhase.CARE) return
         if (runtime.state.careType == FarmCareType.DITCH_RESCUE) {
-            ensureRescueRods(runtime)
+            rescueRod.ensure(runtime)
             return
         }
         if (runtime.state.careType != FarmCareType.ANIMAL_RESCUE) return
@@ -766,7 +778,7 @@ internal class FarmCareController(
         val held = if (event.hand == org.bukkit.inventory.EquipmentSlot.OFF_HAND) {
             event.player.inventory.itemInOffHand
         } else event.player.inventory.itemInMainHand
-        if (serviceItems.identity(held) != rescueRodIdentity(runtime)) {
+        if (serviceItems.identity(held) != rescueRod.identity(runtime)) {
             audience.sendActionBar(event.player, MessageKey.FARM_CARE_ANIMAL_ROD)
             return true
         }
@@ -800,26 +812,14 @@ internal class FarmCareController(
         }
         if (!targetActive) return false
         return listOf(player.inventory.itemInMainHand, player.inventory.itemInOffHand).any { held ->
-            serviceItems.identity(held) == rescueRodIdentity(runtime)
+            serviceItems.identity(held) == rescueRod.identity(runtime)
         }
     }
 
-    fun isServiceItemActive(identity: ServiceItemIdentity): Boolean {
-        if (identity.activity != ActivityKind.FARM || identity.itemId != RESCUE_ROD_ID) return false
-        val runtime = runtimes().firstOrNull { it.settings.id == identity.zoneId } ?: return false
-        return runtime.state.phase == FarmPhase.CARE && runtime.state.careType == FarmCareType.DITCH_RESCUE &&
-            runtime.state.sequence == identity.sequence && runtime.state.placementSequence == identity.objectiveNonce
-    }
+    fun isServiceItemActive(identity: ServiceItemIdentity): Boolean = rescueRod.isActive(identity, runtimes())
 
-    fun releaseServiceItem(playerId: UUID, identity: ServiceItemIdentity, reason: WorksitePlayerReleaseReason) {
-        if (identity.activity != ActivityKind.FARM || identity.itemId != RESCUE_ROD_ID) return
-        debug.event(
-            "farm_rescue_rod_released",
-            "zone" to identity.zoneId,
-            "player" to playerId,
-            "reason" to reason,
-        )
-    }
+    fun releaseServiceItem(playerId: UUID, identity: ServiceItemIdentity, reason: WorksitePlayerReleaseReason) =
+        rescueRod.release(playerId, identity, reason)
 
     fun updateSeeder(runtime: FarmRuntime, processField: Boolean) {
         if (runtime.state.phase != FarmPhase.CARE || runtime.state.careType != FarmCareType.SEEDER) return
@@ -932,7 +932,7 @@ internal class FarmCareController(
         val previousTargets = runtime.state.careTargets
         val rebuilt = plans.targets(runtime, type, null) ?: return
         val merged = FarmCarePlanner.preserveProgress(previousTargets, rebuilt)
-        clear(runtime, reason)
+        if (!clear(runtime, reason)) return
         runtime.state = runtime.state.copy(careTargets = merged)
         ensure(runtime)
         state.persistAsync()
@@ -956,9 +956,9 @@ internal class FarmCareController(
         if (ids.isNotEmpty()) debug.event("farm_care_entities_removed", "zone" to key.zoneId, "target" to key.targetId, "reason" to reason)
     }
 
-    fun clear(runtime: FarmRuntime, reason: String) {
+    fun clear(runtime: FarmRuntime, reason: String): Boolean {
+        if (!restoreDitch(runtime)) return false
         pendingStarts.remove(runtime.settings.id)?.completeExceptionally(CancellationException(reason))
-        if (runtime.state.careType == FarmCareType.DITCH_RESCUE) ditchWorld.restore(runtime)
         if (runtime.state.careType == FarmCareType.MOLES) moles.clear(runtime, reason)
         scarecrows.clear(runtime, reason)
         entities.keys.filter { it.zoneId == runtime.settings.id }.toList().forEach { removeEntities(it, reason) }
@@ -966,34 +966,11 @@ internal class FarmCareController(
         disease.clear(runtime.settings.id)
         irrigation.clear(runtime)
         reconciledSequences.remove(runtime.settings.id)
-        val rod = rescueRodIdentity(runtime)
-        Bukkit.getOnlinePlayers().forEach { player -> while (serviceItems.consume(player, rod)) Unit }
+        Bukkit.getOnlinePlayers().forEach { player -> rescueRod.remove(player, runtime) }
+        return true
     }
 
     fun startSound(type: FarmCareType): Sound = presentation.startSound(type)
-
-    private fun ensureRescueRods(runtime: FarmRuntime) {
-        val identity = rescueRodIdentity(runtime)
-        audience.players(runtime.region).filterNot(access::isAdminEditing).forEach { player ->
-            val hasRod = serviceItems.has(player, identity)
-            if (!hasRod && serviceItems.issueTool(
-                    player,
-                    identity,
-                    Material.FISHING_ROD,
-                    locale.render(MessageKey.FARM_CARE_ANIMAL_FISHING_ROD, player),
-                ) == null && access.allowInteraction("farm-equipment-full:${player.uniqueId}", 3_000L)
-            ) audience.sendChat(player, MessageKey.FARM_ACTION_INVENTORY_FULL)
-        }
-    }
-
-    private fun rescueRodIdentity(runtime: FarmRuntime) = ServiceItemIdentity(
-        ActivityKind.FARM,
-        runtime.settings.id,
-        runtime.state.sequence,
-        runtime.state.placementSequence,
-        ObjectiveTargetRole("farm_care"),
-        RESCUE_ROD_ID,
-    )
 
     private fun releaseFollower(key: FarmCareEntityKey, mob: Mob?, reason: String) {
         val playerId = animalFollowers.remove(key)
@@ -1002,9 +979,5 @@ internal class FarmCareController(
         if (playerId != null) {
             debug.event("farm_care_animal_released", "zone" to key.zoneId, "target" to key.targetId, "reason" to reason)
         }
-    }
-
-    private companion object {
-        const val RESCUE_ROD_ID = "ditch_rescue_rod"
     }
 }

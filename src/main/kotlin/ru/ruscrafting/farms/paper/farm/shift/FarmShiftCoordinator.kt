@@ -39,6 +39,7 @@ import ru.ruscrafting.farms.paper.worksite.WorksiteStatsPort
 import ru.ruscrafting.farms.paper.farm.FarmPointProvider
 import ru.ruscrafting.farms.paper.farm.care.FarmCareController
 import ru.ruscrafting.farms.paper.farm.care.FarmCarePlanService
+import ru.ruscrafting.farms.paper.farm.field.FarmFieldController
 import ru.ruscrafting.farms.paper.farm.delivery.FarmDeliveryController
 import ru.ruscrafting.farms.paper.farm.enterprise.FarmEnterprisePort
 import ru.ruscrafting.farms.paper.farm.incident.drought.FarmDroughtIncident
@@ -72,6 +73,7 @@ internal class FarmShiftCoordinator(
     private val network: WorksiteNetworkPort,
     private val carePlans: FarmCarePlanService,
     private val care: FarmCareController,
+    private val field: FarmFieldController,
     private val drought: FarmDroughtIncident,
     private val pests: FarmPestIncident,
     private val birds: FarmBirdIncident,
@@ -92,6 +94,22 @@ internal class FarmShiftCoordinator(
     private val points: FarmPointProvider,
 ) {
     fun apply(runtime: FarmRuntime, result: EngineResult<FarmShiftState, FarmShiftEvent>, actor: Player?) {
+        if (runtime.state.careType == FarmCareType.SEEDER && FarmShiftEvent.CARE_RESOLVED in result.events &&
+            field.hasPendingAutomaticQuota(runtime, result.state)) {
+            // Credit the player's final pass once, retaining a valid restartable machine state.
+            apply(runtime, result.copy(state = result.state.copy(phase = FarmPhase.CARE,
+                seederStage = FarmSeederStage.PLANTING, careTargets = runtime.state.careTargets,
+                careGoal = runtime.state.careGoal), events = result.events - FarmShiftEvent.CARE_RESOLVED), actor)
+            state.persistAsync()
+            return
+        }
+        if (runtime.state.careType == FarmCareType.DITCH_RESCUE && FarmShiftEvent.CARE_RESOLVED in result.events &&
+            !care.restoreDitch(runtime)) {
+            // Keep the completed targets and their one-time credit while the occupied pit waits for evacuation.
+            apply(runtime, result.copy(state = result.state.copy(phase = FarmPhase.CARE),
+                events = result.events - FarmShiftEvent.CARE_RESOLVED), actor)
+            return
+        }
         val incidentType = result.state.incidentType ?: runtime.state.incidentType ?: FarmIncidentType.PESTS
         val careType = result.state.careType ?: runtime.state.careType
         runtime.state = result.state
@@ -333,7 +351,11 @@ internal class FarmShiftCoordinator(
     }
 
     private fun careResolved(runtime: FarmRuntime, type: FarmCareType?, actor: Player?) {
-        care.clear(runtime, "care_resolved")
+        if (!care.clear(runtime, "care_resolved")) {
+            runtime.state = runtime.state.copy(phase = FarmPhase.CARE)
+            state.persistAsync()
+            return
+        }
         runtime.state = runtime.state.copy(careType = null, seederStage = null, careTargets = emptyList(), careGoal = null)
         port.broadcast(
             listOf(runtime.region),

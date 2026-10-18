@@ -18,6 +18,9 @@ internal class FarmAsyncHarness(name: String) : AutoCloseable {
     val workerCalls = AtomicInteger()
     var tickSteps = 0
     var maximumTickSteps = 0
+    var totalNativeSteps = 0
+    var nativeStepNanos = 0L
+    var ticksWithNativeWork = 0
     var ticks = 0
     var gate: CompletableFuture<Unit>? = null
     val tasks = object : WorksiteTaskPort {
@@ -28,7 +31,9 @@ internal class FarmAsyncHarness(name: String) : AutoCloseable {
             return supervisor.capture(token, isCurrent) {
                 check(Thread.currentThread() === nativeThread)
                 tickSteps++
-                step()
+                totalNativeSteps++
+                val started = System.nanoTime()
+                try { step() } finally { nativeStepNanos += System.nanoTime() - started }
             }
         }
         override fun <T> callSync(token: RuntimeTaskSupervisor.Token, task: () -> T) = supervisor.callSync(token, task)
@@ -52,6 +57,7 @@ internal class FarmAsyncHarness(name: String) : AutoCloseable {
         before()
         paper.performTicks(1)
         maximumTickSteps = maxOf(maximumTickSteps, tickSteps)
+        if (tickSteps > 0) ticksWithNativeWork++
         ticks++
         Thread.sleep(1)
     }

@@ -158,14 +158,14 @@ internal class FarmActionIncidentController(
             )
         }.orEmpty()
         val candidates = (listOf(type) + configuredTypes.filterNot(scheduledTypes::contains) + configuredTypes).distinct()
-        val attempts = candidates.map { candidate ->
-            candidate to when (candidate) {
+        val attempts = mutableListOf<Pair<FarmIncidentType, FarmActionIncidentPlanAttempt>>()
+        val selected = candidates.firstNotNullOfOrNull { candidate ->
+            val attempt = when (candidate) {
                 FarmIncidentType.BOAR_BREAKOUT -> planBoars(runtime)
                 FarmIncidentType.RIVAL_RAID -> raid.plan(runtime)
                 else -> FarmActionIncidentPlanAttempt(null, 0, "unsupported_type")
             }
-        }
-        val selected = attempts.firstNotNullOfOrNull { (candidate, attempt) ->
+            attempts += candidate to attempt
             attempt.plan?.let { candidate to it }
         } ?: run {
             state.log(

@@ -12,6 +12,7 @@ import ru.ruscrafting.farms.config.ArcFarmsLocale
 import ru.ruscrafting.farms.config.CuboidBounds
 import ru.ruscrafting.farms.config.FarmZoneSettings
 import ru.ruscrafting.farms.domain.FarmIncidentType
+import ru.ruscrafting.farms.domain.FarmCareType
 import ru.ruscrafting.farms.domain.FarmOrder
 import ru.ruscrafting.farms.domain.FarmPhase
 import ru.ruscrafting.farms.domain.FarmPlotPosition
@@ -131,7 +132,7 @@ class FarmGameplayAdminServiceTest : FunSpec({
                 orderCycle = mockk<FarmOrderCycleController>(relaxed = true),
                 worldAdmin = mockk<FarmWorldAdminService>(relaxed = true),
                 field = mockk<FarmFieldController>(relaxed = true),
-                care = mockk<FarmCareController>(relaxed = true),
+                care = mockk<FarmCareController>(relaxed = true) { every { clear(any(), any()) } returns true },
                 drought = mockk<FarmDroughtIncident>(relaxed = true),
                 pests = mockk<FarmPestIncident>(relaxed = true),
                 birds = mockk<FarmBirdIncident>(relaxed = true),
@@ -202,7 +203,7 @@ class FarmGameplayAdminServiceTest : FunSpec({
             orderCycle = mockk<FarmOrderCycleController>(relaxed = true),
             worldAdmin = mockk<FarmWorldAdminService>(relaxed = true),
             field = mockk<FarmFieldController>(relaxed = true),
-            care = mockk<FarmCareController>(relaxed = true),
+            care = mockk<FarmCareController>(relaxed = true) { every { clear(any(), any()) } returns true },
             drought = mockk<FarmDroughtIncident>(relaxed = true),
             pests = mockk<FarmPestIncident>(relaxed = true),
             birds = mockk<FarmBirdIncident>(relaxed = true),
@@ -275,6 +276,25 @@ class FarmGameplayAdminServiceTest : FunSpec({
         persisted shouldBe 1
     }
 
+    test("blocked ditch evacuation leaves admin reset and its owned state pending") {
+        val runtime = FarmRuntime(
+            settings = mockk<FarmZoneSettings>(relaxed = true) { every { id } returns "communal_farm" },
+            region = mockk(relaxed = true), orders = emptyMap(), orderList = emptyList(), rules = mockk(relaxed = true),
+            state = FarmShiftState(phase = FarmPhase.CARE, careType = FarmCareType.DITCH_RESCUE, sequence = 15),
+        )
+        val before = runtime.state
+        val care = mockk<FarmCareController>(relaxed = true) { every { clear(runtime, "admin_reset") } returns false }
+        val field = mockk<FarmFieldController>(relaxed = true)
+        val service = cycleService(runtime, mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true),
+            field = field, care = care)
+
+        service.setStage(mockk(relaxed = true), "communal_farm", "reset") shouldBe false
+
+        runtime.state shouldBe before
+        verify(exactly = 0) { field.restoreOriginal(any(), any()) }
+        verify(exactly = 0) { field.commitAfterRecovery(any(), any(), any()) }
+    }
+
     test("failed admin reset keeps the enterprise reservation") {
         val runtime = FarmRuntime(
             settings = mockk<FarmZoneSettings>(relaxed = true) { every { id } returns "communal_farm" },
@@ -314,6 +334,7 @@ private fun cycleService(
     enterprise: FarmEnterprisePort = mockk(relaxed = true),
     incidentRecovery: FarmIncidentRecoveryController = mockk(relaxed = true),
     field: FarmFieldController = mockk(relaxed = true),
+    care: FarmCareController = mockk(relaxed = true) { every { clear(any(), any()) } returns true },
     persistAsync: () -> CompletableFuture<Unit> = { CompletableFuture.completedFuture(Unit) },
 ): FarmGameplayAdminService = FarmGameplayAdminService(
     locale = mockk<ArcFarmsLocale>(relaxed = true),
@@ -325,7 +346,7 @@ private fun cycleService(
     orderCycle = cycle,
     worldAdmin = mockk<FarmWorldAdminService>(relaxed = true),
     field = field,
-    care = mockk<FarmCareController>(relaxed = true),
+    care = care,
     drought = mockk<FarmDroughtIncident>(relaxed = true),
     pests = mockk<FarmPestIncident>(relaxed = true),
     birds = mockk<FarmBirdIncident>(relaxed = true),

@@ -27,7 +27,10 @@ internal data class ManagedFarmBlockRecord(
     val indexed: Boolean = false,
     val temporaryMutation: String? = null,
     val temporaryRestoreAt: Long? = null,
-)
+) {
+    fun recoverableTemporary(zone: String): Boolean = zoneId == zone && temporaryMutation != null &&
+        (indexed || temporaryMutation.startsWith("raid:$zone:"))
+}
 
 internal data class ManagedFarmFixedCropRecord(
     val zoneId: String,
@@ -199,7 +202,7 @@ internal class FarmBlockLedger(plugin: Plugin) {
         isCurrent: () -> Boolean): CompletableFuture<Unit> {
         val token = tasks.lifecycleToken()
         return loadAsync(chunk, tasks, isCurrent).thenCompose { loaded -> tasks.compute {
-            loaded.contents.blocks.filter { it.zoneId == zoneId && it.indexed && it.temporaryMutation != null }.iterator()
+            loaded.contents.blocks.filter { it.recoverableTemporary(zoneId) }.iterator()
         }.thenCompose { iterator -> tasks.callSync(token) {
             tasks.capture(token, { isCurrent() && chunk.isLoaded && (revisions[loaded.cacheKey] ?: 0L) == loaded.revision }) {
                 if (iterator.hasNext()) {
@@ -211,9 +214,10 @@ internal class FarmBlockLedger(plugin: Plugin) {
                 !iterator.hasNext()
             }
         }.thenCompose { it } }.thenCompose { tasks.compute {
-            val records = loaded.contents.blocks.map { record ->
-                if (record.zoneId == zoneId && record.indexed && record.temporaryMutation != null)
-                    record.copy(temporaryMutation = null, temporaryRestoreAt = null) else record
+            val records = loaded.contents.blocks.mapNotNull { record ->
+                if (!record.recoverableTemporary(zoneId)) record
+                else if (record.indexed) record.copy(temporaryMutation = null, temporaryRestoreAt = null)
+                else null
             }
             ManagedFarmBlockSnapshot(records) to FarmBlockLedgerCodec.encodeBlocks(records)
         } }.thenCompose { (blocks, payload) -> tasks.callSync(token) {

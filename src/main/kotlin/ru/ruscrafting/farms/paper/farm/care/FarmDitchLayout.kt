@@ -1,10 +1,26 @@
 package ru.ruscrafting.farms.paper.farm.care
 
 import ru.ruscrafting.farms.domain.FarmCareType
+import ru.ruscrafting.farms.domain.FarmCareRole
+import ru.ruscrafting.farms.domain.FarmPlotPosition
+import ru.ruscrafting.farms.domain.FarmShiftState
 import ru.ruscrafting.farms.domain.worksite.WorksiteDeterministicSeed
 
 /** Deterministic, connected and deliberately uneven crop-bed footprints for rescue ditches. */
 internal object FarmDitchLayout {
+    val surfaceSearch = listOf(0, -1, 1, -2, 2)
+
+    /** All possible indexed surfaces of the persisted footprint, including uneven beds. */
+    fun surfacePositions(state: FarmShiftState): Set<FarmPlotPosition> {
+        val center = state.careTargets.firstOrNull { it.role == FarmCareRole.ANIMAL }?.position ?: return emptySet()
+        val x = kotlin.math.floor(center.x).toInt()
+        val y = kotlin.math.floor(center.y).toInt()
+        val z = kotlin.math.floor(center.z).toInt()
+        return cells(state.placementSequence).flatMap { cell ->
+            surfaceSearch.map { offset -> FarmPlotPosition(center.world, x + cell.x, y + offset, z + cell.z) }
+        }.toSet()
+    }
+
     data class Cell(val x: Int, val z: Int, val depth: Int) {
         init {
             require(depth in 3..6)

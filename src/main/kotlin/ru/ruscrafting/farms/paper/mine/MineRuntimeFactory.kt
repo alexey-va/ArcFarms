@@ -1,5 +1,6 @@
 package ru.ruscrafting.farms.paper.mine
 
+import org.bukkit.Material
 import ru.ruscrafting.farms.config.MineOrderSettings
 import ru.ruscrafting.farms.config.MineZoneSettings
 import ru.ruscrafting.farms.domain.MineIncidentType
@@ -17,20 +18,39 @@ internal data class MineRuntime(
     var cooldownMillis: Long,
     var state: MineShiftState,
 ) {
+    private var cachedMaterials: MaterialSets? = null
+
     val orders: Map<String, MineOrderSettings> get() = settings.orders.associateBy(MineOrderSettings::id)
-    val railMaterials get() = settings.extractionRailMaterials.mapTo(linkedSetOf(), MaterialRules::material)
-    val mineableMaterials get() = (if (settings.miningOnly) {
-        settings.orders.asSequence().flatMap { order ->
-            order.requestedResources.asSequence().flatMap(MineResource::variants)
-        }
-    } else {
-        settings.materialWeights.keys.asSequence()
-    }).mapTo(linkedSetOf(), MaterialRules::material)
+    val railMaterials get() = materialSets().rails
+    val mineableMaterials get() = materialSets().mineable
     /** Structural stone and generated ores that may form a real cave ceiling above a procedural collapse. */
-    val caveCeilingMaterials get() = buildSet {
-        add(MaterialRules.material(settings.baseMaterial))
-        settings.materialWeights.keys.mapTo(this, MaterialRules::material)
-        addAll(mineableMaterials)
+    val caveCeilingMaterials get() = materialSets().caveCeiling
+
+    private fun materialSets(): MaterialSets {
+        val current = settings
+        val cached = cachedMaterials
+        if (cached != null && cached.settings === current) return cached
+        return MaterialSets(current).also { cachedMaterials = it }
+    }
+
+    private class MaterialSets(val settings: MineZoneSettings) {
+        val rails = buildSet<Material> {
+            settings.extractionRailMaterials.mapTo(this, MaterialRules::material)
+        }
+        val mineable = buildSet<Material> {
+            (if (settings.miningOnly) {
+                settings.orders.asSequence().flatMap { order ->
+                    order.requestedResources.asSequence().flatMap(MineResource::variants)
+                }
+            } else {
+                settings.materialWeights.keys.asSequence()
+            }).mapTo(this, MaterialRules::material)
+        }
+        val caveCeiling = buildSet {
+            add(MaterialRules.material(settings.baseMaterial))
+            settings.materialWeights.keys.mapTo(this, MaterialRules::material)
+            addAll(mineable)
+        }
     }
 
     fun currentOrder(): MineOrderSettings? = state.orderId?.let(orders::get)

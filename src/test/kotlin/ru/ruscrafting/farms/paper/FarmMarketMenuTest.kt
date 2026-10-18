@@ -2,19 +2,93 @@ package ru.ruscrafting.farms.paper
 
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
+import io.mockk.Runs
+import io.mockk.every
+import io.mockk.just
+import io.mockk.mockk
+import io.mockk.spyk
 import org.bukkit.Material
 import org.bukkit.configuration.file.YamlConfiguration
+import org.bukkit.entity.Player
 import org.bukkit.event.inventory.ClickType
 import org.bukkit.event.inventory.InventoryAction
 import org.bukkit.event.inventory.InventoryClickEvent
 import org.bukkit.event.inventory.InventoryType
+import ru.arc.paper.menu.PaperDialogRuntime
+import ru.arc.paper.menu.PaperDialogScreen
 import ru.arc.paper.testing.MockBukkitTestRuntime
 import ru.ruscrafting.farms.config.ArcFarmsConfig
 import ru.ruscrafting.farms.config.ArcFarmsLocale
-import java.io.InputStreamReader
+import ru.ruscrafting.farms.domain.FarmIncidentType
+import ru.ruscrafting.farms.domain.FarmPhase
+import ru.ruscrafting.farms.domain.FarmRules
+import ru.ruscrafting.farms.domain.FarmShiftState
+import ru.ruscrafting.farms.domain.FarmSpecialIncidentState
+import ru.ruscrafting.farms.paper.farm.incident.special.FarmSpecialIncidentController
 import java.nio.file.Files
 
 class FarmMarketMenuTest : FunSpec({
+    test("market NPC entry reopens pending and accepted dialogs after Back and Close") {
+        MockBukkitTestRuntime.open().use { paper ->
+            val plugin = paper.createSimplePlugin("FarmMarketDialogReopen")
+            listOf("config.yml", "lang/ru.yml", "lang/en.yml").forEach { name ->
+                val target = plugin.dataFolder.toPath().resolve(name)
+                Files.createDirectories(target.parent)
+                requireNotNull(javaClass.classLoader.getResourceAsStream(name)).use { Files.copy(it, target) }
+            }
+            val settings = ArcFarmsConfig.inspect(plugin.dataFolder.toPath())
+            val locale = ArcFarmsLocale(plugin.dataFolder.toPath()) { settings }
+            val player = spyk(paper.addPlayer("MarketVisitor"))
+            every { player.closeDialog() } just Runs
+            var shown = 0
+            // The same native-presenter seam as FarmShopDialogTest keeps Core's real history.
+            val presenter: (Player, PaperDialogScreen, Any) -> Unit = { _, _, _ -> shown++ }
+            val native = PaperDialogRuntime::class.java
+                .getDeclaredConstructor(org.bukkit.plugin.Plugin::class.java, kotlin.jvm.functions.Function3::class.java)
+                .newInstance(plugin, presenter)
+            val display = object : FarmDialogDisplay {
+                override fun show(player: Player, screen: PaperDialogScreen) = native.open(player, screen)
+                override fun show(player: Player, screen: PaperDialogScreen, reopen: (() -> Unit)?, onDismiss: () -> Unit, closeOnEscape: Boolean) =
+                    native.open(player, screen, reopen, onDismiss, closeOnEscape)
+                override fun beginFlow(player: Player) = native.beginFlow(player)
+                override fun close(player: Player) = native.close(player)
+                override fun close() = native.close()
+            }
+            var closeOnEscape = false
+            ArcFarmsMenuPlatform(plugin, display, escapeCloses = { closeOnEscape }).use { menus ->
+                menus.configureDialogs(locale)
+                val runtime = FarmRuntime(
+                    settings = settings.farms.first(), region = mockk(relaxed = true),
+                    orders = emptyMap(), orderList = emptyList(), rules = FarmRules(listOf(50), 1, 1_000),
+                    state = FarmShiftState(phase = FarmPhase.INCIDENT, sequence = 42,
+                        incidentType = FarmIncidentType.MARKET, incidentRequired = 64),
+                )
+                val port = mockk<WorksiteRuntimePort>(relaxed = true)
+                val controller = FarmSpecialIncidentController(
+                    plugin = plugin, settings = { settings }, locale = locale, debug = ArcFarmsDebug({ false }) {},
+                    access = port, audience = port, state = port, tasks = port, serviceItems = mockk(),
+                    ledger = mockk(), registry = mockk(), beds = mockk(), points = mockk(), transitions = mockk(),
+                    runtimes = { listOf(runtime) }, clock = { 1_000L }, nightShift = mockk(), menus = menus,
+                )
+                var expectedShown = 0
+                for (closePreference in listOf(false, true)) {
+                    closeOnEscape = closePreference
+                    for (accepted in listOf(false, true)) {
+                        val special = FarmSpecialIncidentState(crop = "WHEAT", marketAccepted = accepted)
+                        runtime.state = runtime.state.copy(specialIncident = special)
+                        repeat(3) {
+                            controller.openMarket(player, runtime, special)
+                            shown shouldBe ++expectedShown
+                            menus.session(player)?.menuId shouldBe ArcFarmsMenuPlatform.MARKET
+                            if (closeOnEscape) native.close(player) else native.back(player) shouldBe false
+                            menus.session(player) shouldBe null
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     test("pending market decision follows the configured semantic slot") {
         val paper = MockBukkitTestRuntime.open()
         try {

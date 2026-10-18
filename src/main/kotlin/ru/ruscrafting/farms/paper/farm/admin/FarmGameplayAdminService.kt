@@ -429,8 +429,8 @@ internal class FarmGameplayAdminService(
     }
 
     private fun clearActiveObjective(runtime: FarmRuntime, player: Player): Boolean {
+        if (!care.clear(runtime, "admin_stage")) return genericError(player)
         drought.clearZone(runtime.settings.id, "admin_stage")
-        care.clear(runtime, "admin_stage")
         runtime.state = runtime.state.copy(careType = null, seederStage = null, careTargets = emptyList(), careGoal = null)
         pests.clear(runtime, "admin_stage")
         birds.clear(runtime.settings.id, "admin_stage")
@@ -568,8 +568,8 @@ internal class FarmGameplayAdminService(
 
     private fun reset(runtime: FarmRuntime): Boolean {
         val retiredSequence = runtime.state.sequence
+        if (!care.clear(runtime, "admin_reset")) return false
         drought.clearZone(runtime.settings.id, "admin_reset")
-        care.clear(runtime, "admin_reset")
         pests.clear(runtime, "admin_reset")
         birds.clear(runtime.settings.id, "admin_reset")
         foodDelivery.clear(runtime.settings.id, "admin_reset")

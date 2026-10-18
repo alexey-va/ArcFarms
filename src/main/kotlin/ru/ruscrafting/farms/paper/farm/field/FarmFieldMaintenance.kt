@@ -18,6 +18,7 @@ import ru.ruscrafting.farms.paper.FarmRuntime
 import ru.ruscrafting.farms.paper.ManagedFarmBlockRecord
 import ru.ruscrafting.farms.paper.MaterialRules
 import ru.ruscrafting.farms.paper.block
+import ru.ruscrafting.farms.paper.farm.care.FarmDitchLayout
 import ru.ruscrafting.farms.paper.restoreTemporaryBlocksAsync
 import ru.ruscrafting.farms.paper.worksite.WorksiteAccessPort
 import ru.ruscrafting.farms.paper.worksite.WorksiteStatePort
@@ -42,7 +43,8 @@ internal class FarmFieldMaintenance(
         val flowed = FarmChannelOwnership.flowedPlots(state)
         val dug = FarmChannelOwnership.dugPlots(state)
         val moles = targets(FarmCareType.MOLES, FarmCareRole.MOLE_MOUND, -1)
-        val ditches = targets(FarmCareType.DITCH_RESCUE, FarmCareRole.ANIMAL, 0)
+        val ditches = if (state.phase == FarmPhase.CARE && state.careType == FarmCareType.DITCH_RESCUE)
+            FarmDitchLayout.surfacePositions(state) else emptySet()
 
         private fun targets(type: FarmCareType, role: FarmCareRole, yOffset: Int): Set<FarmPlotPosition> =
             if (state.phase != FarmPhase.CARE || state.careType != type) emptySet() else state.careTargets.asSequence()
@@ -99,7 +101,7 @@ internal class FarmFieldMaintenance(
                     ledger.loadAsync(chunk, tasks, ::current).thenCompose { records ->
                         val time = world.gameTime
                         tasks.compute {
-                            val expired = positions.filter { position -> records.blocks.record(position.x, position.y, position.z)
+                            val expired = positions.filter { position -> position !in view.ditches && records.blocks.record(position.x, position.y, position.z)
                                 ?.temporaryRestoreAt?.let { it <= time } == true }
                             expired to expired.toHashSet()
                         }
@@ -157,6 +159,7 @@ internal class FarmFieldMaintenance(
         position: FarmPlotPosition, record: ManagedFarmBlockRecord?, view: View, crops: Set<String>, crop: Material?,
         activeWater: Boolean, irrigationDry: Set<FarmPlotPosition>, restoreExpired: Boolean,
     ): Boolean {
+        if (position in view.ditches) return false
         val soil = position.block() ?: return false
         val source = view.state
         if (record?.temporaryMutation != null) {

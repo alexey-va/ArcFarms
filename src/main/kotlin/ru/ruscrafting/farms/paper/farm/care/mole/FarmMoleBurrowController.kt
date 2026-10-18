@@ -5,6 +5,7 @@ import org.bukkit.Location
 import org.bukkit.NamespacedKey
 import org.bukkit.Sound
 import net.kyori.adventure.bossbar.BossBar
+import net.kyori.adventure.text.Component
 import org.bukkit.attribute.Attribute
 import org.bukkit.entity.Entity
 import org.bukkit.entity.Interaction
@@ -19,6 +20,7 @@ import org.bukkit.event.player.PlayerMoveEvent
 import org.bukkit.event.player.PlayerTeleportEvent
 import org.bukkit.persistence.PersistentDataType
 import org.bukkit.plugin.Plugin
+import ru.arc.dungeons.api.CompassStrip
 import ru.ruscrafting.farms.config.ArcFarmsConfig
 import ru.ruscrafting.farms.config.ArcFarmsLocale
 import ru.ruscrafting.farms.config.MessageKey
@@ -45,6 +47,7 @@ import ru.ruscrafting.farms.paper.platform.FarmMobDespawnPolicy
 import ru.ruscrafting.farms.paper.platform.FarmTextDisplayRenderer
 import ru.ruscrafting.farms.paper.platform.FarmTextDisplayStyle
 import java.util.UUID
+import kotlin.math.atan2
 
 private val MOLE_LABEL_STYLE = FarmTextDisplayStyle(viewRange = 0.8f)
 
@@ -224,16 +227,21 @@ internal class FarmMoleBurrowController(
                 it.settings.id == record.zoneId && it.state.sequence == record.sequence && active(it)
             } ?: return@forEach
             val player = Bukkit.getPlayer(record.playerId)?.takeIf(Player::isOnline) ?: return@forEach
-            val scene = world.scenes(runtime).firstOrNull { it.contains(player.location) } ?: return@forEach
-            val distance = scene.pathDistanceToLair(player.location) ?: return@forEach
+            val location = player.location
+            val scene = world.scenes(runtime).firstOrNull { it.contains(location) } ?: return@forEach
+            val distance = scene.pathDistanceToLair(location) ?: return@forEach
+            val dx = scene.lair.x - location.x
+            val dz = scene.lair.z - location.z
+            val bearing = if (dx * dx + dz * dz < 0.000001) location.yaw.toDouble() else Math.toDegrees(atan2(-dx, dz))
+            val compass = CompassStrip.render(location.yaw, bearing, "◇", 0xffcf70)
             audience.updateBar(
                 player,
                 "farm:${runtime.settings.id}",
-                locale.render(
+                compass.append(Component.text("  ")).append(locale.render(
                     MessageKey.FARM_MOLE_DISTANCE_BOSSBAR,
                     player,
                     mapOf("distance" to locale.text(distance)),
-                ),
+                )),
                 FarmMoleGuidance.progress(distance, scene.maxPathDistance),
                 BossBar.Color.YELLOW,
                 expectedBars,

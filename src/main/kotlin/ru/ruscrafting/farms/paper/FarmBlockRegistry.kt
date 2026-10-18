@@ -154,7 +154,7 @@ internal class FarmBlockRegistry(
         if (chunk.world != definition.region.world) return
         val records = ledger.blockRecords(chunk)
         val interruptedTemporaryBlocks = records.asSequence()
-            .filter { it.zoneId == definition.zoneId && it.indexed && it.temporaryMutation != null }
+            .filter { it.recoverableTemporary(definition.zoneId) }
             .map { chunk.world.getBlockAt(it.x, it.y, it.z) }
             .toList()
         ledger.restoreTemporaryRemovals(interruptedTemporaryBlocks)

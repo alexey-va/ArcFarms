@@ -332,9 +332,7 @@ internal class FarmGuidanceController(
         FarmIncidentType.NIGHT_SHIFT -> runtime.state.specialIncident?.plots.orEmpty().filter(::isOutdoorPlot)
             .mapNotNull(FarmPlotPosition::location)
             .map { it to NIGHT_COLOR }
-        FarmIncidentType.BIRDS -> runtime.state.specialIncident?.plots.orEmpty().filter(::isOutdoorPlot)
-            .mapNotNull(FarmPlotPosition::location)
-            .map { it to DANGER_COLOR }
+        FarmIncidentType.BIRDS -> emptyList()
         FarmIncidentType.FOOD_DELIVERY -> emptyList()
         FarmIncidentType.PROCESSING -> points.resolve(runtime, FarmPointKind.PROCESSING).let { point ->
             listOf(Location(runtime.region.world, point.x, point.y, point.z) to AMBER_COLOR)
@@ -353,8 +351,7 @@ internal class FarmGuidanceController(
         FarmIncidentType.MARKET -> points.resolve(runtime, FarmPointKind.CUSTOMER).let { point ->
             listOf(Location(runtime.region.world, point.x, point.y, point.z) to AMBER_COLOR)
         }
-        FarmIncidentType.BOAR_BREAKOUT -> runtime.state.specialIncident?.plots.orEmpty()
-            .filter(::isOutdoorPlot).mapNotNull(FarmPlotPosition::location).map { it to DANGER_COLOR }
+        FarmIncidentType.BOAR_BREAKOUT -> emptyList()
         FarmIncidentType.RIVAL_RAID -> points.configured(runtime, FarmPointKind.RIVAL_FARM)?.let { point ->
             Bukkit.getWorld(point.world)?.let { world -> listOf(Location(world, point.x, point.y, point.z) to DANGER_COLOR) }
         }.orEmpty()

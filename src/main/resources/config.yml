@@ -397,7 +397,7 @@ farm-zones:
         display-transform: GROUND
         display-scale: 1.4
         display-y-offset: 0.05
-    care-animal-entities: [CHICKEN, SHEEP]
+    care-animal-entities: [SHEEP]
     care:
       animal-follow-distance: 1.5
       animal-follow-speed: 1.25

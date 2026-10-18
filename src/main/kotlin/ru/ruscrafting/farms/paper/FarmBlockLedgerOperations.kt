@@ -19,8 +19,9 @@ internal data class CapturedFarmBed(
 /** Chunk batches preserve the legacy original/active crop distinction and record ordering. */
 internal fun FarmBlockLedger.captureBlocksAsync(
     chunk: Chunk, positions: List<FarmPlotPosition>, zoneId: String, refreshActive: Boolean,
-    tasks: WorksiteTaskPort, isCurrent: () -> Boolean,
+    tasks: WorksiteTaskPort, isCurrent: () -> Boolean, bedsPerStep: Int = 1,
 ): CompletableFuture<List<CapturedFarmBed>> {
+    require(bedsPerStep in 1..2)
     val token = tasks.lifecycleToken()
     val world = chunk.world
     val worldName = world.name
@@ -28,18 +29,23 @@ internal fun FarmBlockLedger.captureBlocksAsync(
         val captured = arrayListOf<CapturedFarmBed>()
         val iterator = positions.iterator()
         tasks.capture(token, { isCurrent() && this.isCurrent(chunk, loaded) }) {
-            if (!iterator.hasNext()) return@capture true
-            val position = iterator.next()
-            require(position.world == worldName && position.x shr 4 == chunk.x && position.z shr 4 == chunk.z)
-            val soil = world.getBlockAt(position.x, position.y, position.z)
-            val crop = soil.getRelative(BlockFace.UP)
-            val soilData = soil.blockData.asString
-            val cropData = crop.blockData.asString
-            val original = cropData.takeUnless { crop.type.isAir }
-            val existing = loaded.blocks.record(position.x, position.y, position.z)
-            var record = existing ?: ManagedFarmBlockRecord(zoneId, position.x, position.y, position.z, soilData, original, original)
-            if (refreshActive) record = record.copy(activeCropData = cropData.takeUnless { crop.type.isAir || crop.type == Material.WATER })
-            captured += CapturedFarmBed(position, soilData, cropData, record)
+            repeat(bedsPerStep) {
+                if (!iterator.hasNext()) return@capture true
+                val position = iterator.next()
+                require(position.world == worldName && position.x shr 4 == chunk.x && position.z shr 4 == chunk.z)
+                val soil = world.getBlockAt(position.x, position.y, position.z)
+                val crop = soil.getRelative(BlockFace.UP)
+                val soilData = soil.blockData.asString
+                val cropData = crop.blockData.asString
+                val original = cropData.takeUnless { crop.type.isAir }
+                val existing = loaded.blocks.record(position.x, position.y, position.z)
+                var record = existing ?: ManagedFarmBlockRecord(zoneId, position.x, position.y, position.z, soilData, original, original)
+                // A restarted release sees cleared DIRT/AIR beds; their committed crop is still the recovery intent.
+                val alreadyReleased = existing != null && soil.type == Material.DIRT && crop.type.isAir
+                if (refreshActive && !alreadyReleased)
+                    record = record.copy(activeCropData = cropData.takeUnless { crop.type.isAir || crop.type == Material.WATER })
+                captured += CapturedFarmBed(position, soilData, cropData, record)
+            }
             !iterator.hasNext()
         }.thenCompose { tasks.compute {
             val records = loaded.contents.blocks.associateByTo(linkedMapOf()) { Triple(it.x, it.y, it.z) }

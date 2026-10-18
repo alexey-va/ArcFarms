@@ -14,10 +14,10 @@ import ru.ruscrafting.farms.paper.fixtures.MockBukkitMoleBurrowChunkRetention
 import java.util.concurrent.CompletableFuture
 
 class FarmMoleAsyncScenesTest : FunSpec({
-    listOf(false, true).forEach { greenhouse ->
-        test("${if (greenhouse) "greenhouse" else "maze"} keeps exact geometry and journals before bounded build and restore") {
+    listOf(false to Material.STONE, false to Material.AIR, true to Material.STONE).forEach { (greenhouse, surrounding) ->
+        test("${if (greenhouse) "greenhouse" else "maze"} in $surrounding keeps exact geometry and journals before bounded build and restore") {
             FarmAsyncHarness("MoleAsyncTest").use { h ->
-                val runtime = runtime(h)
+                val runtime = runtime(h, surrounding)
                 val surface = FarmPointPosition(runtime.region.world.name, 0.5, 65.05, 0.5)
                 val legacy = FarmMoleBurrowWorld(h.plugin, ArcFarmsDebug({ false }) {},
                     MockBukkitMoleBurrowChunkRetention(), MockBukkitFarmBlockDataDecoder)
@@ -72,10 +72,12 @@ class FarmMoleAsyncScenesTest : FunSpec({
     }
 })
 
-private fun runtime(h: FarmAsyncHarness): FarmRuntime {
+private fun runtime(h: FarmAsyncHarness, surrounding: Material = Material.STONE): FarmRuntime {
     val world = h.paper.server.addSimpleWorld("farm_async_maze")
     for (x in -2..2) for (z in -2..2) world.getChunkAt(x, z).load()
-    for (x in -24..24) for (z in -24..24) for (y in 43..64) world.getBlockAt(x, y, z).type = Material.STONE
+    for (x in -24..24) for (z in -24..24) for (y in 43..64) {
+        world.getBlockAt(x, y, z).type = if (y == 64) Material.STONE else surrounding
+    }
     val burrow = FarmMoleBurrowSettings(cells = 6, minDepth = 10, maxDepth = 12, tunnelHeight = 3,
         blocksPerTick = 48, candidateAttempts = 4, lightSpacing = 5, lightLevel = 11,
         lairVisual = FarmCareVisualSettings("RABBIT_HIDE", 0, FarmItemDisplayTransform.FIXED, 1.6f, .6))

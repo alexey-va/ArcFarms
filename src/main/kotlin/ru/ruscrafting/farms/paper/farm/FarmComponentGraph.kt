@@ -472,6 +472,7 @@ internal class FarmComponentGraph(
         network = ports.network,
         carePlans = carePlans,
         care = care,
+        field = field,
         drought = drought,
         pests = pests,
         birds = birds,
