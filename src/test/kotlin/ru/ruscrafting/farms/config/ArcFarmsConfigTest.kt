@@ -493,7 +493,6 @@ class ArcFarmsConfigTest : FunSpec({
             FarmIncidentType.BOAR_BREAKOUT,
             FarmIncidentType.RIVAL_RAID,
             FarmIncidentType.TORNADO,
-            FarmIncidentType.HELL_GREENHOUSE,
             FarmIncidentType.NIGHT_SHIFT,
             FarmIncidentType.MARKET,
             FarmIncidentType.BIRDS,
@@ -501,6 +500,7 @@ class ArcFarmsConfigTest : FunSpec({
             FarmIncidentType.PESTS,
             FarmIncidentType.DROUGHT,
         )
+        settings.farms.single().orders.all { FarmIncidentType.HELL_GREENHOUSE !in it.incidentTypes } shouldBe true
         settings.farms.single().processing.inputPackages shouldBe 4
         settings.farms.single().processing.machineCycles shouldBe 3
         settings.farms.single().processing.outputPackages shouldBe 4

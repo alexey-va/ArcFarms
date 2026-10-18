@@ -1,5 +1,9 @@
 # Infernal plantation
 
+Disabled on Spawn by owner request (2026-10-18): `HELL_GREENHOUSE` is excluded
+from the global incident pool and every order pool. The event implementation,
+configuration parameters, locales and recovery support remain available.
+
 The event inherits the underground event type and the shared mole expedition:
 interior indexed-bed entrance, purple particle pillar, title/subtitle, durable
 return record and journalled construction/restoration.

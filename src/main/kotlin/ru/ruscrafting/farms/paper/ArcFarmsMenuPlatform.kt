@@ -33,6 +33,8 @@ import org.bukkit.event.player.PlayerQuitEvent
 import org.bukkit.event.inventory.InventoryCloseEvent
 import org.bukkit.event.inventory.InventoryOpenEvent
 import org.bukkit.event.inventory.InventoryType
+import org.bukkit.inventory.ItemStack
+import ru.ruscrafting.farms.config.MinecraftRussianLocale
 
 /** Shared menu actions with native dialogs by default and an explicit inventory presentation. */
 class ArcFarmsMenuPlatform(
@@ -83,13 +85,20 @@ class ArcFarmsMenuPlatform(
     fun prepareReload(): Prepared = prepare(plugin.dataFolder.toPath())
 
     fun item(menu: MenuId, element: MenuElementId, name: Component, lore: List<Component>) =
-        items.create(current().template(menu, element), text(name, lore))
+        russianItem(items.create(current().template(menu, element), text(name, lore)))
 
     fun item(template: String, name: Component, lore: List<Component>) =
-        items.create(current().template(MenuTemplateId.of(template)), text(name, lore))
+        russianItem(items.create(current().template(MenuTemplateId.of(template)), text(name, lore)))
 
     fun background(menu: MenuId) = current().catalog.require(menu).backgroundTemplate?.let { template ->
-        items.create(current().template(template), text(Component.empty(), emptyList()))
+        russianItem(items.create(current().template(template), text(Component.empty(), emptyList())))
+    }
+
+    private fun russianItem(item: ItemStack): ItemStack = item.apply {
+        editMeta { meta ->
+            meta.displayName()?.let { meta.displayName(MinecraftRussianLocale.render(it)) }
+            meta.lore()?.let { meta.lore(it.map(MinecraftRussianLocale::render)) }
+        }
     }
 
     fun open(

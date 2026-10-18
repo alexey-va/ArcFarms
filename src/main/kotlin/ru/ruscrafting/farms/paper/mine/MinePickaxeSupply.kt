@@ -4,6 +4,7 @@ import org.bukkit.Material
 import org.bukkit.entity.Player
 import ru.ruscrafting.farms.config.ArcFarmsLocale
 import ru.ruscrafting.farms.config.MessageKey
+import ru.ruscrafting.farms.config.MinecraftRussianLocale
 import ru.ruscrafting.farms.domain.ActivityKind
 import ru.ruscrafting.farms.domain.worksite.ObjectiveTargetRole
 import ru.ruscrafting.farms.paper.worksite.ServiceItemIdentity
@@ -26,7 +27,7 @@ internal class MinePickaxeSupply(
             .distinct()
             .forEach { stale -> while (serviceItems.consume(player, stale)) Unit }
         val name = locale?.render(MessageKey.MINE_SERVICE_PICKAXE, player)
-            ?: net.kyori.adventure.text.Component.translatable("item.minecraft.iron_pickaxe")
+            ?: MinecraftRussianLocale.render(net.kyori.adventure.text.Component.translatable("item.minecraft.iron_pickaxe"))
         if (serviceItems.issueTool(player, expected, Material.IRON_PICKAXE, name) != null) return true
         audience.sendActionBar(player, MessageKey.MINE_PICKAXE_INVENTORY_FULL)
         return false

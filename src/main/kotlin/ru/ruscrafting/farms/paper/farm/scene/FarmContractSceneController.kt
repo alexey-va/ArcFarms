@@ -139,7 +139,12 @@ internal class FarmContractSceneController(
             audience.sendChat(player, MessageKey.ZONE_LOCKED)
             return
         }
-        if (!access.allowInteraction(
+        val market = runtime.state.specialIncident?.takeIf {
+            identity.role in setOf(FarmContractSceneRole.CUSTOMER, FarmContractSceneRole.CUSTOMER_INTERACTION) &&
+                runtime.state.phase == FarmPhase.INCIDENT && runtime.state.incidentType == FarmIncidentType.MARKET
+        }
+        // The scene cooldown limits repeated chat/sounds, not reopening an actionable dialog.
+        if (market == null && !access.allowInteraction(
                 "farm-contract-scene:${identity.zoneId}:${identity.role}:${player.uniqueId}",
                 runtime.settings.inputCooldowns.contractSceneMillis,
             )) return
@@ -157,7 +162,8 @@ internal class FarmContractSceneController(
         when (identity.role) {
             FarmContractSceneRole.CUSTOMER,
             FarmContractSceneRole.CUSTOMER_INTERACTION,
-            -> interactCustomer(player, entity, runtime, order)
+            -> if (market != null) special.openMarket(player, runtime, market)
+                else interactCustomer(player, entity, runtime, order)
             FarmContractSceneRole.CART,
             FarmContractSceneRole.CART_INTERACTION,
             FarmContractSceneRole.CART_LOAD,
@@ -180,13 +186,6 @@ internal class FarmContractSceneController(
     fun cleanup(reason: String) = scene.cleanupLoaded(reason)
 
     private fun interactCustomer(player: Player, entity: Entity, runtime: FarmRuntime, order: FarmOrder) {
-        val market = runtime.state.specialIncident?.takeIf {
-            runtime.state.phase == FarmPhase.INCIDENT && runtime.state.incidentType == FarmIncidentType.MARKET
-        }
-        if (market != null) {
-            special.openMarket(player, runtime, market)
-            return
-        }
         audience.sendChat(
             player,
             MessageKey.FARM_CUSTOMER_EXPLANATION,

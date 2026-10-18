@@ -213,7 +213,8 @@ internal object FarmDialogScreens {
         )
     }
 
-    private fun name(item: ItemStack) = item.itemMeta.displayName() ?: Component.text(item.type.name)
+    private fun name(item: ItemStack) = item.itemMeta.displayName()
+        ?: ru.ruscrafting.farms.config.MinecraftRussianLocale.render(MaterialRules.itemComponent(item.type))
     private fun nativeRows(rows: List<Pair<Component, Component>>) = rows.map { nativeBody(it.first) to nativeBody(it.second) }
     internal fun nativeBody(value: Component): Component = restyle(value)
     internal fun nativeControl(value: Component): Component = recolor(value, CONTROL)

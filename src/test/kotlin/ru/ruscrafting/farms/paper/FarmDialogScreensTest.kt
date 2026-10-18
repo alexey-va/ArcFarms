@@ -13,9 +13,12 @@ import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.format.NamedTextColor
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer
 import org.bukkit.Bukkit
+import org.bukkit.Material
+import org.bukkit.configuration.file.YamlConfiguration
 import org.bukkit.event.inventory.ClickType
 import org.bukkit.event.inventory.InventoryType
 import org.bukkit.entity.Player
+import org.bukkit.inventory.ItemStack
 import ru.arc.menu.MenuElementId
 import ru.arc.paper.menu.PaperDialogClickContext
 import ru.arc.paper.menu.PaperDialogScreen
@@ -56,6 +59,43 @@ class FarmDialogScreensTest : FunSpec({
             colors(table) shouldContain 0x55ff55
             PlainTextComponentSerializer.plainText().serialize(table) shouldContain "Contribution: farm"
         } finally { paper.close() }
+    }
+
+    test("menu templates and unnamed native item labels resolve Minecraft names in Russian") {
+        MockBukkitTestRuntime.open().use { paper ->
+            val plugin = paper.createSimplePlugin("FarmRussianMenuItems")
+            copyConfig(plugin)
+            val configFile = plugin.dataFolder.resolve("config.yml")
+            val config = YamlConfiguration.loadConfiguration(configFile)
+            for (template in listOf("market-order", "food-bread", "background")) {
+                config.set("ui.menus.templates.$template.name", "<name> <lang:item.minecraft.wheat>")
+                config.set("ui.menus.templates.$template.lore", listOf(
+                    mapOf("repeat" to "lore", "text" to "<line> <lang:item.minecraft.carrot>"),
+                ))
+            }
+            config.save(configFile)
+            val capture = CapturingDialog()
+            ArcFarmsMenuPlatform(plugin, capture).use { menus ->
+                val plain = PlainTextComponentSerializer.plainText()
+                val name = Component.text("Заказ")
+                val lore = listOf(Component.text("Поставка"))
+                val items = listOf(
+                    menus.item(ArcFarmsMenuPlatform.MARKET, MenuElementId.of("order"), name, lore),
+                    menus.item("food-bread", name, lore),
+                )
+                items.forEach { item ->
+                    plain.serialize(requireNotNull(item.itemMeta.displayName())) shouldBe "Заказ Пшеница"
+                    plain.serialize(requireNotNull(item.itemMeta.lore()).single()) shouldBe "Поставка Морковь"
+                }
+                plain.serialize(requireNotNull(menus.background(ArcFarmsMenuPlatform.MAIN)?.itemMeta?.displayName())).trim() shouldBe "Пшеница"
+                menus.open(paper.addPlayer("NativeItemReader"), ArcFarmsMenuPlatform.MAIN) {
+                    FarmMenuContent(Component.text("Работы"), elements = mapOf(
+                        MenuElementId.of("farm") to FarmMenuEntry(ItemStack(Material.DIAMOND_PICKAXE)),
+                    ))
+                }
+                plain.serialize(capture.last!!.buttons.single().label) shouldBe "Алмазная кирка ›"
+            }
+        }
     }
 
     test("native farm reads ARC escape preference from the registered LuckPerms service on every visit") {

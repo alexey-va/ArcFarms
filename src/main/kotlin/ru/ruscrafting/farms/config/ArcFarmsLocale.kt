@@ -734,6 +734,9 @@ class ArcFarmsLocale(
 ) {
     internal class CatalogSnapshot internal constructor(internal val renderer: LocalizedMiniMessage)
 
+    // Build the bundled vanilla renderer during startup, before any gameplay render can use it.
+    private val minecraft = MinecraftRussianLocale
+
     @Volatile
     private var renderer = loadRenderer(loadLocaleConfigs(dataRoot))
 
@@ -766,7 +769,7 @@ class ArcFarmsLocale(
         values: Map<String, Component> = emptyMap(),
     ): Component {
         val active = renderer
-        return active.render(path, localeTag(audience), values)
+        return minecraft.render(active.render(path, localeTag(audience), values))
     }
 
     fun text(value: Any?): Component = renderer.literal(value)
