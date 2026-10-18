@@ -187,7 +187,7 @@ internal class WorksitePreparedSceneOwner(
         chunkRevisions[key] = (chunkRevisions[key] ?: 0L) + 1
     }
     private fun cache(chunk: Chunk, records: List<WorksitePreparedSceneRecord>) {
-        // Call only for bounded compatibility writes; large snapshots are indexed by the worker.
+        // Gameplay uses worker-indexed snapshots; maintenance may import the journal inline.
         cache(chunk, snapshot(records))
     }
     private var asyncMutation: CompletableFuture<Boolean>? = null
@@ -886,6 +886,15 @@ internal class WorksitePreparedSceneOwner(
             return
         }
         val records = read(chunk) ?: return
+        reconcileChunkRecords(chunk, records, active, isActiveScene)
+    }
+
+    private fun reconcileChunkRecords(
+        chunk: Chunk,
+        records: List<WorksitePreparedSceneRecord>,
+        active: (String, Long) -> Boolean,
+        isActiveScene: (WorksitePreparedSceneRecord) -> Boolean,
+    ) {
         val activeRecords = records.filter { record ->
             active(record.zoneId, record.sequence) && isActiveScene(record)
         }
@@ -907,10 +916,28 @@ internal class WorksitePreparedSceneOwner(
     fun reconcileLoaded(
         active: (String, Long) -> Boolean,
         isActiveScene: (WorksitePreparedSceneRecord) -> Boolean = { true },
+        maintenance: Boolean = false,
     ) {
-        if (tasks != null) tasks.captureLoadedChunks { onChunkLoad(it, active, isActiveScene) }
-        else Bukkit.getWorlds().forEach { world ->
-            world.loadedChunks.forEach { onChunkLoad(it, active, isActiveScene) }
+        if (tasks != null && !maintenance) {
+            tasks.captureLoadedChunks { onChunkLoad(it, active, isActiveScene) }
+            return
+        }
+        check(Bukkit.isPrimaryThread()) { "Scene maintenance recovery must run on the owning thread" }
+        // Startup/reload maintenance imports journals directly. Only native build/restore work
+        // enters the existing bounded process queues; an empty chunk needs no capture future.
+        Bukkit.getWorlds().forEach { world ->
+            val id = world.uid
+            warmedWorlds.remove(id)
+            worldWarmups.remove(id)?.cancel(false)
+            worldDiscoveryRevisions[id] = (worldDiscoveryRevisions[id] ?: 0L) + 1
+            var complete = true
+            world.loadedChunks.forEach { chunk ->
+                if (tasks != null) invalidateCache(Triple(world.name, chunk.x, chunk.z))
+                val records = readForMaintenance(chunk)
+                if (records == null) complete = false
+                else reconcileChunkRecords(chunk, records, active, isActiveScene)
+            }
+            if (complete) warmedWorlds += id
         }
     }
 
@@ -1459,11 +1486,15 @@ internal class WorksitePreparedSceneOwner(
                     !pending.hasNext()
                 }
             }.thenCompose { it } }.whenComplete { _, failure -> work.callSync(token) {
-                if (current()) {
-                    if (failure == null) {
+                if (restoreAdmissions[restoreKey] === lease) {
+                    if (failure == null && current()) {
                         admittedRestores += restoreKey
                         completeRestores()
-                    } else logger.log(Level.SEVERE, "Prepared scene restoration admission failed; journal remains protected: $restoreKey", failure)
+                    } else {
+                        restoreAdmissions.remove(restoreKey, lease)
+                        admittedRestores.remove(restoreKey)
+                        if (failure != null) logger.log(Level.SEVERE, "Prepared scene restoration admission failed; journal remains protected: $restoreKey", failure)
+                    }
                 }
             } }
     }
@@ -1638,12 +1669,21 @@ internal class WorksitePreparedSceneOwner(
             readAsync(chunk)
             return journalCache[Triple(chunk.world.name, chunk.x, chunk.z)]?.records
         }
-        val raw = chunk.persistentDataContainer.get(journalKey, PersistentDataType.BYTE_ARRAY) ?: return emptyList()
-        return runCatching { codec.decode(raw, chunk.world.name, chunk.x, chunk.z, chunk.world.minHeight, chunk.world.maxHeight) }
+        return readForMaintenance(chunk)
+    }
+
+    private fun readForMaintenance(chunk: Chunk): List<WorksitePreparedSceneRecord>? {
+        val raw = chunk.persistentDataContainer.get(journalKey, PersistentDataType.BYTE_ARRAY)
+        val records = runCatching {
+            if (raw == null) emptyList()
+            else codec.decode(raw, chunk.world.name, chunk.x, chunk.z, chunk.world.minHeight, chunk.world.maxHeight)
+        }
             .getOrElse { failure ->
                 logger.log(Level.SEVERE, "Could not decode prepared scene journal in ${chunk.world.name}:${chunk.x},${chunk.z}", failure)
                 null
             }
+        if (records != null && tasks != null) cache(chunk, records)
+        return records
     }
 
     private fun write(chunk: Chunk, records: List<WorksitePreparedSceneRecord>) {

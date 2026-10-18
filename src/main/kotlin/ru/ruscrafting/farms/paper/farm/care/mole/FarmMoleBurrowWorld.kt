@@ -685,7 +685,7 @@ internal class FarmMoleBurrowWorld(
     }
 
     fun reconcileLoaded(active: (String, Long) -> Boolean) {
-        preparedSceneOwner.reconcileLoaded(active)
+        preparedSceneOwner.reconcileLoaded(active, maintenance = true)
     }
 
 

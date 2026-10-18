@@ -499,7 +499,7 @@ internal class MineWorkingWorld(
         scenes.forEach { (key, scene) ->
             if (!active(scene.blocks.zoneId, scene.blocks.sequence)) retiring += key
         }
-        owner.reconcileLoaded(::active, ::activeScene)
+        owner.reconcileLoaded(::active, ::activeScene, maintenance = true)
     }
     fun onChunkLoad(chunk: Chunk) {
         registry.snapshot().filter { it.region.world === chunk.world && it.state.incident?.working != null }.forEach {

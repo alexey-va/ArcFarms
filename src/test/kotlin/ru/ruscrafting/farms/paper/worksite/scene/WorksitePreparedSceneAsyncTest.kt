@@ -19,11 +19,11 @@ import java.util.concurrent.atomic.AtomicInteger
 class WorksitePreparedSceneAsyncTest : FunSpec({
     test("large scenes encode on worker and apply and restore within the shared native tick budget") {
         SceneHarness().use { h ->
-            val scene = h.scene(300)
-            h.owner.prepareIncrementally(scene, 128) shouldBe true
+            val scene = h.scene(600)
+            h.owner.prepareIncrementally(scene, NATIVE_STEP_BUDGET) shouldBe true
             scene.ready shouldBe false
             h.until { scene.ready }
-            h.maxNativeCallsPerTick.coerceAtMost(128) shouldBe h.maxNativeCallsPerTick
+            (h.maxNativeCallsPerTick <= NATIVE_STEP_BUDGET) shouldBe true
             (h.nativeTicks > 1) shouldBe true
             (h.workerCalls.get() > 1) shouldBe true
             scene.records.all { h.world.getBlockAt(it.x, it.y, it.z).type == Material.AIR } shouldBe true
@@ -39,7 +39,8 @@ class WorksitePreparedSceneAsyncTest : FunSpec({
             h.until(beforeTick = { h.owner.beginRestore(h.world, scene.zoneId, scene.sequence) }) { !h.owner.restoring(scene.zoneId) }
             scene.records.all { h.world.getBlockAt(it.x, it.y, it.z).type == Material.STONE } shouldBe true
             h.world.loadedChunks.all { it.persistentDataContainer.get(h.key, PersistentDataType.BYTE_ARRAY) == null } shouldBe true
-            h.maxNativeCallsPerTick.coerceAtMost(128) shouldBe h.maxNativeCallsPerTick
+            (h.maxNativeCallsPerTick <= NATIVE_STEP_BUDGET) shouldBe true
+            h.nativeDecodeCalls.get() shouldBe 0
         }
     }
 
@@ -58,7 +59,73 @@ class WorksitePreparedSceneAsyncTest : FunSpec({
             h.world.loadedChunks.all { it.persistentDataContainer.get(h.key, PersistentDataType.BYTE_ARRAY) == null } shouldBe true
         }
     }
+
+    test("failed restoration admission releases its lease and retries the protected journal") {
+        SceneHarness().use { h ->
+            val scene = h.scene(1)
+            h.owner.prepareIncrementally(scene, 128) shouldBe true
+            h.until { scene.ready }
+            h.owner.reconcileLoaded({ _, _ -> true }, maintenance = true)
+            h.failNextCapture = IllegalStateException("Native admission unavailable")
+
+            h.owner.beginRestore(h.world, scene.zoneId, scene.sequence)
+            h.until { !h.owner.restoring(scene.zoneId) }
+            h.world.getBlockAt(0, 64, 0).type shouldBe Material.AIR
+            h.owner.protects(Location(h.world, 0.0, 64.0, 0.0)) shouldBe true
+            (h.world.getChunkAt(0, 0).persistentDataContainer.get(h.key, PersistentDataType.BYTE_ARRAY) != null) shouldBe true
+
+            h.owner.beginRestore(h.world, scene.zoneId, scene.sequence)
+            h.until { !h.owner.restoring(scene.zoneId) }
+            h.world.getBlockAt(0, 64, 0).type shouldBe Material.STONE
+            h.world.getChunkAt(0, 0).persistentDataContainer.get(h.key, PersistentDataType.BYTE_ARRAY) shouldBe null
+        }
+    }
+
+    test("maintenance reimports protected journals after owner cleanup without per-chunk capture") {
+        SceneHarness().use { h ->
+            val scene = h.scene(20)
+            h.owner.prepareIncrementally(scene, 128) shouldBe true
+            h.until { scene.ready }
+            h.owner.reconcileLoaded({ _, _ -> true }, maintenance = true)
+            h.failNextCapture = IllegalStateException("Native admission unavailable")
+            h.owner.beginRestore(h.world, scene.zoneId, scene.sequence)
+            h.until { !h.owner.restoring(scene.zoneId) }
+            h.owner.clearQueues()
+
+            val captures = h.captureSubmissions
+            h.owner.reconcileLoaded({ _, _ -> false }, maintenance = true)
+            h.captureSubmissions shouldBe captures
+            (h.nativeDecodeCalls.get() > 0) shouldBe true
+            scene.records.all { h.world.getBlockAt(it.x, it.y, it.z).type == Material.AIR } shouldBe true
+            (h.world.getChunkAt(0, 0).persistentDataContainer.get(h.key, PersistentDataType.BYTE_ARRAY) != null) shouldBe true
+
+            h.until { !h.owner.restoring(scene.zoneId) }
+            scene.records.all { h.world.getBlockAt(it.x, it.y, it.z).type == Material.STONE } shouldBe true
+            h.world.loadedChunks.all { it.persistentDataContainer.get(h.key, PersistentDataType.BYTE_ARRAY) == null } shouldBe true
+        }
+    }
+
+    test("background loaded scene recovery keeps journal decoding asynchronous") {
+        SceneHarness().use { h ->
+            val scene = h.scene(1)
+            h.owner.prepareIncrementally(scene, 128) shouldBe true
+            h.until { scene.ready }
+            h.owner.clearQueues()
+            val captures = h.captureSubmissions
+
+            h.owner.reconcileLoaded({ _, _ -> false })
+            h.captureSubmissions shouldBe captures + 1
+            h.nativeDecodeCalls.get() shouldBe 0
+            h.world.getBlockAt(0, 64, 0).type shouldBe Material.AIR
+
+            h.until { h.world.getChunkAt(0, 0).persistentDataContainer.get(h.key, PersistentDataType.BYTE_ARRAY) == null }
+            h.world.getBlockAt(0, 64, 0).type shouldBe Material.STONE
+            h.nativeDecodeCalls.get() shouldBe 0
+        }
+    }
 })
+
+private const val NATIVE_STEP_BUDGET = 512
 
 private class SceneHarness : AutoCloseable {
     private val nativeThread = Thread.currentThread()
@@ -69,8 +136,11 @@ private class SceneHarness : AutoCloseable {
     private val supervisor = RuntimeTaskSupervisor(BukkitTaskScheduler(plugin)).also { it.activate() }
     private val worker = BoundedAsyncExecutor("prepared-scene-test")
     val workerCalls = AtomicInteger()
+    val nativeDecodeCalls = AtomicInteger()
     val pendingComputations = AtomicInteger()
     var computeGate: CompletableFuture<Unit>? = null
+    var failNextCapture: Throwable? = null
+    var captureSubmissions = 0
     private var nativeCalls = 0
     var maxNativeCallsPerTick = 0
     var nativeTicks = 0
@@ -79,6 +149,11 @@ private class SceneHarness : AutoCloseable {
         override fun lifecycleToken() = supervisor.token()
         override fun capture(token: RuntimeTaskSupervisor.Token, isCurrent: () -> Boolean, step: () -> Boolean): CompletableFuture<Unit> {
             check(Thread.currentThread() === nativeThread)
+            captureSubmissions++
+            failNextCapture?.let { failure ->
+                failNextCapture = null
+                return CompletableFuture.failedFuture(failure)
+            }
             return supervisor.capture(token, isCurrent, step)
         }
         override fun <T> callSync(token: RuntimeTaskSupervisor.Token, task: () -> T) = supervisor.callSync(token, task)
@@ -105,7 +180,7 @@ private class SceneHarness : AutoCloseable {
                 return realCodec.encode(records, world, chunkX, chunkZ, minHeight, maxHeight)
             }
             override fun decode(raw: ByteArray, world: String, chunkX: Int, chunkZ: Int, minHeight: Int, maxHeight: Int): List<WorksitePreparedSceneRecord> {
-                check(Thread.currentThread() !== nativeThread)
+                if (Thread.currentThread() === nativeThread) nativeDecodeCalls.incrementAndGet()
                 return realCodec.decode(raw, world, chunkX, chunkZ, minHeight, maxHeight)
             }
         },
@@ -131,7 +206,7 @@ private class SceneHarness : AutoCloseable {
     fun tick(beforeTick: () -> Unit = {}) {
         nativeCalls = 0
         beforeTick()
-        owner.process(512) { true }
+        owner.process(NATIVE_STEP_BUDGET * 2) { true }
         paper.performTicks(1)
         maxNativeCallsPerTick = maxOf(maxNativeCallsPerTick, nativeCalls)
         if (nativeCalls > 0) nativeTicks++

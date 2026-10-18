@@ -138,30 +138,33 @@ internal class MineExpeditionWorld(
             bounds.minZ, surface.blockY, surface.x, surface.y, surface.z)
     }
 
-    fun initialize(prewarm: Boolean = true) {
+    fun initialize(prewarm: Boolean = true, maintenance: Boolean = false) {
+        if (maintenance) check(Bukkit.isPrimaryThread()) { "Expedition maintenance must run on the owning thread" }
         this.prewarm = prewarm
         if (initializing) return
         initializing = true
         val token = tasks.lifecycleToken()
-        receipts.ready.whenComplete { _, failure ->
-            tasks.runSync(token) {
-                runCatching {
-                    if (failure != null) throw failure
-                    storageLoaded = true
-                    if (prewarm || receipts.records().isNotEmpty()) {
-                        reconcileLoaded()
-                        receipts.records().forEach { receipt ->
-                            if (receipt.placement.geometryVersion < 2 && !receipt.restoring) stock.retire(receipt)
-                            else schedulePreparation(receipt)
-                        }
+        fun activateLoaded(failure: Throwable?) {
+            runCatching {
+                if (failure != null) throw failure
+                storageLoaded = true
+                if (prewarm || receipts.records().isNotEmpty()) {
+                    reconcileLoaded(maintenance)
+                    receipts.records().forEach { receipt ->
+                        if (receipt.placement.geometryVersion < 2 && !receipt.restoring) stock.retire(receipt)
+                        else schedulePreparation(receipt)
                     }
-                    stock.activate()
-                }.onFailure {
-                    initializing = false
-                    state.log(Level.SEVERE, "Mine expedition world initialization failed", it)
                 }
+                stock.activate()
+            }.onFailure {
+                initializing = false
+                state.log(Level.SEVERE, "Mine expedition world initialization failed", it)
             }
         }
+        if (maintenance) {
+            // Receipt readiness contains only filesystem load/validation, never a native callback.
+            activateLoaded(runCatching { receipts.ready.join() }.exceptionOrNull())
+        } else receipts.ready.whenComplete { _, failure -> tasks.runSync(token) { activateLoaded(failure) } }
     }
 
     fun ensure(runtime: MineRuntime, surface: Location, now: Long): MineExpeditionScene? {
@@ -275,12 +278,13 @@ internal class MineExpeditionWorld(
     // The module applies its explicit admin-edit bypass before consulting this.
     fun protects(location: Location): Boolean = scenes.values.any { it.contains(location) }
 
-    fun reconcileLoaded() {
+    fun reconcileLoaded(maintenance: Boolean = false) {
         if (!storageLoaded) return
         prepared.reconcileLoaded(
             active = { owner, id -> receipts.records().any { it.journalOwner == owner && it.journalSequence == id && !it.restoring } },
             isActiveScene = { record -> receipts.records().any { it.journalOwner == record.zoneId &&
                 it.journalSequence == record.sequence && it.sceneId == record.sceneId && !it.restoring } },
+            maintenance = maintenance,
         )
     }
 

@@ -582,7 +582,7 @@ internal class MineExpeditionController(
         else actions.removeOrphans(Bukkit.getWorlds().flatMap { it.entities })
         val runtime = registry.snapshot().firstOrNull(::configured)
         runtime?.let { world.configure(it, requireNotNull(surfacePoint(it))) }
-        world.initialize(runtime != null)
+        world.initialize(runtime != null, maintenance = true)
     }
     fun editFurnishings(player: Player, action: String?) {
         if (!player.hasPermission("arcfarms.admin")) return
