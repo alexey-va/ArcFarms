@@ -22,3 +22,6 @@ permissions:
     default: true
   arcfarms.admin:
     default: op
+  arcfarms.bypass:
+    description: Toggle worksite editing without other administrator commands
+    default: op

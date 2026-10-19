@@ -152,13 +152,18 @@ internal class FarmEventRouter(
         farmAt(event.block.location)?.let { runtime ->
             if (shiftStartPending(runtime.settings.id)) {
                 event.isCancelled = true
+                worldAdmin.remindEdit(event.player)
                 return true
             }
             state.traceBlockBreak(event, ActivityKind.FARM, runtime.settings.id)
             event.isCancelled = true
             if (!special.handleChannelBreak(runtime, event.player, event.block) &&
                 !special.handleCropBreak(runtime, event.player, event.block)
-            ) harvest.onBreak(event, runtime)
+            ) {
+                harvest.onBreak(event, runtime)
+                // Accepted harvests suppress drops, including cancelled durable fixed-crop commits.
+                if (event.isCancelled && event.isDropItems) worldAdmin.remindEdit(event.player)
+            }
             return true
         }
         return false

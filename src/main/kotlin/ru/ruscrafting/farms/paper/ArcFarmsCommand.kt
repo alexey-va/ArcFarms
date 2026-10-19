@@ -14,6 +14,7 @@ import ru.ruscrafting.farms.domain.FarmCareType
 import ru.ruscrafting.farms.domain.FarmPointKind
 import ru.ruscrafting.farms.domain.MineIncidentType
 import ru.ruscrafting.farms.domain.MineLocationKeys
+import ru.ruscrafting.farms.paper.farm.admin.FarmWorldAdminService
 
 class ArcFarmsCommand(
     private val service: ArcFarmsService,
@@ -151,11 +152,12 @@ class ArcFarmsCommand(
     }
 
     private fun admin(sender: CommandSender, args: List<String>) {
-        if (!sender.hasPermission("arcfarms.admin")) {
+        val action = args.firstOrNull()?.lowercase()
+        if (!sender.hasPermission("arcfarms.admin") &&
+            !(action == "edit" && FarmWorldAdminService.canEdit(sender))) {
             sender.sendMessage(locale.render(MessageKey.NO_PERMISSION, sender))
             return
         }
-        val action = args.firstOrNull()?.lowercase()
         if (action == null || action == "help") {
             sender.sendMessage(locale.render(MessageKey.ADMIN_HELP, sender))
             return
@@ -727,11 +729,17 @@ class ArcFarmsCommand(
         if (args.isEmpty()) return emptyList()
         val root = args[0].lowercase()
         val admin = sender.hasPermission("arcfarms.admin")
+        val editor = FarmWorldAdminService.canEdit(sender)
         val candidates = when {
             args.size == 1 -> listOf("status", "top", "travel") +
-                if (admin) listOf("reload", "admin", "debug") else emptyList()
+                if (admin) listOf("reload", "admin", "debug") else if (editor) listOf("admin") else emptyList()
             root == "top" || root == "travel" -> if (args.size == 2) listOf("farm", "lumber", "mine") else emptyList()
             root == "admin" && admin -> adminCompletions(args)
+            root == "admin" && editor -> when {
+                args.size == 2 -> listOf("edit")
+                args.size == 3 && args[1].equals("edit", true) -> listOf("help")
+                else -> emptyList()
+            }
             root == "debug" && admin -> debugCompletions(args)
             else -> emptyList()
         }

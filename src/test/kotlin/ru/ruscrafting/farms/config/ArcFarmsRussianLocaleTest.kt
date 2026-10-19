@@ -23,6 +23,25 @@ import java.util.Locale
 class ArcFarmsRussianLocaleTest : FunSpec({
     val plain = PlainTextComponentSerializer.plainText()
 
+    for ((language, action) in mapOf("ru" to "Включить редактирование:", "en" to "Enable editing:")) {
+        test("$language edit hint renders the exact suggested command on its own action row") {
+            val root = russianLocaleRoot()
+            Config(root, "config.yml").also {
+                it.setString("locale.default", language)
+                it.saveStrict()
+            }
+            val settings = ArcFarmsConfig.inspect(root)
+            val locale = ArcFarmsLocale(root) { settings }
+            val component = locale.render(MessageKey.ADMIN_EDIT_HINT)
+
+            plain.serialize(component).lines().last() shouldBe "  $action /arcfarms admin edit"
+            plain.serialize(component) shouldNotContain "<"
+            val serialized = GsonComponentSerializer.gson().serialize(component)
+            serialized shouldContain "suggest_command"
+            serialized shouldContain "/arcfarms admin edit"
+        }
+    }
+
     test("English client receives Russian plugin text and dynamic crop labels") {
         val root = russianLocaleRoot()
         val settings = ArcFarmsConfig.inspect(root)

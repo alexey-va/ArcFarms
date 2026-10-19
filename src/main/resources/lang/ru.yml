@@ -8,6 +8,7 @@ reload-failed: '<prefix> <red>Перезагрузка отклонена:</red>
 admin-edit:
   enabled: '<color:#ffad42>Редактирование фермы включено</color> <color:#707a76>•</color> <color:#f2fff7>ломайте грядки, чтобы снять метки ArcFarms</color>'
   disabled: '<color:#55d98b>Редактирование фермы выключено</color>'
+  hint: '<prefix> <color:#ffad42>Блок защищён.</color><newline>  <color:#f2fff7>Включить редактирование:</color> <click:suggest_command:''/arcfarms admin edit''><color:#55d98b>/arcfarms admin edit</color></click>'
   active-shift: '<color:#ff5f6d>Сначала дождитесь завершения текущей смены.</color>'
   block-removed: '<color:#ffad42>Грядка удалена из управления ArcFarms.</color>'
 admin-inspect:

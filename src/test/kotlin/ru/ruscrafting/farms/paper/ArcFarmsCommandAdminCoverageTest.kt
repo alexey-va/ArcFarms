@@ -2,6 +2,9 @@ package ru.ruscrafting.farms.paper
 
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.collections.shouldContain
+import io.kotest.matchers.shouldBe
+import io.mockk.Called
+import io.mockk.clearMocks
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
@@ -10,6 +13,7 @@ import org.bukkit.command.CommandSender
 import org.bukkit.entity.Player
 import net.kyori.adventure.text.Component
 import ru.ruscrafting.farms.config.ArcFarmsLocale
+import ru.ruscrafting.farms.config.MessageKey
 import ru.ruscrafting.farms.domain.ActivityKind
 import ru.ruscrafting.farms.domain.FarmPointKind
 import ru.ruscrafting.farms.paper.worksite.WorksiteAdminHandler
@@ -19,6 +23,67 @@ import ru.ruscrafting.farms.paper.mine.incident.MineIncidentPlacementReport
 import ru.ruscrafting.farms.domain.MineIncidentType
 
 class ArcFarmsCommandAdminCoverageTest : FunSpec({
+    test("bypass permission exposes edit and its help without granting other admin commands") {
+        val player = mockk<Player>(relaxed = true) {
+            every { hasPermission("arcfarms.bypass") } returns true
+        }
+        val service = mockk<ArcFarmsService>(relaxed = true)
+        val locale = mockk<ArcFarmsLocale>(relaxed = true)
+        val command = mockk<Command>(relaxed = true)
+        var reloads = 0
+        val handler = ArcFarmsCommand(service, locale, mockk(relaxed = true)) {
+            reloads++
+            java.util.concurrent.CompletableFuture.completedFuture(Unit)
+        }
+
+        handler.onCommand(player, command, "arcfarms", arrayOf("admin", "edit"))
+        handler.onCommand(player, command, "arcfarms", arrayOf("admin", "edit", "help"))
+        verify(exactly = 1) { service.toggleAdminEdit(player) }
+        verify(exactly = 1) { locale.render(MessageKey.ADMIN_HELP_EDIT, player, any()) }
+        handler.onTabComplete(player, command, "arcfarms", arrayOf("")) shouldBe
+            listOf("status", "top", "travel", "admin")
+        handler.onTabComplete(player, command, "arcfarms", arrayOf("admin", "")) shouldBe listOf("edit")
+        handler.onTabComplete(player, command, "arcfarms", arrayOf("admin", "edit", "")) shouldBe listOf("help")
+        handler.onTabComplete(player, command, "arcfarms", arrayOf("admin", "point", "")) shouldBe emptyList()
+        handler.onTabComplete(player, command, "arcfarms", arrayOf("debug", "")) shouldBe emptyList()
+
+        clearMocks(service, locale, answers = false)
+        val denied = listOf(
+            arrayOf("admin", "help"), arrayOf("admin", "inspect"),
+            arrayOf("admin", "point", "communal_farm", "tool"),
+            arrayOf("admin", "next", "communal_farm"), arrayOf("admin", "finish", "communal_farm"),
+            arrayOf("admin", "stage", "communal_farm", "complete"),
+            arrayOf("admin", "backup", "communal_farm", "restore", "latest"),
+            arrayOf("admin", "worksite", "mine", "old_shafts", "reindex", "start"),
+            arrayOf("admin", "expeditions", "rebuild", "all"),
+            arrayOf("reload"), arrayOf("debug", "communal_farm", "reset"),
+        )
+        denied.forEach { handler.onCommand(player, command, "arcfarms", it) }
+        verify(exactly = denied.size) { locale.render(MessageKey.NO_PERMISSION, player, any()) }
+        verify { service wasNot Called }
+        reloads shouldBe 0
+    }
+
+    test("ordinary players cannot toggle or discover edit while administrators retain it") {
+        val player = mockk<Player>(relaxed = true)
+        val service = mockk<ArcFarmsService>(relaxed = true)
+        val locale = mockk<ArcFarmsLocale>(relaxed = true)
+        val command = mockk<Command>(relaxed = true)
+        val handler = ArcFarmsCommand(service, locale, mockk(relaxed = true)) {
+            java.util.concurrent.CompletableFuture.completedFuture(Unit)
+        }
+
+        handler.onCommand(player, command, "arcfarms", arrayOf("admin", "edit"))
+        verify(exactly = 0) { service.toggleAdminEdit(any()) }
+        verify(exactly = 1) { locale.render(MessageKey.NO_PERMISSION, player, any()) }
+        handler.onTabComplete(player, command, "arcfarms", arrayOf("admin", "")) shouldBe emptyList()
+
+        every { player.hasPermission("arcfarms.admin") } returns true
+        handler.onCommand(player, command, "arcfarms", arrayOf("admin", "edit"))
+        verify(exactly = 1) { service.toggleAdminEdit(player) }
+        handler.onTabComplete(player, command, "arcfarms", arrayOf("admin", "")) shouldContain "inspect"
+    }
+
     test("firewood point and frost event are executable and suggested to administrators") {
         val player = mockk<Player>(relaxed = true) {
             every { hasPermission("arcfarms.admin") } returns true

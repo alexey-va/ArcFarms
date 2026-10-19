@@ -223,6 +223,7 @@ internal fun farmEventRouter(
     barnFire: FarmBarnFireIncident = mockk(relaxed = true),
     harvest: FarmHarvestController = mockk(relaxed = true),
     frost: FarmFrostIncident = mockk(relaxed = true),
+    worldAdmin: FarmWorldAdminService = mockk(relaxed = true),
 ): FarmEventRouter = FarmEventRouter(
     locale = fixture.locale,
     debug = ArcFarmsDebug({ false }) {},
@@ -230,7 +231,7 @@ internal fun farmEventRouter(
     audience = fixture.port,
     state = fixture.port,
     runtimes = { listOf(runtime) },
-    worldAdmin = mockk<FarmWorldAdminService>(relaxed = true),
+    worldAdmin = worldAdmin,
     ledger = mockk<FarmBlockLedger>(relaxed = true),
     registry = mockk<FarmBlockRegistry>(relaxed = true),
     fixedCrops = mockk<FarmFixedCropRecoveryController>(relaxed = true),

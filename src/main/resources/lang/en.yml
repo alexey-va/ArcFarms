@@ -6,6 +6,7 @@ bad-activity: '<prefix> <red>Activity must be farm, lumber, or mine.</red>'
 reload-ok: '<prefix> <green>ArcFarms configuration and locales reloaded.</green>'
 reload-failed: '<prefix> <red>Reload rejected:</red> <gray><reason></gray>'
 admin-edit:
+  hint: '<prefix> <color:#ffad42>This block is protected.</color><newline>  <color:#f2fff7>Enable editing:</color> <click:suggest_command:''/arcfarms admin edit''><color:#55d98b>/arcfarms admin edit</color></click>'
   enabled: '<color:#ffad42>Farm editing enabled</color> <color:#707a76>•</color> <color:#f2fff7>break beds to remove their ArcFarms records</color>'
   disabled: '<color:#55d98b>Farm editing disabled</color>'
   active-shift: '<color:#ff5f6d>Wait for the current shift to finish first.</color>'

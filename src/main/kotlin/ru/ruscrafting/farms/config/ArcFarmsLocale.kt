@@ -23,6 +23,7 @@ enum class MessageKey(val path: String) {
     RELOAD_FAILED("reload-failed"),
     ADMIN_EDIT_ENABLED("admin-edit.enabled"),
     ADMIN_EDIT_DISABLED("admin-edit.disabled"),
+    ADMIN_EDIT_HINT("admin-edit.hint"),
     ADMIN_EDIT_ACTIVE_SHIFT("admin-edit.active-shift"),
     ADMIN_EDIT_BLOCK_REMOVED("admin-edit.block-removed"),
     ADMIN_INSPECT_ENABLED("admin-inspect.enabled"),

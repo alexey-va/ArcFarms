@@ -8,6 +8,7 @@ import org.bukkit.Bukkit
 import org.bukkit.Color
 import org.bukkit.Particle
 import org.bukkit.block.Block
+import org.bukkit.command.CommandSender
 import org.bukkit.entity.Player
 import org.bukkit.plugin.Plugin
 import ru.ruscrafting.farms.config.ArcFarmsLocale
@@ -86,10 +87,25 @@ internal class FarmWorldAdminService(
         clock,
     )
 
-    fun isEditing(player: Player): Boolean = player.uniqueId in editing
+    fun isEditing(player: Player): Boolean {
+        if (player.uniqueId !in editing) return false
+        if (canEdit(player)) return true
+        stopEditing(player)
+        return false
+    }
     fun isInspecting(player: Player): Boolean = player.uniqueId in inspecting
-    fun anyEditing(): Boolean = editing.isNotEmpty()
-    fun anotherEditor(player: Player): Boolean = editing.any { it != player.uniqueId }
+    fun anyEditing(): Boolean {
+        editing.removeIf { Bukkit.getPlayer(it)?.let(::canEdit) != true }
+        return editing.isNotEmpty()
+    }
+    fun anotherEditor(player: Player): Boolean = anyEditing() && editing.any { it != player.uniqueId }
+
+    fun remindEdit(player: Player) {
+        if (canEdit(player) && !isEditing(player) &&
+            access.allowInteraction("farm-edit-hint:${player.uniqueId}", 5_000L)) {
+            audience.sendChat(player, MessageKey.ADMIN_EDIT_HINT)
+        }
+    }
 
     fun release(player: Player) {
         editing.remove(player.uniqueId)
@@ -107,6 +123,10 @@ internal class FarmWorldAdminService(
             debug.event("farm_admin_edit", "player" to player.name, "enabled" to false)
             audience.sendActionBar(player, MessageKey.ADMIN_EDIT_DISABLED)
             return false
+        }
+        if (!canEdit(player)) {
+            audience.sendChat(player, MessageKey.NO_PERMISSION)
+            return null
         }
         if (inspecting.remove(player.uniqueId)) audience.sendActionBar(player, MessageKey.ADMIN_INSPECT_DISABLED)
         editing += player.uniqueId
@@ -463,12 +483,15 @@ internal class FarmWorldAdminService(
     private fun remainingSeconds(deadline: Long, now: Long): Long =
         ceil((deadline - now).coerceAtLeast(0) / 1_000.0).toLong()
 
-    private companion object {
-        const val INSPECT_RADIUS = 28.0
-        const val MAX_INSPECT_PARTICLES = 320
-        val INDEX_COLOR: Color = Color.fromRGB(85, 217, 139)
-        val PATCH_COLOR: Color = Color.fromRGB(255, 173, 66)
-        val DAMAGE_COLOR: Color = Color.fromRGB(255, 95, 109)
-        val SPECIAL_COLOR: Color = Color.fromRGB(154, 140, 255)
+    companion object {
+        fun canEdit(sender: CommandSender): Boolean =
+            sender.hasPermission("arcfarms.admin") || sender.hasPermission("arcfarms.bypass")
+
+        private const val INSPECT_RADIUS = 28.0
+        private const val MAX_INSPECT_PARTICLES = 320
+        private val INDEX_COLOR: Color = Color.fromRGB(85, 217, 139)
+        private val PATCH_COLOR: Color = Color.fromRGB(255, 173, 66)
+        private val DAMAGE_COLOR: Color = Color.fromRGB(255, 95, 109)
+        private val SPECIAL_COLOR: Color = Color.fromRGB(154, 140, 255)
     }
 }
