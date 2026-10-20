@@ -1,5 +1,8 @@
 package ru.ruscrafting.farms.paper.mine.lift
 
+import com.google.gson.GsonBuilder
+import java.nio.file.Files
+import java.nio.file.Path
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.doubles.plusOrMinus
 import io.kotest.matchers.shouldBe
@@ -110,6 +113,7 @@ class MineLiftInteractionGateTest : FunSpec({
                 val world = LiftSceneWorldMock(paper.server).apply { name = "casino" }
                 paper.server.addWorld(world)
                 val plugin = paper.createSimplePlugin("CasinoLiftInteractionTest")
+                val previewStates = mutableListOf<Map<String, Any>>()
                 for ((exitX, exitZ) in listOf(-5.0 to 0.0, 5.0 to 0.0, 0.0 to -5.0, 0.0 to 5.0)) {
                     val settings = MineLiftSettings(
                         id = "casino", world = world.name, x = 0.0, z = 0.0,
@@ -133,17 +137,38 @@ class MineLiftInteractionGateTest : FunSpec({
                         label.lineWidth shouldBe 128
                     }
                     val labelLocations = labels.map { it.location.clone() }
-                    val cabin = world.entities.filterIsInstance<BlockDisplay>().filter {
-                        it.block.material != Material.AIR &&
-                            abs(it.location.x) < 3 && abs(it.location.z) < 3 && it.transformation.scale.y > 0
+                    val horizontal = exitZ != 0.0
+                    val sceneBlocks = world.entities.filterIsInstance<BlockDisplay>().filter {
+                        it.block.material != Material.AIR && it.transformation.scale.y > 0
                     }
+                    val landing = sceneBlocks.filter {
+                        // Normal-track band excludes the call panels; along-track positions
+                        // reach exactly -3.0 when open and must not be clipped by a cabin box.
+                        abs(if(horizontal) it.location.z else it.location.x) in 2.45..2.8
+                    }
+                    landing.size shouldBe 40 // Two floors, two tiled sliding leaves per floor.
+                    val cabin = (sceneBlocks - landing.toSet()).filter { abs(it.x) < 3 && abs(it.z) < 3 }
                     cabin.count { it.block.material == Material.GRAY_STAINED_GLASS } shouldBe 0
                     cabin.count { it.block.material == Material.OCHRE_FROGLIGHT } shouldBe 3
                     (cabin.size <= 145) shouldBe true
                     repeat(11) { scene.move(65.0, open = false) shouldBe true }
                     val closed = cabin.associate { it.uniqueId to it.location.clone() }
+                    val landingClosed = landing.associate { it.uniqueId to it.location.clone() }
+                    fun snapshot(id: String) {
+                        if(exitX >= 0) return
+                        previewStates += mapOf("id" to id, "title" to id,
+                            "camera" to mapOf("position" to listOf(-7.5,17.62,0.0),
+                                "target" to listOf(-2.2,17.3,0.0), "fovDegrees" to 70),
+                            "pieces" to (cabin + landing).mapIndexed { i, display ->
+                                val at=display.location;val scale=display.transformation.scale
+                                mapOf("key" to "native-part-$i", "material" to "minecraft:${display.block.material.name.lowercase()}",
+                                    "x" to at.x+scale.x/2, "y" to at.y-49.0+scale.y/2, "z" to at.z+scale.z/2,
+                                    "width" to scale.x, "height" to scale.y, "depth" to scale.z)
+                            })
+                    }
                     for (pose in 0..11) {
-                        val boxes = cabin.map { display ->
+                        // Include the fixed landing leaves in the same coplanarity check.
+                        val boxes = (cabin + landing).map { display ->
                             val at = display.location
                             val scale = display.transformation.scale
                             listOf(at.x, at.y, at.z, at.x + scale.x, at.y + scale.y, at.z + scale.z)
@@ -163,20 +188,41 @@ class MineLiftInteractionGateTest : FunSpec({
                             }
                         }
                         overlaps shouldBe emptyList()
+                        snapshot("upper-door-$pose")
                         if (pose < 11) scene.move(65.0, open = true) shouldBe true
                     }
                     scene.isDoorOpenAt(0) shouldBe true
                     labels.map { it.location } shouldBe labelLocations
                     val moving = cabin.filter { it.location.distanceSquared(closed.getValue(it.uniqueId)) > .5 }
                     moving.size shouldBe 12
-                    val horizontal = exitZ != 0.0
                     moving.forEach {
                         val start = if (horizontal) it.location.x else it.location.z
                         val width = if (horizontal) it.transformation.scale.x else it.transformation.scale.z
                         (start >= -2.20001 && start + width <= 2.20001) shouldBe true
                     }
+                    val upperLanding = landing.filter { it.y >= 65.0 }
+                    val lowerLanding = landing - upperLanding.toSet()
+                    upperLanding.count { it.location.distanceSquared(landingClosed.getValue(it.uniqueId)) > .5 } shouldBe 20
+                    lowerLanding.all { it.location == landingClosed.getValue(it.uniqueId) } shouldBe true
+                    repeat(11) { scene.move(65.0, open=false) shouldBe true }
+                    scene.move(57.0, open=false) shouldBe true
+                    snapshot("travelling-doors-closed")
+                    landing.all { it.location == landingClosed.getValue(it.uniqueId) } shouldBe true
+                    repeat(11) { scene.move(49.0, open=true) shouldBe true }
+                    snapshot("lower-floor-open-upper-closed")
+                    upperLanding.all { it.location == landingClosed.getValue(it.uniqueId) } shouldBe true
+                    lowerLanding.count { it.location.distanceSquared(landingClosed.getValue(it.uniqueId)) > .5 } shouldBe 20
+                    landing.forEach { display ->
+                        val start = if(horizontal) display.x else display.z
+                        val width = if(horizontal) display.transformation.scale.x else display.transformation.scale.z
+                        (start >= -3.00001 && start + width <= 3.00001) shouldBe true
+                    }
                     scene.close()
+                    landing.all { !it.isValid } shouldBe true
                 }
+                val previewPath=Path.of("build/casino-lift-preview/scene.json")
+                Files.createDirectories(previewPath.parent)
+                Files.writeString(previewPath,GsonBuilder().setPrettyPrinting().create().toJson(mapOf("states" to previewStates)))
             } finally {
                 paper.close()
             }

@@ -182,7 +182,8 @@ internal class MineLiftRuntime(
                 }.thenCompose {
                     tasks.callSync(token) {
                         check(current() && scene === next) { "Mine lift preparation superseded" }
-                        motion = MineLiftMotion(config.floors.map { it.y }, config.speed)
+                        motion = MineLiftMotion(config.floors.map { it.y }, config.speed,
+                            if (config.theme == MineLiftTheme.CASINO) CASINO_BOARDING_TICKS else MineLiftMotion.BOARDING_TICKS)
                         next.spawn(config.floors.first().y, { label(it) }) { step -> capture(::current, step) }
                     }.thenCompose { it }
                 }
@@ -213,7 +214,7 @@ internal class MineLiftRuntime(
         val config = settings
         tickNumber++
         val arrived = state.tick()
-        check(cabin.move(state.y, state.phase == MineLiftMotion.Phase.DOCKED)) { "Mine lift entity movement rejected" }
+        check(cabin.move(state.y, state.doorsOpen)) { "Mine lift entity movement rejected" }
         riders.keys.toList().forEach { id ->
             val player = Bukkit.getPlayer(id)
             val seat = cabin.seats[riders.getValue(id)]
@@ -249,7 +250,7 @@ internal class MineLiftRuntime(
     }
 
     private fun label(index: Int): Component = text("panel", values = mapOf("floor" to floorName(index),
-        "state" to text(if (motion?.phase != MineLiftMotion.Phase.MOVING && motion?.floor == index) "panel-ready" else "panel-call")))
+        "state" to text(if (motion?.doorsOpen == true && motion?.floor == index) "panel-ready" else "panel-call")))
 
     private fun nearFloor(player: Player): Int? = settings.floors.indices.firstOrNull { index ->
         val config = settings
@@ -259,7 +260,7 @@ internal class MineLiftRuntime(
 
     private fun nearCabin(player: Player, index: Int): Boolean {
         val state = motion ?: return false
-        return state.phase == MineLiftMotion.Phase.DOCKED && state.floor == index && settings.cabinContains(player.location, state.y)
+        return state.doorsOpen && state.floor == index && settings.cabinContains(player.location, state.y)
     }
 
     private fun near(player: Player, index: Int, allowCabin: Boolean): Boolean =
@@ -270,7 +271,7 @@ internal class MineLiftRuntime(
             player.sendMessage(text("unavailable", player)); return false
         }
         val state = motion ?: run { player.sendMessage(text("unavailable", player)); return false }
-        if (state.floor != index || state.phase == MineLiftMotion.Phase.MOVING) {
+        if (state.floor != index || !state.doorsOpen) {
             state.call(index)
             player.sendMessage(text("called", player, mapOf("floor" to floorName(index, player))))
             return true
@@ -287,7 +288,7 @@ internal class MineLiftRuntime(
                 )
             ),
             buttons = config.floors.indices.filter {
-                it != index && (state.phase != MineLiftMotion.Phase.BOARDING || it == state.target)
+                state.canBoard(it)
             }.map { target ->
                 PaperDialogButton(PaperDialogActionId.of("floor_$target"), FarmDialogScreens.nativeBody(text("go", player,
                     mapOf("floor" to floorName(target, player)))), width = 230, closeDialogBeforeAction = true,
@@ -301,7 +302,7 @@ internal class MineLiftRuntime(
     /** Shared cabin-click and walk-in path; choosing a floor still boards through the same menu action. */
     private fun openCabinMenu(player: Player): Boolean {
         val state = motion
-        val floor = state?.takeIf { it.phase == MineLiftMotion.Phase.DOCKED }?.floor
+        val floor = state?.takeIf { it.doorsOpen }?.floor
         if (floor == null || !nearCabin(player, floor)) {
             player.sendMessage(text("unavailable", player))
             return false
@@ -315,8 +316,7 @@ internal class MineLiftRuntime(
         val cabin = scene ?: return
         if (maintenance.ownsAny() || !player.hasPermission("arcfarms.mine") || !near(player, source, allowCabin) || state.floor != source ||
             player.isInsideVehicle || player.isDead || player.uniqueId in boarding || hasRecovery(player.uniqueId) ||
-            state.phase == MineLiftMotion.Phase.MOVING ||
-            (state.phase == MineLiftMotion.Phase.BOARDING && state.target != destination)) {
+            !state.canBoard(destination)) {
             player.sendMessage(text("unavailable", player)); return
         }
         val slot = cabin.seats.indices.firstOrNull { it !in riders.values && it !in boarding.values && cabin.seats[it].passengers.isEmpty() }
@@ -338,8 +338,7 @@ internal class MineLiftRuntime(
                 if (!player.isOnline) { releaseRider(player.uniqueId, settings.id); return@runSync }
                 val stillBoardable = scene === cabin && motion === state && !closed && !maintenance.ownsAny() &&
                     near(player, source, allowCabin) && !player.isDead && !player.isInsideVehicle &&
-                    state.floor == source && state.phase != MineLiftMotion.Phase.MOVING &&
-                    (state.phase != MineLiftMotion.Phase.BOARDING || state.target == destination) &&
+                    state.floor == source && state.canBoard(destination) &&
                     cabin.seats[slot].passengers.isEmpty()
                 if (!stillBoardable || !cabin.seats[slot].addPassenger(player)) {
                     recover(player)
@@ -480,7 +479,7 @@ internal class MineLiftRuntime(
         }
 
         val state = motion
-        val floor = state?.takeIf { it.phase == MineLiftMotion.Phase.DOCKED }?.floor
+        val floor = state?.takeIf { it.doorsOpen }?.floor
         val canEnter = floor != null && settings.entersCabin(event.from, event.to, floor) &&
             scene?.isDoorOpenAt(floor) == true && !maintenance.ownsAny() &&
             player.hasPermission("arcfarms.mine") && !player.isDead && !player.isInsideVehicle &&
@@ -597,3 +596,4 @@ internal class MineLiftRuntime(
 }
 
 private const val CASINO_LIFT_MUSIC = "arc_casino:lift_local_forecast"
+private const val CASINO_BOARDING_TICKS = 100

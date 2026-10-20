@@ -34,6 +34,8 @@ internal class MineLiftScene(private val plugin: Plugin, private val settings: M
         val doorTravel: Double? = null,
     )
     private val parts = mutableListOf<Part>()
+    private data class LandingPart(val floorIndex: Int, val part: Part)
+    private val landingDoors = mutableListOf<LandingPart>()
     private val entities = mutableListOf<Entity>()
     private val chain = mutableListOf<BlockDisplay>()
     val seats = mutableListOf<Entity>()
@@ -132,6 +134,7 @@ internal class MineLiftScene(private val plugin: Plugin, private val settings: M
             }
         }.thenApply {
         settings.floors.forEachIndexed { index, floor ->
+            if (theme == MineLiftTheme.CASINO) casinoLandingDoors(index)
             val panel = world.spawn(floor.panel.location(world), Interaction::class.java) {
                 mark(it); it.interactionWidth = .85f; it.interactionHeight = 1.3f; it.isResponsive = true
             }.also(entities::add)
@@ -196,6 +199,16 @@ internal class MineLiftScene(private val plugin: Plugin, private val settings: M
                 part.y + part.doorShiftY * doorOffset,
                 part.z + part.doorShiftZ * doorOffset,
             )) && moved
+        }
+        if (heightChanged || previousDoor != doorOpening || doorSideChanged) {
+            landingDoors.forEach { (index, part) ->
+                // A shared opening side does not make the other floors open.
+                val opening = if (kotlin.math.abs(settings.floors[index].y - y) <= .02) doorOpening else 0.0
+                val offset = opening * (part.doorTravel ?: 0.0)
+                moved = part.display.teleport(origin(settings.floors[index].y).add(
+                    part.x + part.doorShiftX * offset, part.y, part.z + part.doorShiftZ * offset,
+                )) && moved
+            }
         }
         if (!heightChanged) {
             openDoorSide = nextOpenDoorSide
@@ -335,6 +348,26 @@ internal class MineLiftScene(private val plugin: Plugin, private val settings: M
         }
     }
 
+    /** Fixed landing leaves live outside the cabin sweep and reuse its wood/brass panels. */
+    private fun casinoLandingDoors(index: Int) {
+        val side = settings.openingSide(index)
+        val horizontal = side == MineLiftDoorSide.NORTH || side == MineLiftDoorSide.SOUTH
+        val span = if (horizontal) settings.width else settings.depth
+        val leafWidth = minOf(1.5, span / 2 - WALL_THICKNESS)
+        val first = parts.size
+        casinoPanels(side, -leafWidth, leafWidth, -1.0, leafWidth)
+        casinoPanels(side, 0.0, leafWidth, 1.0, leafWidth)
+        val created = parts.subList(first, parts.size).toList()
+        parts.subList(first, parts.size).clear()
+        val outward = if (side == MineLiftDoorSide.NORTH || side == MineLiftDoorSide.WEST) -.26 else .26
+        created.forEach { part ->
+            val landing = part.copy(x = part.x + if(horizontal) 0.0 else outward,
+                z = part.z + if(horizontal) outward else 0.0)
+            landing.display.teleport(origin(settings.floors[index].y).add(landing.x, landing.y, landing.z))
+            landingDoors += LandingPart(index, landing)
+        }
+    }
+
     private fun casinoPanels(
         side: MineLiftDoorSide,
         start: Double,
@@ -438,7 +471,7 @@ internal class MineLiftScene(private val plugin: Plugin, private val settings: M
 
     override fun close() {
         entities.asReversed().forEach(Entity::remove)
-        entities.clear(); parts.clear(); seats.clear(); seatOffsets.clear(); chain.clear(); panels.clear(); cabinHitbox = null; labels.clear()
+        entities.clear(); parts.clear(); landingDoors.clear(); seats.clear(); seatOffsets.clear(); chain.clear(); panels.clear(); cabinHitbox = null; labels.clear()
         openDoorSide = null
     }
 

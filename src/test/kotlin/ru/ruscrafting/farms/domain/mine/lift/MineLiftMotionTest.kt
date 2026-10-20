@@ -7,17 +7,49 @@ import io.kotest.matchers.doubles.shouldBeLessThanOrEqual
 import kotlin.math.abs
 
 class MineLiftMotionTest : FreeSpec({
-    "casino trip completes its sixteen block journey including boarding in four and a half seconds" {
-        val lift = MineLiftMotion(listOf(65.0, 49.0), 8.0)
+    "casino trip allows five seconds to board and closes before its sixteen block journey" {
+        val lift = MineLiftMotion(listOf(65.0, 49.0), 8.0, boardingTicks = 100)
         lift.board(1) shouldBe true
-        repeat(89) { lift.tick() shouldBe false }
+        repeat(169) { lift.tick() shouldBe false }
         lift.tick() shouldBe true
         lift.y shouldBe 49.0
+    }
+
+    "additional passengers share the boarding window and entry closes before cabin movement" {
+        val lift = MineLiftMotion(listOf(65.0, 49.0, 33.0), 8.0, boardingTicks = 100)
+        lift.doorsOpen shouldBe true
+        lift.board(1) shouldBe true
+        repeat(99) { lift.tick() shouldBe false }
+        lift.phase shouldBe MineLiftMotion.Phase.BOARDING
+        lift.doorsOpen shouldBe true
+        lift.canBoard(1) shouldBe true
+        lift.board(1) shouldBe true
+        lift.canBoard(2) shouldBe false
+        lift.board(2) shouldBe false
+
+        lift.tick() shouldBe false
+        lift.phase shouldBe MineLiftMotion.Phase.CLOSING
+        lift.doorsOpen shouldBe false
+        lift.canBoard(1) shouldBe false
+        lift.board(1) shouldBe false
+        lift.y shouldBe 65.0
+        repeat(MineLiftMotion.CLOSING_TICKS - 1) {
+            lift.tick() shouldBe false
+            lift.phase shouldBe MineLiftMotion.Phase.CLOSING
+            lift.y shouldBe 65.0
+        }
+        lift.tick() shouldBe false
+        lift.phase shouldBe MineLiftMotion.Phase.MOVING
+        lift.y shouldBe 65.0
+        lift.doorsOpen shouldBe false
+        lift.tick()
+        (lift.y < 65.0) shouldBe true
     }
 
     "speed validation accepts the faster cap but rejects unsafe values" {
         MineLiftMotion(listOf(123.0, 38.0), MineLiftMotion.MAX_SPEED)
         shouldThrow<IllegalArgumentException> { MineLiftMotion(listOf(123.0, 38.0), 20.000001) }
+        shouldThrow<IllegalArgumentException> { MineLiftMotion(listOf(123.0, 38.0), 8.0, boardingTicks = 0) }
     }
 
     "occupied trip holds its destination and queued calls cannot steal the cabin" {
@@ -30,6 +62,8 @@ class MineLiftMotionTest : FreeSpec({
         repeat(29) { lift.tick() shouldBe false }
         lift.phase shouldBe MineLiftMotion.Phase.BOARDING
         lift.tick()
+        lift.phase shouldBe MineLiftMotion.Phase.CLOSING
+        repeat(MineLiftMotion.CLOSING_TICKS) { lift.tick() }
         lift.phase shouldBe MineLiftMotion.Phase.MOVING
         var arrived = false
         repeat(500) { if (!arrived) arrived = lift.tick() }
@@ -40,6 +74,8 @@ class MineLiftMotionTest : FreeSpec({
         lift.phase shouldBe MineLiftMotion.Phase.DOCKED
         lift.tick()
         lift.target shouldBe 1
+        lift.phase shouldBe MineLiftMotion.Phase.CLOSING
+        repeat(MineLiftMotion.CLOSING_TICKS) { lift.tick() }
         lift.phase shouldBe MineLiftMotion.Phase.MOVING
     }
 
@@ -63,7 +99,7 @@ class MineLiftMotionTest : FreeSpec({
     "maximum speed is capped and queued travel reaches exact endpoints" {
         val lift = MineLiftMotion(listOf(123.0, 38.0), 20.0)
         lift.board(1) shouldBe true
-        repeat(MineLiftMotion.BOARDING_TICKS) { lift.tick() }
+        repeat(MineLiftMotion.BOARDING_TICKS + MineLiftMotion.CLOSING_TICKS) { lift.tick() }
 
         var previous = lift.y
         while (lift.phase == MineLiftMotion.Phase.MOVING) {
@@ -77,6 +113,8 @@ class MineLiftMotionTest : FreeSpec({
         lift.call(0)
         repeat(MineLiftMotion.DOCK_TICKS) { lift.tick() }
         lift.tick()
+        lift.phase shouldBe MineLiftMotion.Phase.CLOSING
+        repeat(MineLiftMotion.CLOSING_TICKS) { lift.tick() }
         lift.phase shouldBe MineLiftMotion.Phase.MOVING
         while (lift.phase == MineLiftMotion.Phase.MOVING) lift.tick()
         lift.y shouldBe 123.0

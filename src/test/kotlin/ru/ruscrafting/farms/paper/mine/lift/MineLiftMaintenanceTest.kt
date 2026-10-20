@@ -36,6 +36,8 @@ class MineLiftMaintenanceTest : FreeSpec({
         lift.queued shouldBe listOf(1)
         repeat(MineLiftMotion.DOCK_TICKS) { lift.tick() }
         lift.tick()
+        lift.phase shouldBe MineLiftMotion.Phase.CLOSING
+        repeat(MineLiftMotion.CLOSING_TICKS) { lift.tick() }
         lift.phase shouldBe MineLiftMotion.Phase.MOVING
         while (lift.phase == MineLiftMotion.Phase.MOVING) lift.tick()
         lift.queued shouldBe emptyList()
