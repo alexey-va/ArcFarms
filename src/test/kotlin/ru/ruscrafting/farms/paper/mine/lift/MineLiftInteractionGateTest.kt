@@ -143,10 +143,10 @@ class MineLiftInteractionGateTest : FunSpec({
                     }
                     val landing = sceneBlocks.filter {
                         // Normal-track band excludes the call panels; along-track positions
-                        // reach exactly -3.0 when open and must not be clipped by a cabin box.
+                        // retract beyond -3.0 when open and must not be clipped by a cabin box.
                         abs(if(horizontal) it.location.z else it.location.x) in 2.45..2.8
                     }
-                    landing.size shouldBe 40 // Two floors, two tiled sliding leaves per floor.
+                    landing.size shouldBe 42 // Two floors, two tiled leaves and a fixed header per floor.
                     val cabin = (sceneBlocks - landing.toSet()).filter { abs(it.x) < 3 && abs(it.z) < 3 }
                     cabin.count { it.block.material == Material.GRAY_STAINED_GLASS } shouldBe 0
                     cabin.count { it.block.material == Material.OCHRE_FROGLIGHT } shouldBe 3
@@ -202,7 +202,23 @@ class MineLiftInteractionGateTest : FunSpec({
                     }
                     val upperLanding = landing.filter { it.y >= 65.0 }
                     val lowerLanding = landing - upperLanding.toSet()
-                    upperLanding.count { it.location.distanceSquared(landingClosed.getValue(it.uniqueId)) > .5 } shouldBe 20
+                    val movingUpperLanding = upperLanding.filter { it.location.distanceSquared(landingClosed.getValue(it.uniqueId)) > .5 }
+                    movingUpperLanding.size shouldBe 20
+                    // The native three-block portal has jamb planes at +/-1.5.
+                    // Every open leaf face must be recessed at least .02 into
+                    // its wall pocket, including the end faces and handles.
+                    movingUpperLanding.forEach { display ->
+                        val start = if(horizontal) display.x else display.z
+                        val width = if(horizontal) display.transformation.scale.x else display.transformation.scale.z
+                        (start + width <= -1.52 || start >= 1.52) shouldBe true
+                    }
+                    val header = (upperLanding - movingUpperLanding.toSet()).single()
+                    header.location shouldBe landingClosed.getValue(header.uniqueId)
+                    header.y shouldBe (65.0 + settings.theme.cabinWallHeight plusOrMinus .000001)
+                    (header.y + header.transformation.scale.y >= 68.01) shouldBe true
+                    val headerStart = if(horizontal) header.x else header.z
+                    val headerWidth = if(horizontal) header.transformation.scale.x else header.transformation.scale.z
+                    (headerStart <= -1.52 && headerStart + headerWidth >= 1.52) shouldBe true
                     lowerLanding.all { it.location == landingClosed.getValue(it.uniqueId) } shouldBe true
                     repeat(11) { scene.move(65.0, open=false) shouldBe true }
                     scene.move(57.0, open=false) shouldBe true
@@ -215,7 +231,9 @@ class MineLiftInteractionGateTest : FunSpec({
                     landing.forEach { display ->
                         val start = if(horizontal) display.x else display.z
                         val width = if(horizontal) display.transformation.scale.x else display.transformation.scale.z
-                        (start >= -3.00001 && start + width <= 3.00001) shouldBe true
+                        // Exact leaf extent with the .03 jamb clearance remains
+                        // inside the adjacent native wall cells (out to +/-3.5).
+                        (start >= -3.03001 && start + width <= 3.03001) shouldBe true
                     }
                     scene.close()
                     landing.all { !it.isValid } shouldBe true

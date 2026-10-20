@@ -354,9 +354,20 @@ internal class MineLiftScene(private val plugin: Plugin, private val settings: M
         val horizontal = side == MineLiftDoorSide.NORTH || side == MineLiftDoorSide.SOUTH
         val span = if (horizontal) settings.width else settings.depth
         val leafWidth = minOf(1.5, span / 2 - WALL_THICKNESS)
+        // Retract beyond the native portal jamb instead of leaving the leaf's
+        // end face exactly on its exposed plane at the fully open pose.
+        val travel = leafWidth + .03
         val first = parts.size
-        casinoPanels(side, -leafWidth, leafWidth, -1.0, leafWidth)
-        casinoPanels(side, 0.0, leafWidth, 1.0, leafWidth)
+        casinoPanels(side, -leafWidth, leafWidth, -1.0, travel)
+        casinoPanels(side, 0.0, leafWidth, 1.0, travel)
+        // The native portal is three blocks high. Close the gap over the
+        // shorter leaves so the shaft and cabin roof stay concealed.
+        val headerHeight = 3.02 - settings.theme.cabinWallHeight
+        if (headerHeight > 0.0) {
+            casinoSurface(side, -leafWidth - .03, settings.theme.cabinWallHeight,
+                2 * leafWidth + .06, headerHeight, WALL_THICKNESS, Material.DARK_OAK_PLANKS,
+                inset = -CASINO_DOOR_TRACK_OFFSET)
+        }
         val created = parts.subList(first, parts.size).toList()
         parts.subList(first, parts.size).clear()
         val outward = if (side == MineLiftDoorSide.NORTH || side == MineLiftDoorSide.WEST) -.26 else .26
