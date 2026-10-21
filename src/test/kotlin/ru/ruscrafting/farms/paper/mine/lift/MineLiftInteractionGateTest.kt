@@ -131,7 +131,9 @@ class MineLiftInteractionGateTest : FunSpec({
                     labels.forEachIndexed { index, label ->
                         label.billboard shouldBe Display.Billboard.FIXED
                         label.location.direction.dot(facing) shouldBe (1.0 plusOrMinus .000001)
-                        val expected = settings.floors[index].panel.location(world).add(0.0, 1.6, 0.0).add(facing.clone().multiply(.16))
+                        val expected = settings.floors[index].panel.location(world).add(0.0, 1.6, 0.0)
+                            .add(facing.clone().multiply(.16))
+                            .add(facing.clone().crossProduct(org.bukkit.util.Vector(0.0, 1.0, 0.0)).multiply(.60))
                         label.location.distanceSquared(expected) shouldBe (0.0 plusOrMinus .000001)
                         label.transformation.scale.x shouldBe .8f
                         label.lineWidth shouldBe 128
@@ -314,6 +316,70 @@ class MineLiftInteractionGateTest : FunSpec({
         }
     }
 
+    test("casino panel relocation moves the visible button target selection and fixed label together on all floors") {
+        failOnUnsupportedMockBukkitOperation {
+            val paper = MockBukkitTestRuntime.open()
+            try {
+                val world = LiftSceneWorldMock(paper.server).apply { name = "casino" }
+                paper.server.addWorld(world)
+                val plugin = paper.createSimplePlugin("CasinoLiftPanelTest")
+                val snapshots = mutableListOf<Map<String, Any>>()
+                val panelLocations = mutableListOf<List<Location>>()
+                for (panelX in listOf(44.94, 43.94)) {
+                    val settings = MineLiftSettings(
+                        id = "casino", world = world.name, x = 49.5, z = 35.5,
+                        width = 4.4, depth = 4.4, speed = 6.0,
+                        floors = listOf(65.0, 49.0, 33.0).mapIndexed { index, y ->
+                            MineLiftFloor("floor_$index", y, LiftPoint(44.5, y, 35.5), LiftPoint(panelX, y, 38.5))
+                        }, theme = MineLiftTheme.CASINO,
+                    )
+                    val scene = MineLiftScene(plugin, settings, world)
+                    scene.spawn(65.0) { net.kyori.adventure.text.Component.text("Лифт казино\nВыбрать этаж") }
+                    val panels = world.entities.filterIsInstance<Interaction>().filter { it.uniqueId in scene.panels }
+                        .sortedByDescending { it.y }
+                    val labels = world.entities.filterIsInstance<TextDisplay>().sortedByDescending { it.y }
+                    val buttons = world.entities.filterIsInstance<BlockDisplay>().filter {
+                        it.block.material == settings.theme.panelMaterial && abs(it.x - panelX) < .1
+                    }.sortedByDescending { it.y }
+                    panels.size shouldBe 3
+                    labels.size shouldBe 3
+                    buttons.size shouldBe 3
+                    panels.forEachIndexed { index, panel ->
+                        scene.panels[panel.uniqueId] shouldBe index
+                        settings.openingSide(index) shouldBe MineLiftDoorSide.WEST
+                        panel.location shouldBe settings.floors[index].panel.location(world)
+                        panel.interactionWidth shouldBe .85f
+                        panel.interactionHeight shouldBe 1.3f
+                        panel.isResponsive shouldBe true
+                        buttons[index].x shouldBe (panelX - .06 plusOrMinus .000001)
+                        labels[index].x shouldBe (panelX - .16 plusOrMinus .000001)
+                        labels[index].z shouldBe (37.9 plusOrMinus .000001)
+                        labels[index].location.direction.x shouldBe (-1.0 plusOrMinus .000001)
+                    }
+                    panelLocations += (panels + buttons + labels).map { it.location.clone() }
+                    snapshots += mapOf("id" to if (panelX == 44.94) "before" else "after",
+                        "floors" to settings.floors.indices.map { index ->
+                            val p = panels[index]; val b = buttons[index]; val l = labels[index]
+                            mapOf("floorY" to settings.floors[index].y, "selection" to scene.panels.getValue(p.uniqueId),
+                                "hitbox" to listOf(p.x, p.y, p.z, p.interactionWidth, p.interactionHeight),
+                                "button" to listOf(b.x, b.y, b.z, b.transformation.scale.x, b.transformation.scale.y, b.transformation.scale.z),
+                                "label" to listOf(l.x, l.y, l.z, l.location.yaw, l.transformation.scale.x),
+                                "text" to "Лифт казино\nВыбрать этаж")
+                        })
+                    scene.close()
+                }
+                panelLocations[0].zip(panelLocations[1]).forEach { (before, after) ->
+                    after.x shouldBe (before.x - 1.0 plusOrMinus .000001)
+                    after.y shouldBe before.y
+                    after.z shouldBe before.z
+                }
+                val panelPath = Path.of("build/casino-lift-preview/panels.json")
+                Files.createDirectories(panelPath.parent)
+                Files.writeString(panelPath, GsonBuilder().setPrettyPrinting().create().toJson(snapshots))
+            } finally { paper.close() }
+        }
+    }
+
     test("casino passenger carriers share the cabin interpolation and preserve the riding plane throughout round trips") {
         failOnUnsupportedMockBukkitOperation {
             val paper = MockBukkitTestRuntime.open()
@@ -342,7 +408,7 @@ class MineLiftInteractionGateTest : FunSpec({
                 }
                 carriers.forEach {
                     it.block.material shouldBe Material.AIR
-                    it.teleportDuration shouldBe 1
+                    it.teleportDuration shouldBe 2
                     it.teleportDuration shouldBe floor.teleportDuration
                     it.isPersistent shouldBe false
                 }
@@ -352,14 +418,23 @@ class MineLiftInteractionGateTest : FunSpec({
                 // MockBukkit still rejects mounted teleports using the old Paper
                 // contract. Native passenger retention requires server acceptance.
                 player.leaveVehicle() shouldBe true
-                val motion = MineLiftMotion(settings.floors.map { it.y }, settings.speed)
+                MineLiftTheme.MINE.positionInterpolationTicks shouldBe 1
+                MineLiftTheme.MINE.arrivalHoldTicks shouldBe 0
+                settings.theme.arrivalHoldTicks shouldBe 3
+                val motion = MineLiftMotion(settings.floors.map { it.y }, settings.speed,
+                    boardingTicks = 100, // MineLiftRuntime's casino boarding window.
+                    arrivalHoldTicks = settings.theme.arrivalHoldTicks)
+                val timeline = mutableListOf<Map<String, Any>>()
                 for (destination in listOf(2, 1, 0)) {
                     motion.board(destination) shouldBe true
                     var arrived = false
-                    repeat(240) {
+                    repeat(400) {
                         if (!arrived) {
                             arrived = motion.tick()
-                            scene.move(motion.y, motion.phase == MineLiftMotion.Phase.DOCKED) shouldBe true
+                            scene.move(motion.y, motion.doorsOpen) shouldBe true
+                            timeline += mapOf("tick" to timeline.size, "destination" to destination,
+                                "y" to motion.y, "floorY" to floor.y, "seatY" to carriers.first().y,
+                                "phase" to motion.phase.name, "doorsOpen" to motion.doorsOpen, "arrived" to arrived)
                             scene.seats shouldBe seats
                             carriers.forEach { carrier ->
                                 // The old seat's origin was Y+.02 and its native
@@ -373,6 +448,11 @@ class MineLiftInteractionGateTest : FunSpec({
                     arrived shouldBe true
                     motion.y shouldBe settings.floors[destination].y
                 }
+                val motionPath = Path.of("build/casino-lift-preview/motion.json")
+                Files.createDirectories(motionPath.parent)
+                Files.writeString(motionPath, GsonBuilder().setPrettyPrinting().create().toJson(mapOf(
+                    "interpolationTicks" to settings.theme.positionInterpolationTicks,
+                    "arrivalHoldTicks" to settings.theme.arrivalHoldTicks, "timeline" to timeline)))
                 scene.close()
                 carriers.all { !it.isValid } shouldBe true
             } finally {

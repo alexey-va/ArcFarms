@@ -13,6 +13,7 @@ import org.bukkit.entity.TextDisplay
 import org.bukkit.persistence.PersistentDataType
 import org.bukkit.plugin.Plugin
 import org.bukkit.util.Transformation
+import org.bukkit.util.Vector
 import org.joml.Quaternionf
 import org.joml.Vector3f
 import java.util.UUID
@@ -113,7 +114,7 @@ internal class MineLiftScene(private val plugin: Plugin, private val settings: M
             val at = origin(y).add(x, seatYOffset, z)
             seats += if (theme == MineLiftTheme.CASINO) {
                 // Interaction has no position interpolator: position-sync packets reset the
-                // rider's camera history. Share the cabin's one-tick native interpolation.
+                // rider's camera history. Share the cabin's native interpolation window.
                 display(at, Material.AIR)
             } else {
                 world.spawn(at, Interaction::class.java) {
@@ -161,6 +162,9 @@ internal class MineLiftScene(private val plugin: Plugin, private val settings: M
                 }
                 // Keep the fixed text plane on the room side of the call panel.
                 labelAt.add(labelAt.direction.multiply(.16))
+                // Keep the full two-line Russian label clear of the perpendicular
+                // landing wall while the call button stays at its authored anchor.
+                labelAt.add(labelAt.direction.clone().crossProduct(Vector(0.0, 1.0, 0.0)).multiply(.60))
             }
             labels += world.spawn(labelAt, TextDisplay::class.java) {
                 mark(it); it.text(floorText(index))
@@ -469,7 +473,7 @@ internal class MineLiftScene(private val plugin: Plugin, private val settings: M
     }
 
     private fun display(at: Location, material: Material): BlockDisplay = world.spawn(at, BlockDisplay::class.java) {
-        mark(it); it.block = material.createBlockData(); it.teleportDuration = 1
+        mark(it); it.block = material.createBlockData(); it.teleportDuration = settings.theme.positionInterpolationTicks
         it.interpolationDuration = 1; it.viewRange = 1.5f
     }.also(entities::add)
 

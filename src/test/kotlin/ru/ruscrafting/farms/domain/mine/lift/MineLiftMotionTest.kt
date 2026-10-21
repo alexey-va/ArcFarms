@@ -50,6 +50,34 @@ class MineLiftMotionTest : FreeSpec({
         MineLiftMotion(listOf(123.0, 38.0), MineLiftMotion.MAX_SPEED)
         shouldThrow<IllegalArgumentException> { MineLiftMotion(listOf(123.0, 38.0), 20.000001) }
         shouldThrow<IllegalArgumentException> { MineLiftMotion(listOf(123.0, 38.0), 8.0, boardingTicks = 0) }
+        shouldThrow<IllegalArgumentException> { MineLiftMotion(listOf(65.0, 49.0), 6.0, arrivalHoldTicks = -1) }
+    }
+
+    "arrival hold keeps doors closed and riders committed until interpolation can finish in both directions" {
+        val lift = MineLiftMotion(listOf(65.0, 49.0), 6.0, arrivalHoldTicks = 3)
+        for (destination in listOf(1, 0)) {
+            lift.board(destination) shouldBe true
+            repeat(MineLiftMotion.BOARDING_TICKS + MineLiftMotion.CLOSING_TICKS) { lift.tick() shouldBe false }
+            val start = lift.y
+            repeat(79) { lift.tick() shouldBe false }
+            (lift.y != start) shouldBe true
+            (lift.y != listOf(65.0, 49.0)[destination]) shouldBe true
+            lift.tick() shouldBe false // The final position is sent, but arrival is not released.
+            lift.y shouldBe listOf(65.0, 49.0)[destination]
+            repeat(2) {
+                lift.phase shouldBe MineLiftMotion.Phase.MOVING
+                lift.doorsOpen shouldBe false
+                lift.canBoard(1 - destination) shouldBe false
+                lift.floor shouldBe 1 - destination
+                lift.tick() shouldBe false
+                lift.y shouldBe listOf(65.0, 49.0)[destination]
+            }
+            lift.tick() shouldBe true
+            lift.phase shouldBe MineLiftMotion.Phase.DOCKED
+            lift.doorsOpen shouldBe true
+            lift.floor shouldBe destination
+            lift.tick() shouldBe false
+        }
     }
 
     "occupied trip holds its destination and queued calls cannot steal the cabin" {

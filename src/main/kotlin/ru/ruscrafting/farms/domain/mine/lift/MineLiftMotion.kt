@@ -8,6 +8,7 @@ internal class MineLiftMotion(
     private val floors: List<Double>,
     private val speed: Double,
     private val boardingTicks: Int = BOARDING_TICKS,
+    private val arrivalHoldTicks: Int = 0,
 ) {
     enum class Phase { DOCKED, BOARDING, CLOSING, MOVING }
     var floor: Int = 0
@@ -29,6 +30,7 @@ internal class MineLiftMotion(
         require(floors.size in 2..8 && floors.distinct().size == floors.size)
         require(floors.all(Double::isFinite) && speed.isFinite() && speed in 1.0..MAX_SPEED)
         require(boardingTicks > 0)
+        require(arrivalHoldTicks >= 0)
     }
 
     fun call(destination: Int) {
@@ -66,7 +68,9 @@ internal class MineLiftMotion(
                 ticks++
                 val progress = (ticks.toDouble() / duration).coerceAtMost(1.0)
                 y = originY + (floors[target] - originY) * progress * progress * (3.0 - 2.0 * progress)
-                if (ticks >= duration) {
+                // Keep entry closed and riders mounted while the last native display
+                // interpolation completes. The authoritative cabin is already at rest.
+                if (ticks >= duration + arrivalHoldTicks) {
                     y = floors[target]
                     floor = target
                     calls.remove(floor)

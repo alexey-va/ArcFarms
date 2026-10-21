@@ -183,7 +183,8 @@ internal class MineLiftRuntime(
                     tasks.callSync(token) {
                         check(current() && scene === next) { "Mine lift preparation superseded" }
                         motion = MineLiftMotion(config.floors.map { it.y }, config.speed,
-                            if (config.theme == MineLiftTheme.CASINO) CASINO_BOARDING_TICKS else MineLiftMotion.BOARDING_TICKS)
+                            if (config.theme == MineLiftTheme.CASINO) CASINO_BOARDING_TICKS else MineLiftMotion.BOARDING_TICKS,
+                            arrivalHoldTicks = config.theme.arrivalHoldTicks)
                         next.spawn(config.floors.first().y, { label(it) }) { step -> capture(::current, step) }
                     }.thenCompose { it }
                 }

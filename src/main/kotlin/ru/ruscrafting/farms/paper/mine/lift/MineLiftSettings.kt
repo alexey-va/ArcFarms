@@ -67,6 +67,12 @@ internal enum class MineLiftTheme(
 
     val cabinWallHeight: Double get() = MINE_LIFT_CABIN_WALL_HEIGHT
 
+    // Casino targets arrive every server tick; two client ticks absorb the
+    // measured sub-tick delivery jitter without changing the trip trajectory.
+    val positionInterpolationTicks: Int get() = if (this == CASINO) 2 else 1
+    // One additional tick covers the client/server tick phase before dismount.
+    val arrivalHoldTicks: Int get() = if (this == CASINO) positionInterpolationTicks + 1 else 0
+
     fun messagePath(key: String): String =
         if (this == CASINO && key in CASINO_LIFT_MESSAGE_KEYS) "mine-lift.casino.$key" else "mine-lift.$key"
 
