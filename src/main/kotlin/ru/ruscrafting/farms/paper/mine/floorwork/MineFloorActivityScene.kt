@@ -30,9 +30,9 @@ internal class MineFloorActivityScene(
     fun spawn() {
         try {
             MineFloorActivityGeometry.controls(type).forEach { (role, point) ->
-                controls[role] = anchor.world.spawn(at(anchor, point).subtract(0.0, .45, 0.0), Interaction::class.java) {
+                controls[role] = anchor.world.spawn(at(anchor, point).subtract(0.0, .55, 0.0), Interaction::class.java) {
                     it.interactionWidth = 0f
-                    it.interactionHeight = .9f
+                    it.interactionHeight = 1.1f
                     it.isResponsive = true
                     it.isPersistent = false
                     it.persistentDataContainer.set(NamespacedKey(plugin, OWNER_KEY), PersistentDataType.STRING, zoneId)
@@ -68,7 +68,7 @@ internal class MineFloorActivityScene(
             display.isGlowing = activeControl != null && part.control == activeControl
         }
         controls.forEach { (role, hitbox) ->
-            hitbox.interactionWidth = if (role == activeControl) .9f else 0f
+            hitbox.interactionWidth = if (role == activeControl) 1.15f else 0f
         }
     }
 

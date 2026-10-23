@@ -939,6 +939,8 @@ class ArcFarmsLocale(
                 "journalled_block", "outside_region", "missing_stone_or_ore_ceiling", "missing_solid_floor",
                 "footprint_occupied", "space_above_occupied", "in_place_implementation_missing",
                 "incident_already_active", "phase_not_ready", "phase_too_early",
+                "unsuitable", "preparation_pending", "search_pending", "state_transition_rejected",
+                "crystal_group_missing", "crystal_beam_blocked", "crystal_wall_missing",
             ).mapTo(this) { "admin.mine-placement.reason.$it" }
             add("admin.mine-placement.header")
             add("admin.mine-placement.entry")

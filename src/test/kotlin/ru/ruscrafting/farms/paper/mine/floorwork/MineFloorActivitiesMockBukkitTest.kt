@@ -29,10 +29,30 @@ class MineFloorActivitiesMockBukkitTest : FunSpec({
     beforeEach { paper = MockBukkitTestRuntime.open() }
     afterEach { paper.close() }
 
+    test("existing lamps above the front aisle remain allowed outside the gantry sweep") {
+        val scene = FloorFixture(paper, MineIncidentType.FREIGHT_WINCH)
+        scene.place(-3.5, 5.0, 2.5, Material.LANTERN)
+        scene.place(3.5, 5.0, 2.5, Material.LANTERN)
+        scene.start()
+        scene.progress() shouldBe 0
+    }
+
+    test("native block in the overhead load travel or a missing platform cell prevents start") {
+        val scene = FloorFixture(paper, MineIncidentType.FREIGHT_WINCH)
+        scene.place(0.0, 4.0, -1.7, Material.STONE)
+        scene.tryStart() shouldBe false
+        scene.world.entities.filterIsInstance<Interaction>().size shouldBe 0
+        scene.place(0.0, 4.0, -1.7, Material.AIR)
+        scene.place(0.0, -1.0, 3.0, Material.AIR)
+        scene.tryStart() shouldBe false
+        scene.place(0.0, -1.0, 3.0, Material.STONE)
+        scene.start()
+    }
+
     test("winch route resumes its raised cargo after cleanup and commits unloading exactly once") {
         val scene = FloorFixture(paper, MineIncidentType.FREIGHT_WINCH)
         scene.start()
-        scene.click("hook", 2.2, 1.2)
+        scene.click("hook", 3.0, .5)
         scene.progress() shouldBe 1
         scene.click("rope", MineFloorActivity.PULL_X, MineFloorActivity.PULL_START_Z)
         repeat(7) { step ->
@@ -45,30 +65,30 @@ class MineFloorActivitiesMockBukkitTest : FunSpec({
         oldControl.isValid shouldBe false
         scene.progress() shouldBe 2
         scene.recreate()
-        scene.click("swing", -.65, 1.6)
-        scene.update(1_900L)
+        scene.click("swing", .45, 2.3)
+        scene.update(3_900L)
         scene.progress() shouldBe 2
         scene.update(100L)
         scene.progress() shouldBe 3
-        scene.click("unload", 0.0, 3.4)
+        scene.click("unload", -4.5, 4.2)
         scene.runtime.state.phase shouldBe MinePhase.MINING
         scene.runtime.state.contributors[scene.player.uniqueId] shouldBe 4
-        scene.click("unload", 0.0, 3.4)
+        scene.click("unload", -4.5, 4.2)
         scene.runtime.state.contributors[scene.player.uniqueId] shouldBe 4
     }
 
     test("pump releases a carried pipe then resumes remaining strokes after full owner cleanup") {
         val scene = FloorFixture(paper, MineIncidentType.DRAINAGE_PUMP)
         scene.start()
-        scene.click("pipe", -2.2, 2.0)
+        scene.click("pipe", -6.25, 3.3)
         scene.progress() shouldBe 0
         scene.controller.releasePlayer(scene.player)
         scene.update(100L)
-        scene.control("pipe").interactionWidth shouldBe .9f
-        scene.click("pipe", -2.2, 2.0)
-        scene.click("socket", 1.2, 1.6)
+        scene.control("pipe").interactionWidth shouldBe 1.15f
+        scene.click("pipe", -6.25, 3.3)
+        scene.click("socket", .3, 1.4)
         scene.progress() shouldBe 1
-        scene.click("handle", 0.0, 2.0)
+        scene.click("handle", -3.5, 2.0)
         scene.stroke()
         scene.progress() shouldBe 2
 
@@ -79,10 +99,10 @@ class MineFloorActivitiesMockBukkitTest : FunSpec({
         foreign.isValid shouldBe true
         scene.progress() shouldBe 2
         scene.recreate()
-        scene.click("handle", 0.0, 2.0)
+        scene.click("handle", -3.5, 2.0)
         repeat(3) { scene.stroke() }
         scene.progress() shouldBe 5
-        scene.click("valve", 2.0, 1.5)
+        scene.click("valve", 2.3, 1.7)
         scene.update(1_900L)
         scene.progress() shouldBe 5
         scene.update(100L)
@@ -112,13 +132,16 @@ private class FloorFixture(paper: MockBukkitTestRuntime, val type: MineIncidentT
         plugin.config.set("ui.sounds", false)
         plugin.config.set("ui.particles", false)
         world.getChunkAt(0, 0).load()
-        for (x in 4..13) for (z in 4..14) world.getBlockAt(x, 63, z).type = Material.STONE
+        for (x in 0..15) for (z in 0..15) world.getBlockAt(x, 63, z).type = Material.STONE
         player.setOnGround(true)
         move(0.0, 2.0)
     }
 
+    fun tryStart() = controller.start(runtime, type, now)
+    fun place(x: Double, y: Double, z: Double, material: Material) { anchor.clone().add(x, y, z).block.type = material }
+
     fun start() {
-        controller.start(runtime, type, now) shouldBe true
+        tryStart() shouldBe true
         update(100L)
     }
 
@@ -130,7 +153,7 @@ private class FloorFixture(paper: MockBukkitTestRuntime, val type: MineIncidentT
     }
 
     fun control(role: String): Interaction {
-        val at = MineFloorActivityScene.at(anchor, MineFloorActivityGeometry.controls(type).getValue(role)).subtract(0.0, .45, 0.0)
+        val at = MineFloorActivityScene.at(anchor, MineFloorActivityGeometry.controls(type).getValue(role)).subtract(0.0, .55, 0.0)
         return world.entities.filterIsInstance<Interaction>().single { it.isValid && it.location.distanceSquared(at) < .001 }
     }
 

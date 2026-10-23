@@ -1,6 +1,7 @@
 package ru.ruscrafting.farms.paper
 
 import net.kyori.adventure.text.Component
+import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer
 import org.bukkit.Bukkit
 import org.bukkit.command.Command
 import org.bukkit.command.CommandExecutor
@@ -483,7 +484,11 @@ class ArcFarmsCommand(
                 locale.renderPath("admin.mine-placement.no-rejection-details", sender)
             } else {
                 report.rejected.entries.sortedByDescending { it.value }.map { (reason, count) ->
-                    locale.renderPath("admin.mine-placement.reason.$reason", sender, mapOf("count" to locale.text(count)))
+                    val path = "admin.mine-placement.reason.$reason"
+                    val values = mapOf("count" to locale.text(count))
+                    val rendered = locale.renderPath(path, sender, values)
+                    if (PlainTextComponentSerializer.plainText().serialize(rendered) == path)
+                        locale.renderPath("admin.mine-placement.reason.unsuitable", sender, values) else rendered
                 }.foldIndexed(Component.empty()) { index, result, reason ->
                     result.append(if (index == 0) Component.empty() else Component.text(", "))
                         .append(reason)

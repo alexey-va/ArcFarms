@@ -114,7 +114,7 @@ admin:
       gas_leak: '<gray>exposed solid walls inside the mine</gray>'
       flooding: '<gray>a solid floor with two free blocks above; the incident creates its own water</gray>'
       track_damage: '<gray>a laid rail line with a collapse and several damaged sections to replace</gray>'
-      crystal_resonance: '<gray>accessible amethyst clusters inside the mine</gray>'
+      crystal_resonance: '<gray>four accessible clusters on one level, clear beam paths and a natural rock wall</gray>'
       creature_nest: '<gray>a wide floor clear of edges with two free blocks above it</gray>'
       power_failure: '<gray>a saved legacy state; new power incidents are not offered</gray>'
       lost_miner: '<gray>an accessible natural cave entry inside the mine and room for an exit</gray>'
@@ -124,9 +124,14 @@ admin:
       last_descent: '<gray>an expedition_gate point and a ready Last Descent location</gray>'
       drilling_ark: '<gray>an expedition_gate point and a ready Drilling Ark location</gray>'
       dead_factory: '<gray>an expedition_gate point and a ready Dead Factory location</gray>'
-      freight_winch: <gray>freight_winch point, solid floor and clear pulling lane</gray>
-      drainage_pump: <gray>drainage_pump point and clear space for the hand pump</gray>
+      freight_winch: "<gray>freight_winch point, a 12.4 × 8.5 m platform and clear gantry travel</gray>"
+      drainage_pump: "<gray>drainage_pump point and a 14.3 × 8.7 m drainage station platform</gray>"
     reason:
+      unsuitable: '<red><count> — indexed points did not pass placement checks</red>'
+      preparation_pending: '<gold>indexed points are still being prepared</gold>'
+      crystal_group_missing: '<red>four nearby accessible upright clusters are required on one level</red>'
+      crystal_beam_blocked: '<red>blocks obstruct the crystal beam path</red>'
+      crystal_wall_missing: '<red>no accessible natural wall with safe backing was found on the crystal level</red>'
       expedition_gate_missing: '<red>set expedition_gate with /arcfarms admin point first</red>'
       expedition_reserve_not_ready: '<gold>the reserve location is still being restored; check /arcfarms admin expeditions status</gold>'
       incident_already_active: '<red>another incident is already active; finish it first</red>'
@@ -186,8 +191,8 @@ admin:
     working_10: '<color:#d8a56d>Side working 10</color>'
     working_11: '<color:#d8a56d>Side working 11</color>'
     working_12: '<color:#d8a56d>Side working 12</color>'
-    freight_winch: <color:#ffc857>Freight winch</color>
-    drainage_pump: <color:#45c8f5>Drainage pump</color>
+    freight_winch: "<color:#ffc857>Freight gantry</color>"
+    drainage_pump: "<color:#45c8f5>Drainage station</color>"
   mine-point-description:
     expedition_gate: '<gray>departure point for the depths and return to the mine</gray>'
     ore_input: '<gray>fixed station where visible ore is picked up</gray>'
@@ -207,8 +212,8 @@ admin:
     working_10: '<gray>side-working entrance; player feet and facing direction</gray>'
     working_11: '<gray>side-working entrance; player feet and facing direction</gray>'
     working_12: '<gray>side-working entrance; player feet and facing direction</gray>'
-    freight_winch: <gray>winch centre and clear pulling lane on the middle level</gray>
-    drainage_pump: <gray>hand pump centre on the bottom level</gray>
+    freight_winch: "<gray>freight gantry and pulling lane centre on the middle level</gray>"
+    drainage_pump: "<gray>drainage station centre on the bottom level</gray>"
   stage-help-header: '<prefix> <gold>/arcfarms admin stage <zone> \<stage></gold> <gray>forces a test order into the selected stage:</gray>'
   stage-help-entry: '  <dark_gray>•</dark_gray> <white><id></white> <dark_gray>—</dark_gray> <stage><gray>: </gray><description>'
   event-help-header: '<prefix> <gold>/arcfarms admin event <zone> \<event></gold> <gray>starts the selected story immediately:</gray>'
@@ -1243,8 +1248,8 @@ mine:
     tunnel_drive: '<color:#d8a56d>Side tunnel drive</color>'
     rail_extension: '<color:#ffc857>Track laying</color>'
     ore_workshop: '<color:#c778ff>Ore workshop</color>'
-    freight_winch: <color:#ffc857>Freight winch</color>
-    drainage_pump: <color:#45c8f5>Drainage pump</color>
+    freight_winch: "<color:#ffc857>Freight gantry</color>"
+    drainage_pump: "<color:#45c8f5>Drainage station</color>"
   incident:
     last_descent: '<color:#ffc857>Descend into the abyss and start the deep engine</color>'
     drilling_ark: '<color:#ffc857>Drive the drilling ark through the caves and return with cores</color>'
@@ -1252,8 +1257,8 @@ mine:
     tunnel_drive: '<color:#f2fff7>Drive a real side tunnel from this floor</color>'
     rail_extension: '<color:#f2fff7>Lay tracks to the chamber</color>'
     ore_workshop: '<color:#f2fff7>Process three ore batches and ship the billets</color>'
-    freight_winch: <color:#f2fff7>Hoist and unload the crate on the middle level</color>
-    drainage_pump: <color:#f2fff7>Assemble the pump and drain the sump on the bottom level</color>
+    freight_winch: "<color:#f2fff7>Hoist the cargo onto the middle-level roller line</color>"
+    drainage_pump: "<color:#f2fff7>Connect the pipework and drain the bottom-level sump</color>"
   creature-nest:
     creature-name: '<color:#ff5f6d>Nest creature</color>'
     nest-name: '<color:#ff7a45>Creature nest</color>'
@@ -1307,8 +1312,8 @@ mine:
     tunnel_drive: '<color:#f2fff7>Board the drilling rig and bore to the glowing goal, steering around bedrock</color>'
     rail_extension: '<color:#f2fff7>Drive the tracklayer toward the glowing chamber</color>'
     ore_workshop: '<color:#f2fff7>Pick up the ore batch</color>'
-    freight_winch: <color:#ffc857>Middle level · hook the winch cargo</color>
-    drainage_pump: <color:#45c8f5>Bottom level · fit the pump pipe</color>
+    freight_winch: "<color:#ffc857>Middle level · secure the load beneath the gantry</color>"
+    drainage_pump: "<color:#45c8f5>Bottom level · reconnect the station pipework</color>"
   expedition:
     charge-loaded: '<color:#55d98b>Charge loaded · switch the crusher feed lever</color>'
     mix-loaded: '<color:#55d98b>Mix loaded into the furnace · wait for the green heat signal</color>'
@@ -1599,23 +1604,23 @@ mine:
       shipping: '<color:#55d98b>Shipping point</color>'
   floorwork:
     winch:
-      travel: <color:#ffc857>Go to the winch on the middle level</color>
-      hook: <color:#ffc857>Right-click the crate to attach the hook</color>
+      travel: "<color:#ffc857>Go to the freight gantry on the middle level</color>"
+      hook: "<color:#ffc857>Right-click the cargo latch to secure the slings</color>"
       rope: <color:#f2fff7>Stand in front of the drum and right-click its grip</color>
       pull: <color:#ffc857>Walk backwards along the copper lane · tension <percent>%</color>
-      swing: <color:#f2fff7>Right-click the lever by the column to swing the boom</color>
-      swinging: <color:#ffc857>The crate is moving onto the receiving plinth</color>
-      unload: <color:#55d98b>Right-click the delivered crate to unload it</color>
-      busy: <color:#f2fff7>Another miner is operating the winch</color>
+      swing: "<color:#f2fff7>Right-click the console lever to transfer the cargo</color>"
+      swinging: "<color:#ffc857>The trolley is placing the cargo onto the roller line</color>"
+      unload: "<color:#55d98b>Right-click the crate at the end of the rollers to unload</color>"
+      busy: "<color:#f2fff7>Another miner is operating the freight gantry</color>"
     pump:
-      travel: <color:#45c8f5>Go to the pump on the bottom level</color>
+      travel: "<color:#45c8f5>Go to the drainage station on the bottom level</color>"
       pipe: <color:#45c8f5>Right-click the copper pipe on the rack</color>
       socket: <color:#f2fff7>Carry the pipe to the gap and right-click</color>
-      handle: <color:#f2fff7>Stand in front of the pump and right-click its handle</color>
+      handle: "<color:#f2fff7>Stand in the lane in front of the pump and right-click its grip</color>"
       stroke: <color:#45c8f5>Hold Shift for half a second, then release · strokes <strokes>/4</color>
       valve: <color:#55d98b>Pressure ready · right-click the red valve</color>
-      draining: <color:#45c8f5>The sump is draining</color>
-      busy: <color:#f2fff7>Another miner is working on the pump</color>
+      draining: "<color:#45c8f5>The pump is draining the sump</color>"
+      busy: "<color:#f2fff7>Another miner is working at the drainage station</color>"
   crystal:
     charging: <color:#e4bdff>Charge all four crystals · <done>/4</color>
     charged: <color:#e4bdff>Crystal charged · <done>/4</color>

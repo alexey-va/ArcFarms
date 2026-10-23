@@ -2,6 +2,8 @@ package ru.ruscrafting.farms.paper.mine.incident
 
 import ru.ruscrafting.farms.domain.MineIncidentType
 import ru.ruscrafting.farms.domain.MinePhase
+import ru.ruscrafting.farms.domain.MineShiftEngine
+import ru.ruscrafting.farms.domain.MineShiftState
 import ru.ruscrafting.farms.domain.mine.expedition.MineExpeditionEngine
 import ru.ruscrafting.farms.paper.mine.MineRuntime
 import ru.ruscrafting.farms.paper.mine.incident.cavein.MineCaveInIncident
@@ -113,6 +115,10 @@ internal class MineIncidentScheduler(
     fun diagnostics(runtime: MineRuntime): List<MineIncidentPlacementReport> = SUPPORTED_TYPES.map { type -> diagnostics(runtime, type) }
 
     fun diagnostics(runtime: MineRuntime, type: MineIncidentType): MineIncidentPlacementReport {
+        if (type == MineIncidentType.CRYSTAL_RESONANCE) {
+            val placement = crystal.diagnostics(runtime)
+            if (crystal.hasPreparation(runtime) && placement.rejected.isNotEmpty() || stateBlocker(runtime, type) == null) return placement
+        }
         val blocker = stateBlocker(runtime, type)
         return when {
             blocker != null -> MineIncidentPlacementReport(type, required(type), 0, 0, mapOf(blocker to 1))
@@ -137,25 +143,43 @@ internal class MineIncidentScheduler(
         pending.clear()
     }
 
-    private fun logFailure(runtime: MineRuntime, type: MineIncidentType) {
+    fun reportPreparationFailure(runtime: MineRuntime, type: MineIncidentType) {
+        val report = diagnostics(runtime, type)
+        if (report.rejected.keys.all { it in setOf("search_pending", "chunk_unloaded") }) return
+        val key = "${runtime.settings.id}:${runtime.state.sequence}:${runtime.state.incidentCursor}:$type:${report.rejected.keys}"
+        if (diagnosed.add(key)) logFailure(runtime, type, report)
+    }
+
+    private fun logFailure(runtime: MineRuntime, type: MineIncidentType, placement: MineIncidentPlacementReport? = null) {
         val required = required(type)
         val blocker = stateBlocker(runtime, type)
         state.log(
             Level.WARNING,
             "Mine incident start rejected zone=${runtime.settings.id} sequence=${runtime.state.sequence} " +
                 "type=$type phase=${runtime.state.phase} " +
-                (blocker?.let { "required=$required usable=0 considered=0 rejected={$it=1}" }
+                (placement?.technical() ?: blocker?.let { "required=$required usable=0 considered=0 rejected={$it=1}" }
                     ?: caveIn.placementFailure(runtime.settings.id).takeIf { type == MineIncidentType.CAVE_IN }
                     ?: if (ru.ruscrafting.farms.domain.MineWorkingEngine.supports(type)) workings.diagnostics(runtime, type).toString()
                     else diagnostics(runtime, type).technical()),
         )
     }
 
-    private fun stateBlocker(runtime: MineRuntime, type: MineIncidentType): String? {
-        if (runtime.state.phase == MinePhase.INCIDENT || runtime.state.incident != null) return "incident_already_active"
+    /** Inspect the same post-abort state the admin switch will use, without retiring the current scene. */
+    fun replacementBlocker(runtime: MineRuntime, type: MineIncidentType): String? {
+        val current = runtime.state
+        val replacement = if (current.phase == MinePhase.INCIDENT || current.incident != null) {
+            val aborted = MineShiftEngine.abortIncident(current)
+            if (!aborted.accepted) return "state_transition_rejected"
+            aborted.state
+        } else current
+        return stateBlocker(runtime, type, replacement)
+    }
+
+    private fun stateBlocker(runtime: MineRuntime, type: MineIncidentType, current: MineShiftState = runtime.state): String? {
+        if (current.phase == MinePhase.INCIDENT || current.incident != null) return "incident_already_active"
         if (ru.ruscrafting.farms.domain.MineWorkingEngine.supports(type) && type != MineIncidentType.ORE_WORKSHOP && workings.transitioning(runtime)) return "working_cleanup_pending"
         if (type == MineIncidentType.LOST_MINER && lostMiner.transitioning(runtime)) return "rescue_cleanup_pending"
-        val phaseRank = PHASE_RANK[runtime.state.phase] ?: return "phase_not_ready"
+        val phaseRank = PHASE_RANK[current.phase] ?: return "phase_not_ready"
         if (!runtime.settings.miningOnly && phaseRank < (INCIDENT_RANK[type] ?: 0)) return "phase_too_early"
         return null
     }

@@ -17,45 +17,104 @@ import ru.ruscrafting.farms.paper.mine.recovery.MineBlockRecoveryController
 import kotlin.math.ceil
 import kotlin.math.floor
 
-/** Selects an exposed indexed wall on the crystals' own floor; never creates or moves authored crystals. */
+/** Pages through indexed walls on the crystals' floor; never creates or moves authored crystals. */
 internal class MineCrystalWallPlan(private val index: MineBlockIndex, private val recovery: MineBlockRecoveryController) {
-    fun select(runtime: MineRuntime, crystals: List<WorksitePosition>): MineCrystalState? {
-        if (crystals.size != 4 || crystals.maxOf { it.y } - crystals.minOf { it.y } > 2) return null
-        val nodes = crystals.map(::tip)
-        val centre = MineCrystalGeometry.hub(nodes)
-        if (nodes.any { it.distance(centre) > 18.0 } || nodes.any { !clear(runtime, it, centre) }) return null
+    class Search(val crystals: List<WorksitePosition>, val centre: Vector3d,
+        val candidates: List<WorksitePosition>, var reason: String? = null) {
+        var cursor = 0
+        var result: MineCrystalState? = null
+        var unloaded = false
+        val pending get() = result == null && reason == null
+    }
+
+    fun prepare(runtime: MineRuntime, crystals: List<WorksitePosition>): Search {
+        val centre = if (crystals.size == 4) MineCrystalGeometry.hub(crystals.map(::tip)) else Vector3d()
+        val issue = groupIssue(runtime, crystals, centre)
+        if (issue != null) return Search(crystals, centre, emptyList(), issue)
         val at = Location(runtime.region.world, centre.x, centre.y, centre.z)
         val indexed = index.nearbyTargets(runtime.settings.id, MineAnchorRole.SUPPORT, at, 28)
             .filter { it.y in (crystals.minOf { p -> p.y } + 1)..(crystals.minOf { p -> p.y } + 4) }
             .sortedBy { Vector3d(it.x + .5, it.y + .5, it.z + .5).distanceSquared(centre) }
-        // ponytail: at most 12 indexed candidates x 4 faces x 64 path samples; wider scenes need prewarmed wall plans.
-        for (wall in indexed.take(12)) {
-            if (!eligible(runtime, wall)) continue
-            for (face in FACES) {
-                val endpoint = contact(wall, face.modX, face.modZ)
-                if (endpoint.distance(centre) !in 2.0..28.0 || !clear(runtime, centre, endpoint) || !backed(runtime, wall, face)) continue
-                val sideX = face.modZ
-                val sideZ = -face.modX
-                val cuts = listOf(wall, wall.copy(y = wall.y + 1),
-                    wall.copy(x = wall.x + sideX, z = wall.z + sideZ),
-                    wall.copy(x = wall.x + sideX, y = wall.y + 1, z = wall.z + sideZ))
-                    .filter { p -> p.y <= crystals.minOf { it.y } + 4 && eligible(runtime, p) &&
-                        p.copy(x = p.x + face.modX, z = p.z + face.modZ).blockType()?.isAir == true }
-                    .map { MineCrystalCut(it, requireNotNull(it.blockType()).name) }
-                if (cuts.isNotEmpty()) return MineCrystalState(cuts, face.modX, face.modZ)
+        return Search(crystals, centre, indexed).also { search ->
+            val bounds = runtime.region.bounds
+            search.unloaded = ((maxOf(bounds.minX, at.blockX - 31) shr 4)..(minOf(bounds.maxX, at.blockX + 31) shr 4)).any { x ->
+                ((maxOf(bounds.minZ, at.blockZ - 31) shr 4)..(minOf(bounds.maxZ, at.blockZ + 31) shr 4)).any { z ->
+                    !runtime.region.world.isChunkLoaded(x, z)
+                }
             }
+        }
+    }
+
+    /** The existing preparation tick resumes the cursor; nearby decoration must not exhaust the whole search. */
+    fun advance(runtime: MineRuntime, search: Search) {
+        if (!search.pending) return
+        val deadline = System.nanoTime() + 1_000_000L
+        repeat(12) {
+            if (System.nanoTime() >= deadline) return
+            val wall = search.candidates.getOrNull(search.cursor++) ?: return@repeat
+            if (wall.blockType() == null) search.unloaded = true
+            val plan = selectWall(runtime, search.crystals, search.centre, wall) ?: return@repeat
+            search.result = plan
+            return
+        }
+        if (search.cursor >= search.candidates.size) {
+            search.reason = if (search.unloaded) "chunk_unloaded" else "crystal_wall_missing"
+        }
+    }
+
+    private fun selectWall(runtime: MineRuntime, crystals: List<WorksitePosition>, centre: Vector3d,
+        wall: WorksitePosition): MineCrystalState? {
+        if (!eligible(runtime, wall)) return null
+        for (face in FACES) {
+            val endpoint = contact(wall, face.modX, face.modZ)
+            if (endpoint.distance(centre) !in 2.0..28.0 || !backed(runtime, wall, face) ||
+                beamIssue(runtime, centre, endpoint) != null) continue
+            val sideX = face.modZ
+            val sideZ = -face.modX
+            val cuts = listOf(wall, wall.copy(y = wall.y + 1),
+                wall.copy(x = wall.x + sideX, z = wall.z + sideZ),
+                wall.copy(x = wall.x + sideX, y = wall.y + 1, z = wall.z + sideZ))
+                .filter { p -> p.y <= crystals.minOf { it.y } + 4 && eligible(runtime, p) &&
+                    p.copy(x = p.x + face.modX, z = p.z + face.modZ).blockType()?.isAir == true &&
+                    backed(runtime, p, face) && beamIssue(runtime, centre, contact(p, face.modX, face.modZ)) == null }
+                .map { MineCrystalCut(it, requireNotNull(it.blockType()).name) }
+            if (cuts.isNotEmpty()) return MineCrystalState(cuts, face.modX, face.modZ)
         }
         return null
     }
 
-    fun eligible(runtime: MineRuntime, position: WorksitePosition): Boolean {
-        if (position.world != runtime.region.world.name || !index.allowsEvent(position) ||
-            recovery.containsPosition("${position.world}:${position.x}:${position.y}:${position.z}")) return false
-        val type = position.blockType() ?: return false
-        if (!natural(type)) return false
+    /** A cached plan is checked once against the current world and journal before the state transition. */
+    fun issue(runtime: MineRuntime, search: Search): String? {
+        val plan = search.result ?: return search.reason ?: "search_pending"
+        groupIssue(runtime, search.crystals, search.centre)?.let { return it }
+        val face = FACES.single { it.modX == plan.faceX && it.modZ == plan.faceZ }
+        for (cut in plan.cuts) {
+            eligibilityIssue(runtime, cut.position)?.let { return it }
+            if (cut.position.blockType()?.name != cut.material || !backed(runtime, cut.position, face)) return "anchor_changed"
+            beamIssue(runtime, search.centre, contact(cut.position, plan.faceX, plan.faceZ))?.let { return it }
+        }
+        return null
+    }
+
+    fun eligible(runtime: MineRuntime, position: WorksitePosition): Boolean = eligibilityIssue(runtime, position) == null
+
+    private fun eligibilityIssue(runtime: MineRuntime, position: WorksitePosition): String? {
+        if (position.world != runtime.region.world.name) return "world_unavailable"
+        if (!index.allowsEvent(position)) return "near_lift"
+        if (recovery.containsPosition("${position.world}:${position.x}:${position.y}:${position.z}")) return "journalled_block"
+        val type = position.blockType() ?: return "chunk_unloaded"
+        if (!natural(type)) return "anchor_changed"
         val block = runtime.region.world.getBlockAt(position.x, position.y, position.z)
-        return runtime.region.contains(block.location) && index.contains(runtime.settings.id, block, MineAnchorRole.SUPPORT) &&
-            block.blockData.asString == type.createBlockData().asString
+        if (!runtime.region.contains(block.location)) return "outside_region"
+        return if (index.contains(runtime.settings.id, block, MineAnchorRole.SUPPORT) &&
+            block.blockData.asString == type.createBlockData().asString) null else "anchor_changed"
+    }
+
+    private fun groupIssue(runtime: MineRuntime, crystals: List<WorksitePosition>, centre: Vector3d): String? {
+        if (crystals.size != 4 || crystals.maxOf { it.y } - crystals.minOf { it.y } > 2) return "crystal_group_missing"
+        val nodes = crystals.map(::tip)
+        if (nodes.any { it.distance(centre) > 18.0 }) return "crystal_group_missing"
+        return nodes.firstNotNullOfOrNull { beamIssue(runtime, it, centre) }
     }
 
     /** A cave wall has natural rock behind the face; a decorative pillar or free-standing pedestal does not. */
@@ -65,15 +124,17 @@ internal class MineCrystalWallPlan(private val index: MineBlockIndex, private va
             runtime.region.contains(Location(runtime.region.world, p.x.toDouble(), p.y.toDouble(), p.z.toDouble()))
     }
 
-    private fun clear(runtime: MineRuntime, from: Vector3d, to: Vector3d): Boolean {
+    private fun beamIssue(runtime: MineRuntime, from: Vector3d, to: Vector3d): String? {
         val steps = ceil(from.distance(to) * 3).toInt().coerceIn(1, 64)
         for (i in 1..steps) {
             val p = Vector3d(from).lerp(to, i.toDouble() / steps)
             val position = WorksitePosition(runtime.region.world.name, floor(p.x).toInt(), floor(p.y).toInt(), floor(p.z).toInt())
-            if (!index.allowsEvent(position) || position.blockType()?.let { !it.isSolid } != true ||
-                !runtime.region.contains(Location(runtime.region.world, p.x, p.y, p.z))) return false
+            if (!index.allowsEvent(position)) return "near_lift"
+            if (!runtime.region.contains(Location(runtime.region.world, p.x, p.y, p.z))) return "outside_region"
+            val type = position.blockType() ?: return "chunk_unloaded"
+            if (type.isSolid) return "crystal_beam_blocked"
         }
-        return true
+        return null
     }
 
     companion object {

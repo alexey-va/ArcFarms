@@ -53,6 +53,11 @@ internal class MineIncidentSet(
     /** Farm-style admin switch: retire the current scene before forcing the requested incident. */
     fun forceAdmin(runtime: MineRuntime, type: ru.ruscrafting.farms.domain.MineIncidentType, now: Long): Boolean {
         if (type !in MineIncidentScheduler.SUPPORTED_TYPES) return false
+        if (type == ru.ruscrafting.farms.domain.MineIncidentType.CRYSTAL_RESONANCE &&
+            !crystalResonance.canStart(runtime, now, scheduler.replacementBlocker(runtime, type))) {
+            scheduler.reportPreparationFailure(runtime, type)
+            return false
+        }
         workings.cancelPending(runtime.settings.id)
         workings.forceCleanup(runtime)
         lostMiner.forceCleanup(runtime)
@@ -71,6 +76,11 @@ internal class MineIncidentSet(
 
     fun forceAdminAsync(runtime: MineRuntime, type: ru.ruscrafting.farms.domain.MineIncidentType, now: Long): java.util.concurrent.CompletableFuture<Boolean> {
         if (type !in MineIncidentScheduler.SUPPORTED_TYPES) return java.util.concurrent.CompletableFuture.completedFuture(false)
+        if (type == ru.ruscrafting.farms.domain.MineIncidentType.CRYSTAL_RESONANCE &&
+            !crystalResonance.canStart(runtime, now, scheduler.replacementBlocker(runtime, type))) {
+            scheduler.reportPreparationFailure(runtime, type)
+            return java.util.concurrent.CompletableFuture.completedFuture(false)
+        }
         workings.cancelPending(runtime.settings.id)
         workings.forceCleanup(runtime)
         lostMiner.forceCleanup(runtime)
@@ -122,6 +132,7 @@ internal class MineIncidentSet(
         registry.snapshot().forEach {
             val now = System.currentTimeMillis()
             candidateStock?.prewarm(it, now)
+            crystalResonance.prewarm(it, now)
             caveIn.prewarm(it, now)
             workings.prewarm(it, now)
             lostMiner.prewarm(it, now)
@@ -236,6 +247,7 @@ internal class MineIncidentSet(
     }
 
     fun reconcileChunk(runtime: MineRuntime, chunk: Chunk) {
+        crystalResonance.invalidate(runtime)
         caveIn.reconcile(runtime)
         flooding.reconcile(runtime)
         powerFailure.reconcile(runtime)

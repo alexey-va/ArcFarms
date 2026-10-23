@@ -207,6 +207,28 @@ class ArcFarmsCommandAdminCoverageTest : FunSpec({
     }
     }
 
+    test("an unknown mine placement reason uses localized fallback instead of a raw locale key") {
+        ru.arc.paper.testing.MockBukkitTestRuntime.open().use { paper ->
+            val player = paper.server.addPlayer().apply { isOp = true }
+            val service = mockk<ArcFarmsService>(relaxed = true) {
+                every { mineZoneIds() } returns listOf("old_shafts")
+                every { mineIncidentIds() } returns listOf("CRYSTAL_RESONANCE")
+                every { adminSetMineIncidentAsync(any(), any(), any()) } returns java.util.concurrent.CompletableFuture.completedFuture(false)
+                every { mineIncidentDiagnostics("old_shafts", MineIncidentType.CRYSTAL_RESONANCE) } returns
+                    MineIncidentPlacementReport(MineIncidentType.CRYSTAL_RESONANCE, 4, 4, 39, mapOf("unknown_guard" to 1))
+            }
+            val locale = mockk<ArcFarmsLocale>(relaxed = true) {
+                every { text(any()) } returns Component.empty()
+                every { renderPath(any(), any(), any()) } returns Component.empty()
+                every { renderPath("admin.mine-placement.reason.unknown_guard", any(), any()) } returns
+                    Component.text("admin.mine-placement.reason.unknown_guard")
+            }
+            val handler = ArcFarmsCommand(service, locale, mockk(relaxed = true)) { java.util.concurrent.CompletableFuture.completedFuture(Unit) }
+            handler.onCommand(player, mockk(relaxed = true), "arcfarms", arrayOf("admin", "event", "old_shafts", "CRYSTAL_RESONANCE"))
+            verify(exactly = 1) { locale.renderPath("admin.mine-placement.reason.unsuitable", player, any()) }
+        }
+    }
+
     test("factory preset validates the configured zone and queues only the next dead factory") {
         val player = mockk<Player>(relaxed = true) {
             every { hasPermission("arcfarms.admin") } returns true

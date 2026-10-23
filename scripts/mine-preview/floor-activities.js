@@ -13,6 +13,37 @@ if (recipe.floorActivityFrames) {
   panel.append(button, timeline, label);
   document.querySelector('aside').prepend(panel);
   let playing = false, started = 0, elapsed = 0;
+  let references = null;
+  const referenceToggle = document.createElement('input'); referenceToggle.type = 'checkbox'; referenceToggle.checked = true;
+  const referenceLabel = document.createElement('label'); referenceLabel.append(referenceToggle, ' Силуэт игрока 1,8 м · шкала');
+  const controlToggle = document.createElement('input'); controlToggle.type = 'checkbox';
+  const controlLabel = document.createElement('label'); controlLabel.append(controlToggle, ' Показать реальные хитбоксы');
+  panel.append(referenceLabel, controlLabel);
+  function rebuildReferences() {
+    if (references) { world.remove(references); disposeVanillaMesh(references); }
+    references = new THREE.Group();
+    if (recipe.playerScaleReference && referenceToggle.checked) {
+      const person = new THREE.Group(); person.position.set(...recipe.playerScaleReference.at);
+      const material = new THREE.MeshStandardMaterial({color:0xd9d2b9,roughness:.95});
+      for (const [position,size] of [
+        [[-.12,.375,0],[.2,.75,.24]],[[.12,.375,0],[.2,.75,.24]],
+        [[0,1.08,0],[.36,.66,.24]],[[0,1.605,0],[.39,.39,.39]],
+        [[-.25,1.08,0],[.14,.66,.22]],[[.25,1.08,0],[.14,.66,.22]],
+      ]) {
+        const body = new THREE.Mesh(new THREE.BoxGeometry(...size),material); body.position.set(...position); person.add(body);
+      }
+      references.add(person);
+    }
+    if (controlToggle.checked) {
+      for (const [role,center] of Object.entries(recipe.floorActivityControls ?? {})) {
+        const geometry = new THREE.EdgesGeometry(new THREE.BoxGeometry(1.15,1.1,1.15));
+        const box = new THREE.LineSegments(geometry,new THREE.LineBasicMaterial({color:0xffbf4e}));
+        box.position.set(center[0]+11.5,center[1]+2,center[2]+8.5); box.userData.role=role; references.add(box);
+      }
+    }
+    world.add(references);
+  }
+  referenceToggle.onchange = controlToggle.onchange = () => { rebuildReferences(); render(); };
   const pose = (time) => {
     const sample = Math.min(recording.frames.length - 1, Math.floor(time / recording.cadence));
     const a = recording.frames[sample], b = recording.frames[Math.min(sample + 1, recording.frames.length - 1)];
@@ -33,16 +64,19 @@ if (recipe.floorActivityFrames) {
   timeline.oninput = () => { playing = false; button.textContent = 'Проиграть цикл'; elapsed = Number(timeline.value); pose(elapsed); };
   button.onclick = () => {
     playing = !playing; button.textContent = playing ? 'Пауза' : 'Проиграть цикл';
-    if (playing) { started = performance.now() - elapsed; requestAnimationFrame(frame); }
+    if (playing) {
+      if (elapsed >= recording.duration) elapsed = 0;
+      started = performance.now() - elapsed; requestAnimationFrame(frame);
+    }
   };
   function frame(now) {
     if (!playing) return;
     elapsed = Math.min(recording.duration, now - started); pose(elapsed);
-    if (elapsed >= recording.duration) { playing = false; button.textContent = 'Проиграть цикл'; elapsed = 0; }
+    if (elapsed >= recording.duration) { playing = false; button.textContent = 'Проиграть цикл'; }
     else requestAnimationFrame(frame);
   }
   const buildWithFloorActivity = buildMesh;
-  buildMesh = function () { buildWithFloorActivity(); pose(elapsed); };
+  buildMesh = function () { buildWithFloorActivity(); rebuildReferences(); pose(elapsed); };
   // loadScene calls this wrapper after textures and model are ready on first load.
   if (window.atelierReady) buildMesh();
 }

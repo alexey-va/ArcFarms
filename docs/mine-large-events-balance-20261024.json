@@ -1,0 +1,302 @@
+{
+  "version": 1,
+  "title": "ArcFarms large floor event refinement and Crystal activation compatibility 2026-10-24",
+  "assumptions": [
+    "This is a refinement of already existing floor events and a Crystal activation correction; it does not add a reward, order, resource quantity, multiplier or item.",
+    "Low/base/high are assumptions: 0.25/1/2 active hours per player-day, 3/6/10 shifts per hour, 5/10/20 eligible contributors. The unchanged direct completion payouts are kept outside the zero incremental event-flow calculation.",
+    "Freight transfer animation changes from 2 to 4 seconds; all four durable steps remain. Pump keeps six steps and its drain timing. Longer transfer cannot increase the nominal event throughput; actual completion cadence is unmeasured.",
+    "Crystal restores reachable execution of the existing once-only <=4 shared order-credit mechanic; credits are quota progress, not inventory items or currency. Fixed wall selection may restore practical throughput, but no frequency/rate is asserted.",
+    "Completion payout remains268-284Vault,402-426vanillaXP and one existing exclusive weighted resource bundle per positive contributor, cooldown60seconds. Party/alt reward rules and native mining guards remain.",
+    "SELL is the current alternative conversion for existing bundle items; SELL-to-contract transition remains a future scenario. No new saleable item or conversion route exists in this refinement."
+  ],
+  "participants": [
+    5,
+    10,
+    20
+  ],
+  "currencies": {
+    "vault": {
+      "minor_per_unit": 100,
+      "flows": [
+        {
+          "id": "refinement_incremental_vault",
+          "kind": "mint",
+          "source": "existing MineFloorActivities / MineCrystalResonanceIncident canonical shift progress; no grant added",
+          "basis": "Incremental direct event output only; unchanged completion payout separately documented. Same assumed action counts before/after.",
+          "before": {
+            "enabled": true,
+            "amount_per_event": {
+              "value": "0",
+              "unit": "major"
+            },
+            "events_per_player_day": [
+              "0.75",
+              "6",
+              "20"
+            ]
+          },
+          "after": {
+            "enabled": true,
+            "amount_per_event": {
+              "value": "0",
+              "unit": "major"
+            },
+            "events_per_player_day": [
+              "0.75",
+              "6",
+              "20"
+            ]
+          }
+        }
+      ]
+    },
+    "tokens": {
+      "minor_per_unit": 1,
+      "flows": [
+        {
+          "id": "refinement_incremental_tokens",
+          "kind": "mint",
+          "source": "existing MineFloorActivities / MineCrystalResonanceIncident canonical shift progress; no grant added",
+          "basis": "Incremental direct event output only; unchanged completion payout separately documented. Same assumed action counts before/after.",
+          "before": {
+            "enabled": true,
+            "amount_per_event": {
+              "value": "0",
+              "unit": "major"
+            },
+            "events_per_player_day": [
+              "0.75",
+              "6",
+              "20"
+            ]
+          },
+          "after": {
+            "enabled": true,
+            "amount_per_event": {
+              "value": "0",
+              "unit": "major"
+            },
+            "events_per_player_day": [
+              "0.75",
+              "6",
+              "20"
+            ]
+          }
+        }
+      ]
+    },
+    "vanilla_xp": {
+      "minor_per_unit": 1,
+      "flows": [
+        {
+          "id": "refinement_incremental_vanilla_xp",
+          "kind": "mint",
+          "source": "existing MineFloorActivities / MineCrystalResonanceIncident canonical shift progress; no grant added",
+          "basis": "Incremental direct event output only; unchanged completion payout separately documented. Same assumed action counts before/after.",
+          "before": {
+            "enabled": true,
+            "amount_per_event": {
+              "value": "0",
+              "unit": "major"
+            },
+            "events_per_player_day": [
+              "0.75",
+              "6",
+              "20"
+            ]
+          },
+          "after": {
+            "enabled": true,
+            "amount_per_event": {
+              "value": "0",
+              "unit": "major"
+            },
+            "events_per_player_day": [
+              "0.75",
+              "6",
+              "20"
+            ]
+          }
+        }
+      ]
+    },
+    "miner_job_xp": {
+      "minor_per_unit": 1,
+      "flows": [
+        {
+          "id": "refinement_incremental_miner_job_xp",
+          "kind": "mint",
+          "source": "existing MineFloorActivities / MineCrystalResonanceIncident canonical shift progress; no grant added",
+          "basis": "Incremental direct event output only; unchanged completion payout separately documented. Same assumed action counts before/after.",
+          "before": {
+            "enabled": true,
+            "amount_per_event": {
+              "value": "0",
+              "unit": "major"
+            },
+            "events_per_player_day": [
+              "0.75",
+              "6",
+              "20"
+            ]
+          },
+          "after": {
+            "enabled": true,
+            "amount_per_event": {
+              "value": "0",
+              "unit": "major"
+            },
+            "events_per_player_day": [
+              "0.75",
+              "6",
+              "20"
+            ]
+          }
+        }
+      ]
+    },
+    "auraskills_mining_xp": {
+      "minor_per_unit": 1,
+      "flows": [
+        {
+          "id": "refinement_incremental_auraskills_mining_xp",
+          "kind": "mint",
+          "source": "existing MineFloorActivities / MineCrystalResonanceIncident canonical shift progress; no grant added",
+          "basis": "Incremental direct event output only; unchanged completion payout separately documented. Same assumed action counts before/after.",
+          "before": {
+            "enabled": true,
+            "amount_per_event": {
+              "value": "0",
+              "unit": "major"
+            },
+            "events_per_player_day": [
+              "0.75",
+              "6",
+              "20"
+            ]
+          },
+          "after": {
+            "enabled": true,
+            "amount_per_event": {
+              "value": "0",
+              "unit": "major"
+            },
+            "events_per_player_day": [
+              "0.75",
+              "6",
+              "20"
+            ]
+          }
+        }
+      ]
+    },
+    "ae_souls": {
+      "minor_per_unit": 1,
+      "flows": [
+        {
+          "id": "refinement_incremental_ae_souls",
+          "kind": "mint",
+          "source": "existing MineFloorActivities / MineCrystalResonanceIncident canonical shift progress; no grant added",
+          "basis": "Incremental direct event output only; unchanged completion payout separately documented. Same assumed action counts before/after.",
+          "before": {
+            "enabled": true,
+            "amount_per_event": {
+              "value": "0",
+              "unit": "major"
+            },
+            "events_per_player_day": [
+              "0.75",
+              "6",
+              "20"
+            ]
+          },
+          "after": {
+            "enabled": true,
+            "amount_per_event": {
+              "value": "0",
+              "unit": "major"
+            },
+            "events_per_player_day": [
+              "0.75",
+              "6",
+              "20"
+            ]
+          }
+        }
+      ]
+    },
+    "bonus_item_units": {
+      "minor_per_unit": 1,
+      "flows": [
+        {
+          "id": "refinement_incremental_bonus_item_units",
+          "kind": "item",
+          "source": "existing MineFloorActivities / MineCrystalResonanceIncident canonical shift progress; no grant added",
+          "basis": "Incremental direct event output only; unchanged completion payout separately documented. Same assumed action counts before/after.",
+          "before": {
+            "enabled": true,
+            "amount_per_event": {
+              "value": "0",
+              "unit": "major"
+            },
+            "events_per_player_day": [
+              "0.75",
+              "6",
+              "20"
+            ]
+          },
+          "after": {
+            "enabled": true,
+            "amount_per_event": {
+              "value": "0",
+              "unit": "major"
+            },
+            "events_per_player_day": [
+              "0.75",
+              "6",
+              "20"
+            ]
+          }
+        }
+      ]
+    }
+  },
+  "prices": [],
+  "unchanged_completion_rewards": {
+    "vault_per_positive_contributor": [
+      268,
+      284
+    ],
+    "vanilla_xp_per_positive_contributor": [
+      402,
+      426
+    ],
+    "exclusive_resource_bundles": 1,
+    "cooldown_seconds": 60
+  },
+  "timing_before_after_seconds": {
+    "freight_transfer": [
+      2,
+      4
+    ]
+  },
+  "resource_steps_before_after": {
+    "freight": [
+      4,
+      4
+    ],
+    "drainage": [
+      6,
+      6
+    ],
+    "crystal_nodes": [
+      4,
+      4
+    ],
+    "maximum_shared_crystal_order_credits": [
+      4,
+      4
+    ]
+  },
+  "indirect_throughput": "unmeasured; no assumed earnings increase"
+}

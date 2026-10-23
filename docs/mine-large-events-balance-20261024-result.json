@@ -1,0 +1,46 @@
+{
+  "evaluation": {
+    "script": "balance-ruscrafting-economy/scripts/evaluate.py",
+    "exit_code": 0,
+    "status": "PASS"
+  },
+  "assessment": "mine-large-events-balance-20261024.json",
+  "weekly_net_delta": {
+    "vault": [
+      "0.00",
+      "0",
+      "0"
+    ],
+    "tokens": [
+      "0.00",
+      "0",
+      "0"
+    ],
+    "vanilla_xp": [
+      "0.00",
+      "0",
+      "0"
+    ],
+    "miner_job_xp": [
+      "0.00",
+      "0",
+      "0"
+    ],
+    "auraskills_mining_xp": [
+      "0.00",
+      "0",
+      "0"
+    ],
+    "ae_souls": [
+      "0.00",
+      "0",
+      "0"
+    ],
+    "bonus_item_units": [
+      "0",
+      "0",
+      "0"
+    ]
+  },
+  "decision": "Keep reward and progress quantities; enlarge presentation and fix existing placement. No throughput increase asserted."
+}

@@ -92,9 +92,9 @@ internal class MineFloorActivities(
                 return
             }
             session.carrier?.let { id ->
-                if (participants.none { it.uniqueId == id && usable(runtime, it, anchor, 6.0) }) session.carrier = null
+                if (participants.none { it.uniqueId == id && usable(runtime, it, anchor, 10.0) }) session.carrier = null
             }
-            val operator = session.operator?.let(Bukkit::getPlayer)?.takeIf { usable(runtime, it, anchor, 7.0) }
+            val operator = session.operator?.let(Bukkit::getPlayer)?.takeIf { usable(runtime, it, anchor, 10.0) }
             if (operator == null) {
                 session.operator = null
                 session.pull = null
@@ -155,7 +155,7 @@ internal class MineFloorActivities(
         val scene = scenes.values.firstOrNull { it.role(event.rightClicked.uniqueId) != null } ?: return true
         val runtime = runtimes.firstOrNull { it.settings.id == scene.zoneId } ?: return true
         val incident = runtime.state.incident?.takeIf { it.type == scene.type } ?: return true
-        if (runtime.state.sequence != scene.sequence || !usable(runtime, event.player, scene.anchor, 7.0)) return true
+        if (runtime.state.sequence != scene.sequence || !usable(runtime, event.player, scene.anchor, 10.0)) return true
         if (!access.allowInteraction("mine-floor:${runtime.settings.id}:${event.player.uniqueId}", 250L)) return true
         val session = session(runtime) ?: return true
         val role = scene.role(event.rightClicked.uniqueId) ?: return true
@@ -214,7 +214,7 @@ internal class MineFloorActivities(
         val progress = runtime.state.incident?.progress ?: return
         if (progress in 1..MineFloorActivity.PUMP_STROKES) {
             val local = MineFloorActivityScene.local(anchor, player.location)
-            if (!player.isOnGround || abs(local.y) > .5f || abs(local.x) > .85 || local.z !in 1.3f..2.65f) {
+            if (!player.isOnGround || abs(local.y) > .5f || abs(local.x - MineFloorActivityGeometry.PUMP_OPERATOR_X) > .85 || local.z !in 1.3f..2.65f) {
                 session.operator = null; session.pump = MineFloorActivity.Pump(); return
             }
             val stroke = MineFloorActivity.pump(session.pump, player.isSneaking, now)
@@ -225,7 +225,7 @@ internal class MineFloorActivities(
         } else if (progress == 5 && session.animationAt != null) {
             if (now - session.lastParticle >= 250L && plugin.config.getBoolean("ui.particles", true)) {
                 session.lastParticle = now
-                anchor.world.spawnParticle(Particle.SPLASH, MineFloorActivityScene.at(anchor, Vector3f(2.6f, .48f, .1f)), 4, .2, .08, .2, 0.0)
+                anchor.world.spawnParticle(Particle.SPLASH, MineFloorActivityScene.at(anchor, MineFloorActivityGeometry.DRAIN_OUTLET), 4, .2, .08, .2, 0.0)
             }
             if (now - session.animationAt!! >= DRAIN_MILLIS) {
                 session.animationAt = null; session.operator = null
@@ -322,14 +322,44 @@ internal class MineFloorActivities(
 
     private fun placementFailure(runtime: MineRuntime, type: MineIncidentType): String? {
         val at = anchor(runtime, type) ?: return "floor_machine_point_missing"
-        val zRange = if (type == MineIncidentType.FREIGHT_WINCH) -3..5 else -1..3
-        val xRange = if (type == MineIncidentType.FREIGHT_WINCH) -3..3 else -3..4
-        for (x in xRange) for (z in zRange) {
-            val cell = MineFloorActivityScene.at(at, Vector3f(x.toFloat(), 0f, z.toFloat()))
+        val bounds = MineFloorActivityGeometry.bounds(type)
+        val corners = listOf(bounds.minX, bounds.maxX).flatMap { x ->
+            listOf(bounds.minZ, bounds.maxZ).map { z -> MineFloorActivityScene.at(at, Vector3f(x, 0f, z)) }
+        }
+        // Floor and a two-block player corridor cover the complete platform footprint.
+        for (x in corners.minOf { it.blockX }..corners.maxOf { it.blockX }) {
+            for (z in corners.minOf { it.blockZ }..corners.maxOf { it.blockZ }) {
+                val cell = Location(at.world, x + .5, at.y, z + .5)
+                if (!runtime.region.contains(cell)) return "floor_machine_outside_region"
+                if (!at.world.isChunkLoaded(x shr 4, z shr 4)) return "floor_machine_chunk_unloaded"
+                if (!cell.clone().subtract(0.0, .1, 0.0).block.type.isSolid) return "floor_machine_floor_missing"
+                for (y in 0..1) {
+                    val clearance = cell.clone().add(0.0, y.toDouble(), 0.0)
+                    if (!runtime.region.contains(clearance)) return "floor_machine_outside_region"
+                    if (!clearance.block.isPassable) return "floor_machine_obstructed"
+                }
+            }
+        }
+        // Higher native scenery is allowed outside the actual swept machinery, including the
+        // existing lamps over the front aisle. Deduplicate native reads across overlapping parts.
+        val upperCells = mutableSetOf<Triple<Int, Int, Int>>()
+        MineFloorActivityGeometry.sweptBoxes(type).forEach { box ->
+            val points = listOf(box.min.x, box.max.x).flatMap { x ->
+                listOf(box.min.z, box.max.z).map { z -> MineFloorActivityScene.at(at, Vector3f(x, 0f, z)) }
+            }
+            for (x in points.minOf { kotlin.math.floor(it.x + .0001).toInt() }..points.maxOf { kotlin.math.floor(it.x - .0001).toInt() }) {
+                for (z in points.minOf { kotlin.math.floor(it.z + .0001).toInt() }..points.maxOf { kotlin.math.floor(it.z - .0001).toInt() }) {
+                    val firstY = maxOf(at.blockY + 2, kotlin.math.floor(at.y + box.min.y + .0001).toInt())
+                    val lastY = kotlin.math.floor(at.y + box.max.y - .0001).toInt()
+                    for (y in firstY..lastY) upperCells.add(Triple(x, y, z))
+                }
+            }
+        }
+        for ((x, y, z) in upperCells) {
+            val cell = Location(at.world, x + .5, y + .5, z + .5)
             if (!runtime.region.contains(cell)) return "floor_machine_outside_region"
-            if (!at.world.isChunkLoaded(cell.blockX shr 4, cell.blockZ shr 4)) return "floor_machine_chunk_unloaded"
-            if (!cell.clone().subtract(0.0, .1, 0.0).block.type.isSolid) return "floor_machine_floor_missing"
-            for (y in 0..3) if (!cell.clone().add(0.0, y.toDouble(), 0.0).block.isPassable) return "floor_machine_obstructed"
+            if (!at.world.isChunkLoaded(x shr 4, z shr 4)) return "floor_machine_chunk_unloaded"
+            if (!cell.block.isPassable) return "floor_machine_obstructed"
         }
         return null
     }
@@ -374,7 +404,7 @@ internal class MineFloorActivities(
         val TYPES = setOf(MineIncidentType.FREIGHT_WINCH, MineIncidentType.DRAINAGE_PUMP)
         fun point(type: MineIncidentType) = if (type == MineIncidentType.FREIGHT_WINCH) "freight_winch" else "drainage_pump"
         fun required(type: MineIncidentType) = if (type == MineIncidentType.FREIGHT_WINCH) MineFloorActivity.WINCH_STEPS else MineFloorActivity.PUMP_STEPS
-        const val SWING_MILLIS = 2_000L
+        const val SWING_MILLIS = 4_000L
         const val DRAIN_MILLIS = 2_000L
     }
 }

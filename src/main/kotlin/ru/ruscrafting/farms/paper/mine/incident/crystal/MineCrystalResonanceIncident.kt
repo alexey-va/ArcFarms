@@ -33,6 +33,7 @@ import ru.ruscrafting.farms.paper.mine.MineRuntimeRegistry
 import ru.ruscrafting.farms.paper.mine.MineTransitionCoordinator
 import ru.ruscrafting.farms.paper.mine.incident.MineIncidentCandidateStock
 import ru.ruscrafting.farms.paper.mine.incident.MineIncidentCoordinator
+import ru.ruscrafting.farms.paper.mine.incident.MineIncidentPlacementReport
 import ru.ruscrafting.farms.paper.mine.incident.blockType
 import ru.ruscrafting.farms.paper.mine.incident.entity.hasMineObjectiveMarkerSpace
 import ru.ruscrafting.farms.paper.mine.incident.orderMineIncidentPositions
@@ -58,6 +59,10 @@ internal class MineCrystalResonanceIncident(
     private val clock: () -> Long = System::currentTimeMillis,
 ) {
     private val planner = MineCrystalWallPlan(index, recovery)
+    private data class Placement(val runtime: MineRuntime, val region: ru.ruscrafting.farms.paper.ActivityRegion,
+        val sequence: Long, val search: MineCrystalWallPlan.Search, val usable: Int, val considered: Int,
+        var retryAt: Long = 0, var failure: String? = null)
+    private val placements = mutableMapOf<String, Placement>()
     private data class Session(val sequence: Long, val nonce: Long, var lastEmissionAt: Long = Long.MIN_VALUE,
         var pendingCut: Boolean = false, var lastBeat: MineCrystalPhase? = null)
     private val sessions = mutableMapOf<String, Session>()
@@ -65,19 +70,11 @@ internal class MineCrystalResonanceIncident(
 
     @Suppress("UNUSED_PARAMETER")
     fun start(runtime: MineRuntime, required: Int = 4, now: Long): Boolean {
-        val available = (candidateStock?.candidates(runtime, MineIncidentType.CRYSTAL_RESONANCE)
-            ?: index.loadedTargets(runtime.settings.id, MineAnchorRole.CRYSTAL).take(32)).filter { usable(runtime, it) }
-        val ordered = orderMineIncidentPositions(runtime, available, 4, MineIncidentType.CRYSTAL_RESONANCE.ordinal + 1L)
-        val selected = ordered.firstOrNull()?.let { anchor -> ordered.filter { kotlin.math.abs(it.y - anchor.y) <= 2 }.take(4) }
-            .orEmpty()
-        if (selected.size != 4) return false
-        val plan = planner.select(runtime, selected) ?: run {
-            state.log(Level.WARNING, "Mine crystal placement unavailable zone=${runtime.settings.id} sequence=${runtime.state.sequence} " +
-                "crystals=${selected.size} reason=no_safe_indexed_wall_on_crystal_floor")
-            return false
-        }
+        val placement = ready(runtime, now) ?: return false
+        val plan = requireNotNull(placement.search.result)
+        val selected = placement.search.crystals
         val started = MineShiftEngine.startIncident(runtime.state, MineIncidentType.CRYSTAL_RESONANCE, 4, now)
-        if (!started.accepted) return false
+        if (!started.accepted) { placement.failure = "state_transition_rejected"; return false }
         val candidates = selected.mapIndexed { ordinal, position -> ObjectiveTargetCandidate("crystal_node_${ordinal + 1}",
             position, ObjectiveTargetRole("crystal_node"), ordinal.toLong()) }
         val objective = ObjectiveTargetPool.plan(WorksiteObjectiveKey(runtime.settings.id, "incident_crystal_resonance",
@@ -86,6 +83,80 @@ internal class MineCrystalResonanceIncident(
             incident = started.state.incident!!.copy(crystal = plan), objective = objective)), null)
         return true
     }
+
+    fun canStart(runtime: MineRuntime, now: Long, blockedBy: String? = null): Boolean {
+        if (blockedBy != null) {
+            prepare(runtime, now).failure = blockedBy
+            return false
+        }
+        return ready(runtime, now) != null
+    }
+
+    fun hasPreparation(runtime: MineRuntime): Boolean = placements[runtime.settings.id]?.let { current(runtime, it) } == true
+
+    fun prewarm(runtime: MineRuntime, now: Long) {
+        if (runtime.state.phase in setOf(MinePhase.IDLE, MinePhase.COOLDOWN)) return
+        // A forced replacement may prepare while another incident retains its accepted progress.
+        if (runtime.state.incident != null && placements[runtime.settings.id]?.search?.pending != true) return
+        prepare(runtime, now)
+    }
+
+    fun diagnostics(runtime: MineRuntime): MineIncidentPlacementReport {
+        val placement = placements[runtime.settings.id]?.takeIf { current(runtime, it) }
+        val source = candidateStock?.report(runtime, MineIncidentType.CRYSTAL_RESONANCE, 4)
+        val reason = placement?.failure ?: placement?.search?.reason
+            ?: if (placement?.search?.result == null) "search_pending" else null
+        return MineIncidentPlacementReport(MineIncidentType.CRYSTAL_RESONANCE, 4,
+            placement?.usable ?: source?.usable ?: 0, placement?.considered ?: source?.considered ?: 0,
+            reason?.let { mapOf(it to 1) }.orEmpty())
+    }
+
+    fun invalidate(runtime: MineRuntime) { placements.remove(runtime.settings.id) }
+
+    private fun ready(runtime: MineRuntime, now: Long, crystals: List<WorksitePosition>? = null): Placement? {
+        val placement = prepare(runtime, now, crystals)
+        placement.failure = null
+        if (placement.search.result == null) return null
+        val changed = placement.search.crystals.firstOrNull { !usable(runtime, it) }
+        val issue = if (changed != null) {
+            if (changed.blockType() == null) "chunk_unloaded" else "crystal_group_missing"
+        } else planner.issue(runtime, placement.search)
+        if (issue != null) {
+            placement.search.result = null
+            placement.search.reason = issue
+            placement.retryAt = now + 1_000L
+            return null
+        }
+        return placement
+    }
+
+    private fun prepare(runtime: MineRuntime, now: Long, crystals: List<WorksitePosition>? = null): Placement {
+        val cached = placements[runtime.settings.id]?.takeIf { current(runtime, it) &&
+            (crystals == null || it.search.crystals == crystals) && (it.retryAt == 0L || now < it.retryAt) }
+        val placement = cached ?: run {
+            val source = crystals ?: candidateStock?.candidates(runtime, MineIncidentType.CRYSTAL_RESONANCE)
+                ?: index.loadedTargets(runtime.settings.id, MineAnchorRole.CRYSTAL).take(32)
+            val available = source.filter { usable(runtime, it) }
+            val ordered = if (crystals != null) available else orderMineIncidentPositions(runtime, available, 4,
+                MineIncidentType.CRYSTAL_RESONANCE.ordinal + 1L)
+            val selected = ordered.firstOrNull()?.let { anchor ->
+                ordered.filter { kotlin.math.abs(it.y - anchor.y) <= 2 }.take(4)
+            }.orEmpty()
+            val search = planner.prepare(runtime, selected)
+            if (selected.size < 4 && source.any { it.blockType() == null }) search.reason = "chunk_unloaded"
+            Placement(runtime, runtime.region, runtime.state.sequence, search, available.size,
+                candidateStock?.report(runtime, MineIncidentType.CRYSTAL_RESONANCE, 4)?.considered ?: source.size)
+                .also { placements[runtime.settings.id] = it }
+        }
+        planner.advance(runtime, placement.search)
+        if (!placement.search.pending && placement.search.result == null && placement.retryAt == 0L) {
+            placement.retryAt = now + 1_000L
+        }
+        return placement
+    }
+
+    private fun current(runtime: MineRuntime, placement: Placement): Boolean = placement.runtime === runtime &&
+        placement.region === runtime.region && placement.sequence == runtime.state.sequence
 
     fun hit(runtime: MineRuntime, targetId: String, player: Player, insideForgivingWindow: Boolean): Boolean {
         if (!active(runtime) || !insideForgivingWindow || !upgradeLegacy(runtime)) return false
@@ -265,7 +336,7 @@ internal class MineCrystalResonanceIncident(
     } == true
 
     fun cleanup(runtime: MineRuntime) { sessions.remove(runtime.settings.id) }
-    fun cleanupAll() { sessions.clear(); dust.clear() }
+    fun cleanupAll() { sessions.clear(); placements.clear(); dust.clear() }
 
     private fun upgradeLegacy(runtime: MineRuntime): Boolean {
         val incident = runtime.state.incident ?: return false
@@ -277,7 +348,12 @@ internal class MineCrystalResonanceIncident(
         if (targets.size != 4 || targets.any { !usable(runtime, it.position) }) {
             abort(runtime, "legacy_crystals_unavailable"); return false
         }
-        val plan = planner.select(runtime, targets.map { it.position }) ?: run { abort(runtime, "legacy_wall_unavailable"); return false }
+        val placement = ready(runtime, clock(), targets.map { it.position }) ?: run {
+            val search = placements[runtime.settings.id]?.search
+            if (search?.pending == true || search?.reason == "chunk_unloaded") return false
+            abort(runtime, "legacy_wall_unavailable"); return false
+        }
+        val plan = requireNotNull(placement.search.result)
         transitions.apply(runtime, EngineResult(runtime.state.copy(
             objective = objective.copy(required = 4, reserve = emptyList()),
             incident = incident.copy(required = 4, progress = targets.count { it.status == ObjectiveTargetStatus.COMPLETED }, crystal = plan),

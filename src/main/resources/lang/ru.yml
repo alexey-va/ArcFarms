@@ -114,7 +114,7 @@ admin:
       gas_leak: '<gray>открытые твёрдые стены внутри шахты</gray>'
       flooding: '<gray>твёрдый пол и два свободных блока над ним; воду создаёт само событие</gray>'
       track_damage: '<gray>проложенная рельсовая ветка с завалом и несколькими повреждёнными секциями для замены</gray>'
-      crystal_resonance: '<gray>доступные аметистовые кластеры внутри шахты</gray>'
+      crystal_resonance: '<gray>четыре доступных кластера на одном ярусе, свободные пути лучей и естественная каменная стена</gray>'
       creature_nest: '<gray>широкая площадка с отступом от краёв и два свободных блока над полом</gray>'
       power_failure: '<gray>старое сохранённое состояние; новый запуск аварии с питанием не предлагается</gray>'
       lost_miner: '<gray>доступный вход в естественную пещеру внутри шахты и место для выхода</gray>'
@@ -124,9 +124,14 @@ admin:
       last_descent: '<gray>точка expedition_gate и готовая локация «Последний спуск»</gray>'
       drilling_ark: '<gray>точка expedition_gate и готовая локация «Буровой ковчег»</gray>'
       dead_factory: '<gray>точка expedition_gate и готовая локация «Мёртвый завод»</gray>'
-      freight_winch: <gray>точка freight_winch, сплошной пол и свободный проход для тяги</gray>
-      drainage_pump: <gray>точка drainage_pump и свободное место для ручного насоса</gray>
+      freight_winch: "<gray>точка freight_winch, площадка 12,4 × 8,5 м и свободный пролёт портала</gray>"
+      drainage_pump: "<gray>точка drainage_pump и площадка 14,3 × 8,7 м для водоотливной станции</gray>"
     reason:
+      unsuitable: '<red><count> — индексированные точки не прошли проверку размещения</red>'
+      preparation_pending: '<gold>подготовка индексированных точек ещё выполняется</gold>'
+      crystal_group_missing: '<red>нет четырёх доступных вертикальных кластеров рядом на одном ярусе</red>'
+      crystal_beam_blocked: '<red>путь кристального луча перекрыт блоками</red>'
+      crystal_wall_missing: '<red>на ярусе кристаллов не найдена доступная естественная стена с безопасной толщиной</red>'
       expedition_gate_missing: '<red>сначала задайте точку expedition_gate через /arcfarms admin point</red>'
       expedition_reserve_not_ready: '<gold>готовая локация ещё восстанавливается; состояние видно в /arcfarms admin expeditions status</gold>'
       incident_already_active: '<red>уже идёт другое происшествие; сначала завершите его</red>'
@@ -186,8 +191,8 @@ admin:
     working_10: '<color:#d8a56d>Боковой штрек 10</color>'
     working_11: '<color:#d8a56d>Боковой штрек 11</color>'
     working_12: '<color:#d8a56d>Боковой штрек 12</color>'
-    freight_winch: <color:#ffc857>Грузовая лебёдка</color>
-    drainage_pump: <color:#45c8f5>Дренажная помпа</color>
+    freight_winch: "<color:#ffc857>Грузовой портал</color>"
+    drainage_pump: "<color:#45c8f5>Водоотливная станция</color>"
   mine-point-description:
     expedition_gate: '<gray>место отправления в глубины и возвращения в шахту</gray>'
     ore_input: '<gray>фиксированная станция, где берут видимую руду</gray>'
@@ -207,8 +212,8 @@ admin:
     working_10: '<gray>вход в боковую выработку; точка ног и направление</gray>'
     working_11: '<gray>вход в боковую выработку; точка ног и направление</gray>'
     working_12: '<gray>вход в боковую выработку; точка ног и направление</gray>'
-    freight_winch: <gray>центр лебёдки и свободной тяговой дорожки среднего яруса</gray>
-    drainage_pump: <gray>центр ручного насоса нижнего яруса</gray>
+    freight_winch: "<gray>центр грузового портала и тяговой дорожки среднего яруса</gray>"
+    drainage_pump: "<gray>центр водоотливной станции нижнего яруса</gray>"
   stage-help-header: '<prefix> <gold>/arcfarms admin stage <zone> \<этап></gold> <gray>принудительно переключает тестовый заказ:</gray>'
   stage-help-entry: '  <dark_gray>•</dark_gray> <white><id></white> <dark_gray>—</dark_gray> <stage><gray>: </gray><description>'
   event-help-header: '<prefix> <gold>/arcfarms admin event <zone> \<событие></gold> <gray>немедленно запускает выбранный сюжет:</gray>'
@@ -1243,8 +1248,8 @@ mine:
     tunnel_drive: '<color:#d8a56d>Проходка бокового штрека</color>'
     rail_extension: '<color:#ffc857>Прокладка рельсов</color>'
     ore_workshop: '<color:#c778ff>Рудный цех</color>'
-    freight_winch: <color:#ffc857>Грузовая лебёдка</color>
-    drainage_pump: <color:#45c8f5>Дренажная помпа</color>
+    freight_winch: "<color:#ffc857>Грузовой портал</color>"
+    drainage_pump: "<color:#45c8f5>Водоотливная станция</color>"
   incident:
     last_descent: '<color:#ffc857>Спуститься в бездну и запустить глубинную машину</color>'
     drilling_ark: '<color:#ffc857>Провести буровой ковчег через пещеры и вернуть керны</color>'
@@ -1252,8 +1257,8 @@ mine:
     tunnel_drive: '<color:#f2fff7>Пройти настоящую боковую выработку с этого этажа</color>'
     rail_extension: '<color:#f2fff7>Проложите рельсы до камеры</color>'
     ore_workshop: '<color:#f2fff7>Обработать три партии руды и отправить заготовки</color>'
-    freight_winch: <color:#f2fff7>Поднять и перегрузить ящик на среднем ярусе</color>
-    drainage_pump: <color:#f2fff7>Собрать помпу и осушить накопитель на нижнем ярусе</color>
+    freight_winch: "<color:#f2fff7>Поднять груз и направить его на ролики среднего яруса</color>"
+    drainage_pump: "<color:#f2fff7>Соединить трубопровод и осушить водосборник нижнего яруса</color>"
   creature-nest:
     creature-name: '<color:#ff5f6d>Тварь из логова</color>'
     nest-name: '<color:#ff7a45>Логово тварей</color>'
@@ -1307,8 +1312,8 @@ mine:
     tunnel_drive: '<color:#f2fff7>Сядьте в бурмашину и пробейте путь до подсвеченной цели, обходя бедрок</color>'
     rail_extension: '<color:#f2fff7>Ведите путеукладчик к подсвеченной камере</color>'
     ore_workshop: '<color:#f2fff7>Возьмите партию руды</color>'
-    freight_winch: <color:#ffc857>Средний ярус · зацепите груз лебёдкой</color>
-    drainage_pump: <color:#45c8f5>Нижний ярус · вставьте патрубок в помпу</color>
+    freight_winch: "<color:#ffc857>Средний ярус · закрепите груз под порталом</color>"
+    drainage_pump: "<color:#45c8f5>Нижний ярус · восстановите трубопровод станции</color>"
   expedition:
     charge-loaded: '<color:#55d98b>Сырьё загружено · включите рычаг подачи на дробилке</color>'
     mix-loaded: '<color:#55d98b>Смесь в печи · дождитесь зелёного сигнала нагрева</color>'
@@ -1599,23 +1604,23 @@ mine:
       shipping: '<color:#55d98b>Точка отгрузки</color>'
   floorwork:
     winch:
-      travel: <color:#ffc857>Поднимитесь к лебёдке на среднем ярусе</color>
-      hook: <color:#ffc857>ПКМ по ящику · закрепить крюк</color>
+      travel: "<color:#ffc857>Поднимитесь к грузовому порталу на среднем ярусе</color>"
+      hook: "<color:#ffc857>ПКМ по замку на грузе · закрепить стропы</color>"
       rope: <color:#f2fff7>Встаньте перед барабаном и возьмите рукоять ПКМ</color>
       pull: <color:#ffc857>Отступайте по медной дорожке · натяжение <percent>%</color>
-      swing: <color:#f2fff7>ПКМ по рычагу у стойки · повернуть стрелу</color>
-      swinging: <color:#ffc857>Ящик переходит на приёмную опору</color>
-      unload: <color:#55d98b>ПКМ по поднятому ящику · принять груз</color>
-      busy: <color:#f2fff7>Другой шахтёр управляет лебёдкой</color>
+      swing: "<color:#f2fff7>ПКМ по рычагу на пульте · отправить груз</color>"
+      swinging: "<color:#ffc857>Тележка переносит груз на роликовую линию</color>"
+      unload: "<color:#55d98b>ПКМ по ящику в конце роликов · принять груз</color>"
+      busy: "<color:#f2fff7>Другой шахтёр управляет грузовым порталом</color>"
     pump:
-      travel: <color:#45c8f5>Спуститесь к помпе на нижнем ярусе</color>
+      travel: "<color:#45c8f5>Спуститесь к водоотливной станции на нижнем ярусе</color>"
       pipe: <color:#45c8f5>ПКМ по медному патрубку на подставке</color>
       socket: <color:#f2fff7>Поднесите патрубок к разрыву трубы · ПКМ</color>
-      handle: <color:#f2fff7>Встаньте перед помпой · ПКМ по рукояти</color>
+      handle: "<color:#f2fff7>Встаньте на дорожку перед насосом · ПКМ по рукояти</color>"
       stroke: <color:#45c8f5>Зажмите Shift на полсекунды и отпустите · ходы <strokes>/4</color>
       valve: <color:#55d98b>Давление набрано · откройте красный вентиль ПКМ</color>
-      draining: <color:#45c8f5>Вода уходит из накопителя</color>
-      busy: <color:#f2fff7>Другой шахтёр работает с помпой</color>
+      draining: "<color:#45c8f5>Насос осушает водосборник</color>"
+      busy: "<color:#f2fff7>Другой шахтёр работает на водоотливной станции</color>"
   crystal:
     charging: <color:#e4bdff>Зарядите четыре кристалла · <done>/4</color>
     charged: <color:#e4bdff>Кристалл заряжен · <done>/4</color>

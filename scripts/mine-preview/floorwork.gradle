@@ -19,7 +19,7 @@ allprojects {
                 output.mkdirs()
                 def clamp = { value -> Math.max(0d, Math.min(1d, value as double)) as float }
                 def vec = { value -> [value.x as Number, value.y as Number, value.z as Number] }
-                [['middle', 'FREIGHT_WINCH', 11500], ['bottom', 'DRAINAGE_PUMP', 12800]].each { entry ->
+                [['middle', 'FREIGHT_WINCH', 14000], ['bottom', 'DRAINAGE_PUMP', 12800]].each { entry ->
                     def floor = entry[0], type = Enum.valueOf(types, entry[1]), duration = entry[2]
                     def frames = []
                     for (int time = 0; time <= duration; time += 100) {
@@ -27,17 +27,21 @@ allprojects {
                         float pull = 0f, swing = 0f, press = 0f, drain = 0f, returning = 0f
                         def pipe = null
                         if (floor == 'middle') {
-                            progress = time < 800 ? 0 : time < 4000 ? 1 : time < 6700 ? 2 : time < 8000 ? 3 : 4
+                            progress = time < 800 ? 0 : time < 4000 ? 1 : time < 8700 ? 2 : time < 10000 ? 3 : 4
                             pull = time >= 4000 ? 1f : clamp((time - 1200) / 2800d)
-                            swing = clamp((time - 4700) / 2000d)
-                            returning = clamp((time - 9500) / 2000d)
+                            swing = clamp((time - 4700) / 4000d)
+                            returning = clamp((time - 11500) / 2000d)
                         } else {
                             progress = time < 2400 ? 0 : time < 3000 ? 1 : time < 8600 ? 1 + (int)((time - 3000) / 1400) : time < 11300 ? 5 : 6
                             if (time >= 800 && time < 2400) {
                                 float travel = clamp((time - 800) / 1600d)
-                                pipe = vectorConstructor.newInstance((-2.2f + 3.48f * travel) as float,
-                                    (.8f + .4f * Math.sin(travel * Math.PI) - .2f * travel) as float,
-                                    (1.2f - .9f * travel) as float)
+                                def rack = geo.getMethod('getPIPE_RACK').invoke(geo.getField('INSTANCE').get(null))
+                                def socket = geo.getMethod('getPIPE_SOCKET').invoke(geo.getField('INSTANCE').get(null))
+                                float alongAisle = clamp(travel / .75d)
+                                float insert = clamp((travel - .75d) / .25d)
+                                pipe = vectorConstructor.newInstance((rack.x + (socket.x - rack.x) * alongAisle) as float,
+                                    (rack.y + .25f * Math.sin(travel * Math.PI) + (socket.y - rack.y) * insert) as float,
+                                    (rack.z + (socket.z - rack.z) * insert) as float)
                             }
                             if (time >= 3000 && time < 8600) {
                                 def strokeAge = (time - 3000) % 1400
@@ -49,12 +53,12 @@ allprojects {
                         def parts = partsMethod.invoke(geo.getField('INSTANCE').get(null), type, pose)
                         frames << [time: time, progress: progress, parts: parts.collect { p ->
                             [id:p.id, block:"minecraft:${p.material.name().toLowerCase()}",center:vec(p.center),size:vec(p.size),
-                             quaternion:[p.rotation.x as Number,p.rotation.y as Number,p.rotation.z as Number,p.rotation.w as Number],visible:p.visible]
+                             quaternion:[p.rotation.x as Number,p.rotation.y as Number,p.rotation.z as Number,p.rotation.w as Number],visible:p.visible,control:p.control]
                         }]
                     }
                     def source = new File(output, "${floor}-after.atelier.json")
                     def recipe = new groovy.json.JsonSlurper().parse(source)
-                    recipe.title = floor == 'middle' ? 'Грузовая лебёдка · средний ярус' : 'Дренажная помпа · нижний ярус'
+                    recipe.title = floor == 'middle' ? 'Грузовой портал · средний ярус' : 'Водоотливная станция · нижний ярус'
                     recipe.subtitle = 'Исходная live-геометрия · canonical Kotlin poses · 10 Hz · native input/audio unverified'
                     recipe.displayModels = [:]
                     recipe.displayAssemblies = []
@@ -66,11 +70,21 @@ allprojects {
                     }
                     recipe.floorActivityFrames = [cadence:100, duration:duration, frames:frames,
                         scope:'Canonical geometry and scripted accepted-input poses; excludes native interpolation, controls, particles and audio.']
+                    def bounds = geo.getMethod('bounds', types).invoke(geo.getField('INSTANCE').get(null), type)
+                    recipe.floorActivityBounds = [minX:bounds.minX,maxX:bounds.maxX,minZ:bounds.minZ,maxZ:bounds.maxZ,height:bounds.height]
+                    recipe.floorActivitySweptBoxes = geo.getMethod('sweptBoxes', types).invoke(geo.getField('INSTANCE').get(null), type).collect { box -> [min:vec(box.min),max:vec(box.max)] }
                     recipe.preview.defaultView = 'overview'
+                    recipe.playerScaleReference = [at:[14.5,2,14.3],height:1.8,width:.6]
+                    recipe.floorActivityControls = geo.getMethod('controls', types).invoke(geo.getField('INSTANCE').get(null), type).collectEntries { k,v -> [(k):vec(v)] }
+                    recipe.preview.views = [
+                        [id:'player',label:'Игрок · 1.62 м',camera:[11.5,3.62,16.3],target:[11.5,3.62,8.5],fov:78],
+                        [id:'overview',label:'Три четверти',camera:[22,7.3,23],target:[11.5,4.4,8.5],fov:65],
+                        [id:'plan',label:'План',camera:[11.5,24,10],target:[11.5,2,10],perspective:false],
+                    ]
                     recipe.preview.views += [
-                        [id:'front',label:'Спереди',camera:[11.5,4.7,19],target:[11.5,3.6,9],fov:65],
-                        [id:'side',label:'Сбоку',camera:[23,5.5,9],target:[11.5,3.4,9],fov:65],
-                        [id:'operator',label:'У рукояти',camera:[floor == 'middle' ? 9.85 : 11.5,3.62,floor == 'middle' ? 10.5 : 10.7],target:[floor == 'middle' ? 9.85 : 11.5,floor == 'middle' ? 3.0 : 3.3,floor == 'middle' ? 9.75 : 8.9],fov:78],
+                        [id:'front',label:'Спереди',camera:[11.5,4.7,23],target:[11.5,4.2,8.5],fov:65],
+                        [id:'side',label:'Сбоку',camera:[27,5.5,9],target:[11.5,4,9],fov:65],
+                        [id:'operator',label:'У рукояти',camera:[floor == 'middle' ? 9.85 : 8.0,3.62,10.65],target:[floor == 'middle' ? 9.85 : 8.0,floor == 'middle' ? 2.95 : 3.68,floor == 'middle' ? 9.75 : 9.586],fov:78],
                     ]
                     new File(output, "${floor}-with-displays.atelier.json").text = groovy.json.JsonOutput.toJson(recipe)
                     println("${floor}: ${frames.size()} source frames / ${frames[0].parts.size()} stable parts")
