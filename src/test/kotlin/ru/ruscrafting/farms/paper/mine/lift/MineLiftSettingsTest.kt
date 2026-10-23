@@ -41,7 +41,7 @@ class MineLiftSettingsTest : FreeSpec({
             settings[0].theme.windowMaterial shouldBe null
             settings[0].theme.doorMaterial shouldBe org.bukkit.Material.IRON_BLOCK
             settings[0].theme.railMaterial shouldBe org.bukkit.Material.IRON_BLOCK
-            settings[0].theme.panelMaterial shouldBe org.bukkit.Material.CHISELED_COPPER
+            settings[0].theme.panelMaterial shouldBe org.bukkit.Material.SPRUCE_BUTTON
             settings[0].theme.lightMaterial shouldBe org.bukkit.Material.LANTERN
             settings[0].theme.chainMaterial shouldBe org.bukkit.Material.IRON_CHAIN
             settings[0].theme.doorTravel shouldBe 1.6

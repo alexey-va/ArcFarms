@@ -41,7 +41,7 @@ internal enum class MineLiftTheme(
         null,
         Material.IRON_BLOCK,
         Material.IRON_BLOCK,
-        Material.CHISELED_COPPER,
+        Material.SPRUCE_BUTTON,
         Material.LANTERN,
         Material.IRON_CHAIN,
         doorTravel = 1.6,

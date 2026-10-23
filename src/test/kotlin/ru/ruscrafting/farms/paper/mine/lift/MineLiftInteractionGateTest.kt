@@ -46,6 +46,57 @@ class MineLiftInteractionGateTest : FunSpec({
         gate.shouldOpenWalkInMenu(player, 21L) shouldBe true
     }
 
+    test("three wall call buttons preserve every native pillar and fixed labels survive cabin movement") {
+        failOnUnsupportedMockBukkitOperation {
+            val paper = MockBukkitTestRuntime.open()
+            try {
+                val world = LiftSceneWorldMock(paper.server).apply { name = "mine_buttons" }
+                paper.server.addWorld(world)
+                val plugin = paper.createSimplePlugin("MineLiftWallButtonTest")
+                val heights = listOf(111.0, 97.0, 83.0)
+                val settings = MineLiftSettings("main", world.name, 30.0, 40.0, 2.8, 2.8, 6.0,
+                    heights.mapIndexed { index, y -> MineLiftFloor("floor_$index", y,
+                        LiftPoint(28.5, y, 39.5), LiftPoint(25.0, y, 39.5, -90f)) })
+                val pillar = heights.flatMap { y -> (0..3).map { dy ->
+                    world.getBlockAt(24, y.toInt() + dy, 39).apply { type = Material.DEEPSLATE_BRICKS }
+                } }
+                val original = pillar.map { it.blockData.asString }
+                val scene = MineLiftScene(plugin, settings, world)
+                scene.spawn(111.0) { net.kyori.adventure.text.Component.text("Подъёмник") }
+                val buttons = world.entities.filterIsInstance<BlockDisplay>()
+                    .filter { it.block.material == Material.SPRUCE_BUTTON }.sortedByDescending { it.y }
+                val labels = world.entities.filterIsInstance<TextDisplay>().sortedByDescending { it.y }
+                val targets = world.entities.filterIsInstance<Interaction>()
+                    .filter { it.uniqueId in scene.panels }.sortedByDescending { it.y }
+                buttons.size shouldBe 3
+                targets.size shouldBe 3
+                labels.size shouldBe 3
+                for (index in heights.indices) {
+                    val geometry = MineLiftCallButton(settings.floors[index].panel)
+                    buttons[index].location shouldBe geometry.displayOrigin.location(world)
+                    buttons[index].block.asString shouldBe geometry.blockData
+                    buttons[index].transformation.scale shouldBe org.joml.Vector3f(1f, 1f, 1f)
+                    targets[index].location shouldBe geometry.interaction.location(world)
+                    targets[index].interactionWidth shouldBe MineLiftCallButton.INTERACTION_WIDTH
+                    targets[index].interactionHeight shouldBe MineLiftCallButton.INTERACTION_HEIGHT
+                    scene.panels.getValue(targets[index].uniqueId) shouldBe index
+                    labels[index].billboard shouldBe Display.Billboard.FIXED
+                    labels[index].location shouldBe geometry.label.location(world)
+                    labels[index].location.direction.x shouldBe (1.0 plusOrMinus .000001)
+                }
+                val fixed = (buttons + labels + targets).map { it.location.clone() }
+                scene.move(97.0, open = false)
+                (buttons + labels + targets).map { it.location } shouldBe fixed
+                pillar.map { it.blockData.asString } shouldBe original
+                scene.close()
+                (buttons + labels + targets).all { !it.isValid } shouldBe true
+                pillar.map { it.blockData.asString } shouldBe original
+            } finally {
+                paper.close()
+            }
+        }
+    }
+
     test("one cabin body hitbox and four matching iron guard walls are removed with the scene") {
         failOnUnsupportedMockBukkitOperation {
             val paper = MockBukkitTestRuntime.open()
@@ -70,9 +121,9 @@ class MineLiftInteractionGateTest : FunSpec({
                 scene.spawn(100.0) { net.kyori.adventure.text.Component.text("floor") }
 
                 world.entities.filterIsInstance<TextDisplay>().sortedByDescending { it.y }.forEachIndexed { index, label ->
-                    label.billboard shouldBe Display.Billboard.VERTICAL
-                    label.location shouldBe settings.floors[index].panel.location(world).add(0.0, 1.6, 0.0)
-                    label.transformation.scale.x shouldBe 1f
+                    label.billboard shouldBe Display.Billboard.FIXED
+                    label.location shouldBe MineLiftCallButton(settings.floors[index].panel).label.location(world)
+                    label.transformation.scale.x shouldBe MineLiftCallButton.LABEL_SCALE
                 }
 
                 val cabinHitbox = world.entities.filterIsInstance<Interaction>().single(scene::ownsCabinHitbox)

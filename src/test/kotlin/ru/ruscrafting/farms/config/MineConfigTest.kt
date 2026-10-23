@@ -5,8 +5,11 @@ import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import ru.ruscrafting.farms.domain.MineIncidentType
+import ru.ruscrafting.farms.domain.FarmRewardPlanner
+import ru.ruscrafting.farms.domain.FarmRewardRecipient
 import java.nio.file.Files
 import java.nio.file.Path
+import java.util.UUID
 
 class MineConfigTest : FunSpec({
     test("real Paper mine fixture passes the native configuration contract") {
@@ -64,9 +67,8 @@ class MineConfigTest : FunSpec({
         try {
             val source = Files.readString(project.resolve("src/main/resources/config.yml"))
             val configured = source.replaceFirst(
-                "        mining-resources: [COAL]\n",
-                "        mining-resources: [COAL, IRON]\n" +
-                    "        resource-requirements: {COAL: 7, IRON: 5}\n",
+                "          COAL: 32\n          IRON: 24\n",
+                "          COAL: 7\n          IRON: 5\n",
             )
             Files.writeString(root.resolve("config.yml"), configured)
 
@@ -79,23 +81,46 @@ class MineConfigTest : FunSpec({
         }
     }
 
-    test("basic runtime profile parses one invasion and landing guidance") {
-        val root = System.getProperty("ruscrafting.opsRoot")?.let(Path::of)
-        if (root != null) {
-            val mines = ArcFarmsConfig.inspect(root.resolve("classic/plugins/ArcFarms")).mines
-            mines.size shouldBe 1
-            mines.forEach {
-                it.miningOnly shouldBe true
-                it.guidanceRadius shouldBe 128.0
-                it.incidentCountMin shouldBe 1
-                it.incidentCountMax shouldBe 1
-                it.orders.forEach { order ->
-                    order.incidentTypes.size shouldBe 16
-                    order.totalMiningRequired shouldBe 100
-                    order.requestedResources.isNotEmpty() shouldBe true
-                }
+    test("short mine orders preserve resource variety and plan one scaled resource bundle") {
+        val project = Path.of(requireNotNull(System.getProperty("arcfarms.projectDir")))
+        val profiles = listOfNotNull(
+            project.resolve("src/main/resources"),
+            System.getProperty("ruscrafting.opsRoot")?.let { Path.of(it).resolve("classic/plugins/ArcFarms") },
+        )
+        val expectedTotals = mapOf("coal_order" to 56, "foundry_order" to 64, "deep_alloy" to 50, "crystal_order" to 48)
+        val expectedMoney = mapOf("coal_order" to 27_600L, "foundry_order" to 28_400L, "deep_alloy" to 27_000L, "crystal_order" to 26_800L)
+        val expectedExperience = mapOf("coal_order" to 414, "foundry_order" to 426, "deep_alloy" to 405, "crystal_order" to 402)
+        profiles.forEach { root ->
+            val mine = ArcFarmsConfig.inspect(root).mines.single { it.id == "old_shafts" }
+            mine.miningOnly shouldBe true
+            mine.guidanceRadius shouldBe 128.0
+            mine.incidentCountMin shouldBe 1
+            mine.incidentCountMax shouldBe 1
+            mine.orders.associate { it.id to it.totalMiningRequired } shouldBe expectedTotals
+            mine.rewards.randomBundles.rolls shouldBe 1
+            mine.rewards.randomBundles.chancePercent shouldBe 100
+            mine.rewards.randomBundles.entries.associate { it.id to it.weight } shouldBe
+                mapOf("miner_cache" to 50, "redstone_cache" to 30, "gem_cache" to 15, "rich_cache" to 5)
+            mine.rewards.items shouldBe emptyList()
+            mine.rewards.commands shouldBe emptyList()
+            mine.orders.forEach { order ->
+                order.miningRequired shouldBe order.normalizedRequirements.values.sum()
+                order.incidentTypes.size shouldBe 11
+                order.incidentTypes.containsAll(listOf(
+                    MineIncidentType.TRACK_DAMAGE, MineIncidentType.LAST_DESCENT,
+                    MineIncidentType.DRILLING_ARK, MineIncidentType.DEAD_FACTORY,
+                )) shouldBe true
+                val reward = FarmRewardPlanner.plan(
+                    mine.rewards, "mine_${mine.id}", 1,
+                    FarmRewardRecipient(UUID(0, 1), "Miner", contribution = 1, rank = 1),
+                    rewardMultiplierPercent = 110 + order.totalMiningRequired / 2,
+                )
+                reward.moneyCents shouldBe expectedMoney.getValue(order.id)
+                reward.experience shouldBe expectedExperience.getValue(order.id)
+                reward.bundleIds.size shouldBe 1
+                reward.items.size shouldBe 2
+                reward.fixedItemUnits shouldBe 0
             }
-            mines.single().orders.single().normalizedRequirements.values.sum() shouldBe 100
         }
     }
 

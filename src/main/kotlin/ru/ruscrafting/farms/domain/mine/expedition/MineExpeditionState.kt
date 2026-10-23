@@ -87,7 +87,7 @@ data class MineExpeditionState(
     val factoryProgram: Int = 0,
     /** Optional connected-factory side jobs; null preserves legacy expedition behavior. */
     val factoryExperiments: MineFactoryExperimentPlan? = null,
-    /** Ignition time for the diesel generator; missing legacy JSON means already commissioned. */
+    /** Retained for decoding old saves; connected-scene recovery clears the retired generator timestamp. */
     val factoryGeneratorStartedAt: Long = 0L,
 ) {
     init { validate() }

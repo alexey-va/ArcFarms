@@ -45,11 +45,9 @@ internal class MineExpeditionController(
     private val locale: ArcFarmsLocale?,
     private val clock: () -> Long,
     private val tasks: WorksiteTaskPort? = null,
-    private val dieselGeneratorEnabled: () -> Boolean = { true },
 ) {
     private data class Driver(val playerId: UUID, val stage: MineExpeditionStage, var nextStepAt: Long, var started: Boolean = false)
     private val markers = MineExpeditionMarkers(plugin)
-    private val engineGuide = MineEngineGuide(plugin, markers, locale)
     private val factoryPresentation=MineFactoryPresentation(plugin,markers)
     private val editor = tasks?.let { MineFurnishingEditor(plugin,it,locale,world::allScenes,markers) }
     private val actions = MineExpeditionActions(plugin, locale)
@@ -94,7 +92,6 @@ internal class MineExpeditionController(
 
     /** Fast presentation lane also keeps large scene construction bounded across ticks. */
     fun updateVisuals(now: Long) {
-        if (dieselGeneratorEnabled()) engineGuide.reconcile() else engineGuide.close()
         world.process()
         editor?.tick()
         registry.snapshot().forEach { runtime ->
@@ -175,16 +172,16 @@ internal class MineExpeditionController(
                 statePort.persistAsync()
             }
         }
-        val activeTargets = (if (pendingExperiment || !MineFactoryGeneratorCycle.ready(latest, now)) emptyList() else targets(scene, latest)).filterNot { target ->
+        val activeTargets = (if (pendingExperiment) emptyList() else targets(scene, latest)).filterNot { target ->
             target.target >= 0 && (
                 target.interaction == MineExpeditionInteraction.PICKUP && actions.claimed(scope, latest.stage, target.target) ||
                 (MineFactoryProgram.usesConnectedCrusherLine(scene.plan) || modernDescent(scene)) &&
                     target.interaction == MineExpeditionInteraction.DELIVER && !actions.claimed(scope, latest.stage, target.target))
         }
-        val experimentTargets = if (MineFactoryGeneratorCycle.ready(latest, now)) experiments.targets(scene, latest, now) else emptyList()
+        val experimentTargets = experiments.targets(scene, latest, now)
         val visibleTargets = activeTargets.map { target -> marker(scene, latest, target, now) } + experimentTargets
         markers.reconcile("furnish:${scene.journalSequence}", MineExpeditionFurnishings.targets(
-            scene, editor, visibleTargets.mapTo(hashSetOf()) { it.id }, dieselGeneratorEnabled(),
+            scene, editor, visibleTargets.mapTo(hashSetOf()) { it.id },
         ))
         markers.reconcile(scope, visibleTargets)
         val pourSignal = if (actions.pourReady(scope, now)) Material.LIME_CONCRETE else Material.YELLOW_CONCRETE
@@ -192,7 +189,7 @@ internal class MineExpeditionController(
         markers.signal("furnish:${scene.journalSequence}", "pour_console", Material.GRAY_CONCRETE)
         factoryPresentation.tick(scene,latest,scope,now,machinery.turns(scene),
             actions.operationPhase(scope,"control_crusher_left",now)>0.0,
-            actions.factoryHeat(scope), dieselGeneratorEnabled())
+            actions.factoryHeat(scope))
         descentPresentation.tick(scene, latest, scope, now, machinery.turns(scene),
             moving = drivers[scope]?.started == true,
             pumpStarting = actions.operationPhase(scope, "core_valve_2", now) > 0.0,
@@ -223,7 +220,6 @@ internal class MineExpeditionController(
                 "crushed_output" -> "control.mix-cart"
                 else -> "control.mix-load"
             }
-            target.id == "generator_flywheel" -> "generator-start"
             state.stage == MineExpeditionStage.FACTORY_WATER && target.id.startsWith("control_pump_") -> "control.pump-start"
             state.stage == MineExpeditionStage.FACTORY_WATER && target.id.startsWith("control_crusher_") -> "control.crusher-start"
             state.stage == MineExpeditionStage.FACTORY_CRANE -> "control.crane-start"
@@ -321,7 +317,6 @@ internal class MineExpeditionController(
         val current = runtime.state.incident?.expedition ?: return
         if (world.scene(runtime) !== scene || !scene.ready || !participant(runtime, scene, player) ||
             !access.allowInteraction("mine-expedition:${player.uniqueId}", 200L)) return
-        if (!MineFactoryGeneratorCycle.ready(current, clock())) return
         if (MineFactoryExperiments.pending(current).isNotEmpty()) {
             val target = experiments.targets(scene, current, clock()).firstOrNull { it.id == id } ?: return
             if (!near(player, target.location, 5.0)) return
@@ -457,8 +452,6 @@ internal class MineExpeditionController(
         return when {
             scene?.ready != true || current == null -> render("preparing", player)
             !scene.contains(player.location) -> render("enter-hint", player)
-            !MineFactoryGeneratorCycle.ready(current, now) -> render("generator-warming", player, mapOf(
-                "percent" to Component.text((MineFactoryGeneratorCycle.progress(current, now) * 100).toInt())))
             experiments.hint(scope(scene), player, current, now) != null -> experiments.hint(scope(scene), player, current, now)
             MineFactoryProgram.usesConnectedCrusherLine(scene.plan) &&
                 current.stage == MineExpeditionStage.FACTORY_HEAT && actions.factoryHeat(scope(scene))?.ready == true ->
@@ -470,7 +463,7 @@ internal class MineExpeditionController(
                 MineFactoryProgram.chargeTransferPending(current) -> render("line.auto-feed", player)
             MineFactoryProgram.usesConnectedCrusherLine(scene.plan) && current.stage in setOf(MineExpeditionStage.FACTORY_WATER,MineExpeditionStage.FACTORY_COAL) -> {
                 val checkpoint=targets(scene,current).firstOrNull()?.target?.coerceAtLeast(0) ?: 2
-                if (current.stage == MineExpeditionStage.FACTORY_WATER && checkpoint == 2) return render("generator-hint", player)
+                if (current.stage == MineExpeditionStage.FACTORY_WATER) return render("line.start", player)
                 val suffix=if(actions.carrying(player,scope(scene))) "-carry" else ""
                 val phase=if(current.stage==MineExpeditionStage.FACTORY_WATER) "commission" else "charge"
                 render("line.$phase-$checkpoint$suffix",player)
@@ -520,7 +513,7 @@ internal class MineExpeditionController(
         world.allScenes().filter { it.ready }.forEach { scene ->
             markers.reconcile("exit:${scene.journalSequence}", exitMarkers(scene))
             if (scene.reserved) markers.reconcile("furnish:${scene.journalSequence}", MineExpeditionFurnishings.targets(
-                scene, editor, emptySet(), dieselGeneratorEnabled(),
+                scene, editor, emptySet(),
             ))
         }
         world.retainedScenes().forEach { scene ->
@@ -548,7 +541,7 @@ internal class MineExpeditionController(
         val result = scene.at(editor?.position(scene, "assembly_socket", base) ?: base)
             .add(kotlin.math.sin(angle) * 1.4, 1.5, kotlin.math.cos(angle) * 1.4)
         markers.reconcile("furnish:${scene.journalSequence}", MineExpeditionFurnishings.targets(
-            scene, editor, emptySet(), dieselGeneratorEnabled(),
+            scene, editor, emptySet(),
         ))
         markers.reconcile("result:${scene.journalSequence}", listOf(MineExpeditionMarkers.Target(
             "finished_product", result, Material.IRON_BLOCK, render("result-label"), model = completed.model, yaw = yaw)))
@@ -613,7 +606,7 @@ internal class MineExpeditionController(
 
     fun beforeReload() { cleanupVisuals(); world.beforeReload() }
     fun cleanup(shutdown: Boolean = false) { cleanupVisuals(); if (shutdown) { editor?.close(); world.close() } else world.beforeReload() }
-    private fun cleanupVisuals() { engineGuide.close(); factoryResults.clear(); factoryPresentation.cleanup(); descentPresentation.cleanup(); editor?.cancelPreviews(); actions.cleanup(); experiments.cleanup(); markers.cleanup(); machinery.cleanup(); drivers.clear(); projectedStage.clear() }
+    private fun cleanupVisuals() { factoryResults.clear(); factoryPresentation.cleanup(); descentPresentation.cleanup(); editor?.cancelPreviews(); actions.cleanup(); experiments.cleanup(); markers.cleanup(); machinery.cleanup(); drivers.clear(); projectedStage.clear() }
     private fun clearScene(scene: MineExpeditionScene) {
         markers.clear("result:${scene.journalSequence}")
         factoryPresentation.clear(scene)

@@ -136,8 +136,12 @@ internal class MineLiftScene(private val plugin: Plugin, private val settings: M
         }.thenApply {
         settings.floors.forEachIndexed { index, floor ->
             if (theme == MineLiftTheme.CASINO) casinoLandingDoors(index)
-            val panel = world.spawn(floor.panel.location(world), Interaction::class.java) {
-                mark(it); it.interactionWidth = .85f; it.interactionHeight = 1.3f; it.isResponsive = true
+            val wallButton = if (theme == MineLiftTheme.MINE) MineLiftCallButton(floor.panel) else null
+            val panel = world.spawn((wallButton?.interaction ?: floor.panel).location(world), Interaction::class.java) {
+                mark(it)
+                it.interactionWidth = if (wallButton != null) MineLiftCallButton.INTERACTION_WIDTH else .85f
+                it.interactionHeight = if (wallButton != null) MineLiftCallButton.INTERACTION_HEIGHT else 1.3f
+                it.isResponsive = true
             }.also(entities::add)
             panels[panel.uniqueId] = index
             if (theme.enclosed) {
@@ -148,11 +152,12 @@ internal class MineLiftScene(private val plugin: Plugin, private val settings: M
                     transformation = transform(0.0, 0.0, 0.0, sx, .7, sz)
                 }
             } else {
-                display(floor.panel.location(world).add(-.3, .0, -.3), theme.panelMaterial).apply {
-                    transformation = transform(0.0, 0.0, 0.0, .6, .75, .6)
+                val button = requireNotNull(wallButton)
+                display(button.displayOrigin.location(world), theme.panelMaterial).apply {
+                    block = org.bukkit.Bukkit.createBlockData(button.blockData)
                 }
             }
-            val labelAt = floor.panel.location(world).add(0.0, 1.6, 0.0)
+            val labelAt = wallButton?.label?.location(world) ?: floor.panel.location(world).add(0.0, 1.6, 0.0)
             if (theme == MineLiftTheme.CASINO) {
                 labelAt.yaw = when (settings.openingSide(index)) {
                     MineLiftDoorSide.NORTH -> 180f
@@ -168,11 +173,15 @@ internal class MineLiftScene(private val plugin: Plugin, private val settings: M
             }
             labels += world.spawn(labelAt, TextDisplay::class.java) {
                 mark(it); it.text(floorText(index))
-                it.billboard = if (theme == MineLiftTheme.CASINO) Display.Billboard.FIXED else Display.Billboard.VERTICAL
+                it.billboard = Display.Billboard.FIXED
                 if (theme == MineLiftTheme.CASINO) {
                     it.transformation = transform(0.0, 0.0, 0.0, .8, .8, .8)
                     it.lineWidth = 128
                     it.brightness = Display.Brightness(15, 15)
+                } else {
+                    val scale = MineLiftCallButton.LABEL_SCALE.toDouble()
+                    it.transformation = transform(0.0, 0.0, 0.0, scale, scale, scale)
+                    it.lineWidth = 200
                 }
                 it.isShadowed = true; it.viewRange = .4f
                 it.backgroundColor = org.bukkit.Color.fromARGB(150, 25, 21, 17)

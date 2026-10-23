@@ -21,9 +21,10 @@ object MineFactoryLine {
         "decor_waterwheel" to ExpeditionPoint(0, 5, -23),
     )
 
-    /** All authored station anchors, including compatibility valve aliases. */
+    /** Historical anchors retain identical terrain/routes in administrator-edited sites.
+     * Retired utility anchors are hidden by the furnishing owner and never become objectives. */
     val stations: Map<String, ExpeditionPoint> = linkedMapOf(
-        // Keep the historical checkpoint id; its control is now a console in the service aisle.
+        // Retained only to reconstruct existing terrain without changing its footprint.
         "generator_flywheel" to ExpeditionPoint(20, 5, 6),
         "entry" to ExpeditionPoint(0, 5, 24),
         "exit" to ExpeditionPoint(0, 5, 24),
@@ -73,8 +74,6 @@ object MineFactoryLine {
 
     /** Physical owner used by the furnishing editor for relative child poses. */
     val owners: Map<String, String> = mapOf(
-        "generator_flywheel" to "decor_diesel_generator",
-        "water_valve_1" to "decor_pump_left",
         "crusher_feed" to "decor_crusher_left",
         "control_crusher_left" to "decor_crusher_left",
         "crushed_output" to "decor_conveyor_raw",

@@ -116,14 +116,14 @@ class MineFactoryExperimentsTest : FunSpec({
             MineFactoryExperimentPlan(selected = setOf(MineFactoryExperiment.DRIVE_REPAIR)),
             MineExpeditionStage.FACTORY_WATER,
         )
-        MineExpeditionEngine.completeTarget(oldGear, 0, 100L).accepted shouldBe false
+        MineExpeditionEngine.completeTarget(oldGear, 0, 100L).accepted shouldBe true
 
         val normalizedGear = MineFactoryExperiments.normalizeConnected(oldGear)
-        MineFactoryProgram.targets(connectedPlan(), normalizedGear).single().id shouldBe "water_valve_1"
-        val valve = MineExpeditionEngine.completeTarget(normalizedGear, 1, 100L)
+        MineFactoryProgram.targets(connectedPlan(), normalizedGear).single().id shouldBe "control_crusher_left"
+        val valve = MineExpeditionEngine.completeTarget(normalizedGear, 0, 100L)
         valve.accepted shouldBe true
-        valve.state.completed shouldBe setOf(0, 1)
-        MineExpeditionEngine.progressDelta(MineIncidentType.DEAD_FACTORY, normalizedGear, valve.state) shouldBe 2
+        valve.state.stage shouldBe MineExpeditionStage.FACTORY_COAL
+        MineExpeditionEngine.progressDelta(MineIncidentType.DEAD_FACTORY, normalizedGear, valve.state) shouldBe 3
     }
 
     test("active policy keeps the ten-credit ordinary flow") {
@@ -139,9 +139,8 @@ class MineFactoryExperimentsTest : FunSpec({
             state = step.state
         }
 
-        // The removed gear checkpoint is credited together with valve 1.
-        accept(MineExpeditionEngine.completeTarget(state, 1, 100L))
-        accept(MineExpeditionEngine.completeTarget(state, 2, 101L))
+        // One on-line start retains the three historical commissioning credits.
+        accept(MineExpeditionEngine.completeTarget(state, 0, 100L))
         accept(MineExpeditionEngine.completeTarget(state, 0, 102L))
         accept(MineFactoryExperiments.resolve(state, MineFactoryExperiment.ROCK_JAM, 103L))
         accept(MineExpeditionEngine.completeTarget(state, 1, 104L))

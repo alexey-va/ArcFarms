@@ -82,8 +82,8 @@ object MineFactoryExperiments {
      */
     fun normalizeConnected(state: MineExpeditionState): MineExpeditionState {
         val plan = state.factoryExperiments?.let(::normalize) ?: MineFactoryExperimentPlan()
-        return if (plan == state.factoryExperiments) state
-        else state.copy(factoryExperiments = plan)
+        return if (plan == state.factoryExperiments && state.factoryGeneratorStartedAt == 0L) state
+        else state.copy(factoryExperiments = plan, factoryGeneratorStartedAt = 0L)
     }
 
     /** Side jobs currently actionable at the persisted stage/checkpoint. */
@@ -134,14 +134,7 @@ object MineFactoryExperiments {
         if (state.stage == MineExpeditionStage.FACTORY_WATER ||
             state.stage == MineExpeditionStage.FACTORY_COAL
         ) {
-            val next = if (skipsDriveRepair(state) &&
-                state.stage == MineExpeditionStage.FACTORY_WATER &&
-                1 !in state.completed
-            ) {
-                1
-            } else {
-                (0 until 3).firstOrNull { it !in state.completed }
-            }
+            val next = (0 until 3).firstOrNull { it !in state.completed }
             if (next != null && target != next) return true
         }
         return when {
@@ -159,18 +152,14 @@ object MineFactoryExperiments {
         }
     }
 
-    /** Every connected persisted plan uses the current policy; the old gear job is retired. */
-    internal fun skipsDriveRepair(state: MineExpeditionState): Boolean =
-        state.factoryExperiments != null
-
-    /** Water valve 1 replaces the omitted gear loop while preserving both credits. */
+    /** The line's start replaces all retired setup jobs without changing the credit budget. */
     internal fun completedTargets(
         state: MineExpeditionState,
         target: Int,
-    ): Set<Int> = if (skipsDriveRepair(state) &&
-        state.stage == MineExpeditionStage.FACTORY_WATER && target == 1
+    ): Set<Int> = if (state.factoryExperiments != null &&
+        state.stage == MineExpeditionStage.FACTORY_WATER
     ) {
-        state.completed + 0 + 1
+        setOf(0, 1, 2)
     } else {
         state.completed + target
     }

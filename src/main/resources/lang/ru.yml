@@ -1390,6 +1390,7 @@ mine:
       '1': '<color:#f2fff7>Запустите левую линию: вентиль, насос и дробилка подсвечены.</color>'
       '2': '<color:#f2fff7>Запустите правую линию: вентиль, насос и дробилка подсвечены.</color>'
     line:
+      start: '<color:#f2fff7>Включите линию рычагом на пульте дробилки</color>'
       commission-0: '<color:#f2fff7>Найдите подсвеченную шестерню для привода дробилки</color>'
       commission-0-carry: '<color:#f2fff7>Установите шестерню на подсвеченный вал дробилки</color>'
       commission-1: '<color:#f2fff7>Подайте воду в систему охлаждения</color>'
@@ -1448,7 +1449,7 @@ mine:
       pour_console: '<color:#f2fff7>Подача расплава</color>'
       fuel-cart: '<color:#f2fff7>ПКМ · взять тележку с топливом</color>'
       pump-start: '<color:#f2fff7>Запуск насоса</color>'
-      crusher-start: '<color:#f2fff7>Запуск дробилки</color>'
+      crusher-start: '<color:#f2fff7>Включить линию · ЛКМ / ПКМ</color>'
       fuel-progress: '<color:#f2fff7>Топливо <count>/<total> · ПКМ, чтобы загрузить топку</color>'
       valve: '<color:#f2fff7>Водяной вентиль</color>'
       crane-start: '<color:#f2fff7>Перенос отливки</color>'
@@ -1491,7 +1492,7 @@ mine:
       ark_chamber: '<color:#f2fff7>Вернитесь на борт и пробейтесь в дальнюю камеру</color>'
       ark_cores: '<color:#f2fff7>Найдите три керна и закрепите их на борту</color>'
       ark_home: '<color:#f2fff7>Все на борт — возвращайте ковчег к причалу</color>'
-      factory_water: '<color:#f2fff7>Откройте три водяных вентиля повторными ПКМ</color>'
+      factory_water: '<color:#f2fff7>Включите линию рычагом на пульте дробилки</color>'
       factory_coal: '<color:#f2fff7>Доставьте три тележки топлива к топке</color>'
       factory_heat: '<color:#f2fff7>Следите за нагревом и включите выпуск вовремя</color>'
       factory_pour: '<color:#f2fff7>Откройте подачу на пульте у формы · закройте её ПКМ по зелёному сигналу</color>'
@@ -1682,6 +1683,10 @@ customer-request:
   lab_berry_order: 'Лаборатории нужны свежие ягоды для опытов.'
 reward:
   bundle:
+    miner_cache: 'Запас шахтёра'
+    redstone_cache: 'Набор механика'
+    gem_cache: 'Самоцветы'
+    rich_cache: 'Богатая жила'
     field_lunch: 'Полевой обед'
     hearty_rations: 'Сытный запас'
     beekeeper_basket: 'Корзина пасечника'

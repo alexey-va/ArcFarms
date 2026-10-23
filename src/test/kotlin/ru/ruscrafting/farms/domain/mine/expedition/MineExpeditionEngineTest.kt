@@ -8,7 +8,7 @@ import ru.ruscrafting.farms.domain.MineIncidentType
 class MineExpeditionEngineTest : FunSpec({
     val placement = MineExpeditionPlacement("rc_arcfarms_expeditions", 100, -32, 200, 73L)
 
-    test("factory programs use different machines and survive JSON without changing ten checkpoint credits") {
+    test("legacy factory program values survive JSON while the central line keeps ten checkpoint credits") {
         val plan=MinePermanentExpeditionLayout.build(MineExpeditionKind.DEAD_FACTORY,73)
         val routes=(0..2).map { program ->
             var state=MineExpeditionEngine.initial(MineIncidentType.DEAD_FACTORY,placement,program)
@@ -27,7 +27,7 @@ class MineExpeditionEngineTest : FunSpec({
             credits shouldBe 10
             ids
         }
-        routes.distinct().size shouldBe 3
+        routes.distinct().size shouldBe 1
         val legacy="""{"placement":{"world":"world","originX":0,"originY":64,"originZ":0,"seed":1,"geometryVersion":3},"stage":"FACTORY_WATER","completed":[],"motionStep":0,"branch":0,"heatStartedAt":0}"""
         com.google.gson.Gson().fromJson(legacy,MineExpeditionState::class.java).apply { validate() }.factoryProgram shouldBe 0
     }

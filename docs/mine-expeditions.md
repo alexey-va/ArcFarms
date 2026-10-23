@@ -72,13 +72,15 @@ event markers; other expeditions may keep separate entry and exit portals.
 
 ## Factory work
 
-1. Open the pump valve and switch the crusher's start lever. Its two drive
-   gears belong to the roller shafts; the detached repair gear/socket is removed.
-   Opening the water circuit also credits the omitted repair checkpoint, preserving
-   the ten-credit total. Nearby workers share valve progress; duplicate clicks
-   inside 250 ms do not count. Hand controls interpolate each turn; powered rolls
-   turn continuously until the event ends. Consoles have floor-mounted plinths
-   and uprights, with the handles kept at player height.
+1. Use the mounted crusher-console lever to start the central line. This
+   three-second operation replaces the external water/pump/diesel preparation;
+   it grants only the remaining historical commissioning credits. Saved partial
+   runs resume at this console, and obsolete generator warmup no longer blocks
+   production. The ore bunker and the continuous crusher–furnace–casting–crane–
+   press line stay in place. External generators, pumps, waterwheel, water tank
+   and their separate controls are absent from the current furnishing/editor set.
+   The crusher's working rolls continue turning through production. No terrain
+   or administrator-edited blocks are changed by this furnishing cleanup.
 2. Push an ore-and-coal cart from the bunker to the crusher inlet. Switch the
    feed lever: a six-second cycle drops visible material between counter-rotating
    toothed rolls and carries fragments along the top of the moving belt. The
@@ -329,7 +331,7 @@ release evidence below does not certify this release's client behaviour.
 
 ## Мёртвый завод — `DEAD_FACTORY`
 
-Связная производственная линия слева направо: большая валковая дробилка, конвейер, печь, заливка, роликовый стол и пресс. Сначала нужно открыть охлаждение и включить привод. Затем тележкой подать руду с углём, запустить дробление, а лента сама подаст смесь в печь. Старые корзины у печи убраны: дополнительного переноса между ними нет. Рычаг запускает автоматический нагрев на шесть секунд. На 100% проценты становятся зелёными; готовая печь ждёт нажатия для выпуска металла. У заливки видны только проценты: на 100% подсветка зеленеет, при опоздании ненадолго появляется красное предложение повторить попытку. Кран опускает заготовку на начало роликового стола, после чего она движется в пресс. После удара пресса игрок видит готовую деталь до возвращения. Вход смотрит на цех, подсветка указывает текущую операцию; работающая дробилка продолжает вращаться со звуком и пылью до конца ивента.
+Связная производственная линия слева направо: большая валковая дробилка, конвейер, печь, заливка, роликовый стол и пресс. Сначала нужно рычагом на пульте дробилки включить линию: запуск длится три секунды. Дизель, внешние насосы, водяное колесо и отдельные подготовительные вращательные механизмы убраны; бункер с рудой сохранён. Старое незавершённое приготовление продолжается на этом же пульте, сохраняя оставшиеся зачётные шаги. Блоки постоянной карты эта очистка не меняет. Затем тележкой подать руду с углём, запустить дробление, а лента сама подаст смесь в печь. Старые корзины у печи убраны: дополнительного переноса между ними нет. Рычаг запускает автоматический нагрев на шесть секунд. На 100% проценты становятся зелёными; готовая печь ждёт нажатия для выпуска металла. У заливки видны только проценты: на 100% подсветка зеленеет, при опоздании ненадолго появляется красное предложение повторить попытку. Кран опускает заготовку на начало роликового стола, после чего она движется в пресс. После удара пресса игрок видит готовую деталь до возвращения. Вход смотрит на цех, подсветка указывает текущую операцию; работающая дробилка продолжает вращаться со звуком и пылью до конца ивента.
 
 ## Управление и генерация
 

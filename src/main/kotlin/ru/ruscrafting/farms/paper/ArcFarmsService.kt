@@ -178,7 +178,6 @@ class ArcFarmsService(
     private val mineModule = MineVersionedModule(
         plugin, initialSettings.serverId, initialSettings.mines, regionGateway, locale, mineJournal, worksitePorts,
         debug, clock, random, worksiteServiceItems, rewardGrants = worksiteRewards, lift = mineLift, points = minePointService,
-        dieselGeneratorEnabled = { settings.dieselGeneratorEnabled },
     )
     private val minePointAdmin = MinePointAdminService(
         locale = locale,

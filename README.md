@@ -384,33 +384,22 @@ jammed brake on a suspended balcony, restore power with one cell, restart the
 deep pump and ride back to the upper pier. **Drilling
 Ark** sends a tracked machine through branching caves: load fuel, clear its
 jammed drill, refill coolant and bring crystal cores aboard before returning.
-**The Dead Factory** is one west-to-east production line: repair the crusher drive,
-open the cooling circuit, load an ore-and-coal cart and engage the crushing rolls.
-Visible fragments pass through the open hopper onto a moving conveyor. Collect
-the processed mix, load the furnace and catch its heat signal, dose molten metal
-through the glazed pipe into the mould, run the transfer crane and push the
-casting to the press. Controls are mounted beside their own inlet or machine,
-with glow on the actionable lever or wheel; controls follow saved machine edits.
-The room has one return portal, and arrival faces the production line. Its
-continuous technical floor migrates in bounded journaled batches while preserving
-administrator-edited blocks.
-Commissioned crushers keep turning throughout the remaining factory tasks, with
-light grinding dust and a periodic grinding/crunching sound, until the event ends.
-The casting control opens the flow with one click: close it with a second click
-when the lever outline, indicator and percentage instruction turn green
-(65–90% full). The percentage and short instruction replace the redundant bar.
-Bright pulses travel along the glazed furnace conduit and drop into the mould
-only while the flow is open; the conduit follows the editable casting assembly.
-A short dose or overflow drains for a free retry.
-Fuel and iron carts are pushed ahead of the player, with visible loads,
-rolling wheels and a vanilla leash;
-approaching the receiver and right-clicking both use the same delivery transition.
-Leaving the factory, disconnecting, stage replacement and reload retire the cart
-and return any unfinished load. No inventory items or extra drops are created.
-The existing ten factory checkpoint credits and reward quantities are unchanged.
-The crane runs for 4.5 seconds; the press completes its 2.4-second down/up stroke
-before the final checkpoint. Water splashes, furnace fire/smoke, heat-ready bells,
-grinding dust, chain movement and press impacts follow the production stages.
+**The Dead Factory** keeps one west-to-east production line and its ore bunker:
+start the line at the crusher console, push an ore-and-coal cart to its inlet,
+and engage the crushing rolls. The connected belt carries the processed mix
+straight into the furnace. Heat it for six seconds, release at the green signal,
+then dose molten metal into the casting bed. Close the pour at 100–130%; an early
+stop or overflow allows a retry. The crane transfers the casting to the roller
+conveyor, which feeds the press. The finished gear remains visible for twelve
+seconds before return. The entrance portal remains usable throughout.
+External diesel equipment, pumps, waterwheel and their preparation controls are
+removed from current scenes. A three-second console start grants only the
+remaining historical setup credits, so unfinished saves continue without a
+removed target. The central crusher keeps turning until the event ends.
+This cleanup removes owned displays and preserves the permanent map and saved
+poses of surviving machines. Temporary carts disappear on delivery, departure,
+disconnect, stage change or reload. No inventory items or extra drops are created;
+the ten factory checkpoint credits and completion reward path are unchanged.
 Interactable targets glow; carried loads and moving machine parts are visible.
 
 The scenes use deterministic noise geology and authored industrial landmarks.

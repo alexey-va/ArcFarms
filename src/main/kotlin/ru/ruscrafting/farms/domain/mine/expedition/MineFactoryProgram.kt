@@ -67,57 +67,27 @@ object MineFactoryProgram {
     private fun connectedRunningMachines(
         state: MineExpeditionState,
         startingControls: Set<String>,
-    ): Set<String> {
-        return when (state.stage) {
-            MineExpeditionStage.FACTORY_WATER -> buildSet {
-                if (1 in state.completed || "water_valve_1" in startingControls) add("decor_pump_left")
-                if (2 in state.completed) add("decor_crusher_left")
-            }
-            MineExpeditionStage.FACTORY_COAL,
-            MineExpeditionStage.FACTORY_HEAT,
-            MineExpeditionStage.FACTORY_POUR,
-            MineExpeditionStage.FACTORY_CRANE,
-            MineExpeditionStage.FACTORY_INSTALL,
-                -> setOf("decor_pump_left", "decor_crusher_left")
-            else -> emptySet()
-        }
+    ): Set<String> = when (state.stage) {
+        MineExpeditionStage.FACTORY_WATER ->
+            if ("control_crusher_left" in startingControls) setOf("decor_crusher_left") else emptySet()
+        MineExpeditionStage.FACTORY_COAL,
+        MineExpeditionStage.FACTORY_HEAT,
+        MineExpeditionStage.FACTORY_POUR,
+        MineExpeditionStage.FACTORY_CRANE,
+        MineExpeditionStage.FACTORY_INSTALL -> setOf("decor_crusher_left")
+        else -> emptySet()
     }
 
     private fun connectedTargets(
         plan: MineExpeditionPlan,
         state: MineExpeditionState,
     ): List<MineExpeditionObjective> {
-        val next = if (MineFactoryExperiments.skipsDriveRepair(state) && 1 !in state.completed) {
-            // The valve owns both the omitted gear checkpoint and its own credit.
-            1
-        } else {
-            (0 until 3).firstOrNull { it !in state.completed }
-        } ?: return emptyList()
-        fun station(id: String): ExpeditionPoint = MineFactoryLine.effectiveStation(plan, id)
-        return when (next) {
-            0 -> listOf(
-                MineExpeditionObjective(
-                    "repair_supply_${state.factoryProgram}", station("repair_supply_${state.factoryProgram}"),
-                    MineExpeditionInteraction.PICKUP, "IRON_NUGGET", 0,
-                ),
-                MineExpeditionObjective(
-                    "crusher_repair", station("crusher_repair"),
-                    MineExpeditionInteraction.DELIVER, "IRON_NUGGET", 0,
-                ),
-            )
-            1 -> listOf(
-                MineExpeditionObjective(
-                    "water_valve_1", station("water_valve_1"),
-                    MineExpeditionInteraction.VALVE, "GRINDSTONE", 1,
-                ),
-            )
-            2 -> listOf(
-                MineExpeditionObjective(
-                    "generator_flywheel", station("generator_flywheel"),
-                    MineExpeditionInteraction.OPERATE, "AIR", 2,
-                ),
-            )
-            else -> emptyList()
-        }
+        // Keep the remaining historical credit as the target, including partial
+        // saved commissioning runs. One on-line start completes the whole phase.
+        val next = (0 until 3).firstOrNull { it !in state.completed } ?: return emptyList()
+        return listOf(MineExpeditionObjective(
+            "control_crusher_left", MineFactoryLine.effectiveStation(plan, "control_crusher_left"),
+            MineExpeditionInteraction.OPERATE, "GRINDSTONE", next,
+        ))
     }
 }

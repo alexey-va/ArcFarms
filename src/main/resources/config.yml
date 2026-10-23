@@ -18,7 +18,6 @@ ui:
   bossbars: true
   particles: true
   sounds: true
-  diesel-generator-enabled: true
   title-stay-seconds: 4
   task-hint-cooldown-millis: 900
   task-title-cooldown-millis: 8000
@@ -866,23 +865,72 @@ mine-zones:
     loading: {delivery-radius: 2.0}
     temp-material: COBBLESTONE
     base-material: STONE
-    materials: [STONE:240, COAL_ORE:45, IRON_ORE:45, COPPER_ORE:15, LAPIS_ORE:3, DIAMOND_ORE:3, EMERALD_ORE:6, REDSTONE_ORE:15, AMETHYST_BLOCK:5, GLOWSTONE:5]
+    materials: [STONE:240, DEEPSLATE:240, COAL_ORE:80, COPPER_ORE:70, IRON_ORE:80, DEEPSLATE_GOLD_ORE:60, DEEPSLATE_REDSTONE_ORE:60, NETHER_QUARTZ_ORE:55, DEEPSLATE_DIAMOND_ORE:30]
     target-multiplier: 2
     incident-count-min: 1
     incident-count-max: 1
     rewards:
-      experience: {amount: 220, chance-percent: 100}
-      items:
-        iron: {material: IRON_INGOT, amount: 4, chance-percent: 100}
+      # Difficulty scales the guaranteed pay and each item quantity; one bundle is selected per grant.
+      experience: {amount: 300, chance-percent: 100}
+      money: {amount: 200, chance-percent: 100}
+      items: {}
+      commands: {}
+      random-bundles:
+        rolls: 1
+        chance-percent: 100
+        entries:
+          miner_cache:
+            weight: 50
+            items:
+              iron: {material: IRON_INGOT, amount: 6}
+              coal: {material: COAL, amount: 12}
+          redstone_cache:
+            weight: 30
+            items:
+              gold: {material: GOLD_INGOT, amount: 4}
+              redstone: {material: REDSTONE, amount: 12}
+          gem_cache:
+            weight: 15
+            items:
+              diamonds: {material: DIAMOND, amount: 2}
+              lapis: {material: LAPIS_LAZULI, amount: 8}
+          rich_cache:
+            weight: 5
+            items:
+              diamonds: {material: DIAMOND, amount: 4}
+              gold: {material: GOLD_INGOT, amount: 6}
     orders:
       coal_order:
-        mining-resources: [COAL]
-        phases: {prospecting-required: 3, mining-required: 100, loading-required: 4}
-        incidents: [CREATURE_NEST, CAVE_IN, FLOODING, GAS_LEAK, TUNNEL_DRIVE, RAIL_EXTENSION, ORE_WORKSHOP, LAST_DESCENT, DRILLING_ARK, DEAD_FACTORY]
-      iron_order:
-        mining-resources: [IRON]
-        phases: {prospecting-required: 3, mining-required: 100, loading-required: 4}
-        incidents: [CREATURE_NEST, CAVE_IN, FLOODING, GAS_LEAK, TUNNEL_DRIVE, RAIL_EXTENSION, ORE_WORKSHOP, LAST_DESCENT, DRILLING_ARK, DEAD_FACTORY]
+        mining-resources: [COAL, IRON]
+        resource-requirements:
+          COAL: 32
+          IRON: 24
+        phases: {prospecting-required: 3, mining-required: 56, loading-required: 4}
+        incidents: [CREATURE_NEST, CAVE_IN, FLOODING, GAS_LEAK, TRACK_DAMAGE, TUNNEL_DRIVE, RAIL_EXTENSION, ORE_WORKSHOP, LAST_DESCENT, DRILLING_ARK, DEAD_FACTORY]
+      foundry_order:
+        mining-resources: [COPPER, IRON, GOLD]
+        resource-requirements:
+          COPPER: 24
+          IRON: 24
+          GOLD: 16
+        phases: {prospecting-required: 3, mining-required: 64, loading-required: 4}
+        incidents: [CREATURE_NEST, CAVE_IN, FLOODING, GAS_LEAK, TRACK_DAMAGE, TUNNEL_DRIVE, RAIL_EXTENSION, ORE_WORKSHOP, LAST_DESCENT, DRILLING_ARK, DEAD_FACTORY]
+      deep_alloy:
+        mining-resources: [IRON, REDSTONE, DIAMOND]
+        resource-requirements:
+          IRON: 24
+          REDSTONE: 20
+          DIAMOND: 6
+        phases: {prospecting-required: 3, mining-required: 50, loading-required: 4}
+        incidents: [CREATURE_NEST, CAVE_IN, FLOODING, GAS_LEAK, TRACK_DAMAGE, TUNNEL_DRIVE, RAIL_EXTENSION, ORE_WORKSHOP, LAST_DESCENT, DRILLING_ARK, DEAD_FACTORY]
+      crystal_order:
+        mining-resources: [GOLD, QUARTZ, DIAMOND]
+        resource-requirements:
+          GOLD: 16
+          QUARTZ: 24
+          DIAMOND: 8
+        phases: {prospecting-required: 3, mining-required: 48, loading-required: 4}
+        incidents: [CREATURE_NEST, CAVE_IN, FLOODING, GAS_LEAK, TRACK_DAMAGE, TUNNEL_DRIVE, RAIL_EXTENSION, ORE_WORKSHOP, LAST_DESCENT, DRILLING_ARK, DEAD_FACTORY]
   sand_quarry:
     enabled: true
     engine-version: 2

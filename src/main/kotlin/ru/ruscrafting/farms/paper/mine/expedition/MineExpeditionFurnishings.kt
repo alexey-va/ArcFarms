@@ -65,13 +65,11 @@ internal object MineExpeditionFurnishings {
         // Old basket anchors remain in journals for compatibility, but the
         // connected conveyor now carries the charge straight into the furnace.
         val hiddenStations = if(modernFactory) setOf(
-            "water_valve_0", "water_valve_2", "crushed_output", "furnace_input",
+            "water_valve_0", "water_valve_1", "water_valve_2", "generator_flywheel", "crushed_output", "furnace_input",
         ) else if (modernDescent) setOf(
             "counterweight_0", "descent_pump", "descent_upper_winder", "decor_descent_winder", "core_start",
         ) else emptySet()
-        val authoredStations = if (modernFactory) plan.stations +
-            ("generator_flywheel" to MineFactoryLine.effectiveStation(plan, "generator_flywheel")) else plan.stations
-        val stations=authoredStations.filterKeys { id ->
+        val stations=plan.stations.filterKeys { id ->
             id !in setOf("entry","exit") && !id.startsWith("lift_") && !id.startsWith("ark_") &&
                 !id.startsWith("jam_") && !id.startsWith("branch_") && id !in hiddenStations &&
                 !(modernFactory && (id == "crusher_repair" || id.startsWith("repair_supply_")))
@@ -82,17 +80,10 @@ internal object MineExpeditionFurnishings {
         }
         val decor=when(plan.kind) {
             MineExpeditionKind.DEAD_FACTORY -> if(modernFactory) listOf(
-                Fixture("decor_waterwheel","waterwheel",MineFactoryLine.machines.getValue("decor_waterwheel")),
-                Fixture("decor_water_header","factory_water_header",ExpeditionPoint(0,5,-18)),
                 Fixture("decor_crusher_left","factory_crusher",MineFactoryLine.machines.getValue("decor_crusher_left"),1f,0),
                 Fixture("decor_conveyor_raw","factory_conveyor",MineFactoryLine.machines.getValue("decor_conveyor_raw")),
                 Fixture("decor_furnace_left","furnace",MineFactoryLine.machines.getValue("decor_furnace_left"),1f,90),
                 Fixture("decor_roller_table","roller_table",MineFactoryLine.machines.getValue("decor_roller_table")),
-                Fixture("decor_pump_left","pump",MineFactoryLine.machines.getValue("decor_pump_left")),
-                Fixture("decor_tank_left","tank",MineFactoryLine.machines.getValue("decor_tank_left")),
-                // The open service side faces the central aisle; the skid is
-                // clear of the production line and the east control cabin.
-                Fixture("decor_diesel_generator","factory_diesel_generator",MineFactoryLine.machines.getValue("decor_diesel_generator"),1f,180),
             ) else listOf(
                 Fixture("decor_waterwheel","waterwheel",ExpeditionPoint(0,5,-23)),
                 Fixture("decor_crusher_left","crusher",ru.ruscrafting.farms.domain.mine.expedition.MineFactoryProgram.machines.getValue("decor_crusher_left"),2.2f,180),
@@ -130,9 +121,8 @@ internal object MineExpeditionFurnishings {
         } else emptyList()
         return stations+decor+controls
     }
-    fun targets(scene:MineExpeditionScene,editor:MineFurnishingEditor?,active:Set<String>,
-        dieselGeneratorEnabled:Boolean=true):List<MineExpeditionMarkers.Target> =
-        fixtures(scene).filter { (dieselGeneratorEnabled || it.id!="decor_diesel_generator") && it.id !in active &&
+    fun targets(scene:MineExpeditionScene,editor:MineFurnishingEditor?,active:Set<String>):List<MineExpeditionMarkers.Target> =
+        fixtures(scene).filter { it.id !in active &&
             (!it.id.startsWith("repair_supply_") || editor?.locked(scene)==true) }.map { f ->
             val yaw=editor?.yaw(scene,f.id) ?: f.yaw
             val p=editor?.position(scene,f.id,f.at) ?: f.at

@@ -269,7 +269,7 @@ class MineExpeditionActionsMockBukkitTest : FunSpec({
         world.entities.filterIsInstance<org.bukkit.entity.Item>().size shouldBe 0
     }
 
-    test("connected factory repairs in order and carries raw charge through crusher to furnace") {
+    test("connected factory starts on its console and carries raw charge through crusher to furnace") {
         val connectedPlan = scene.plan.copy(stations = scene.plan.stations + connectedStationsForActions())
         val connected = MineExpeditionScene(
             connectedPlan,
@@ -283,52 +283,20 @@ class MineExpeditionActionsMockBukkitTest : FunSpec({
             WorksitePreparedScene(world, "connected-factory", 2, 2, scene.surface, scene.surface, scene.surface, emptyList()),
         ).also { it.refreshReady(building = false, complete = true) }
         val player = paper.server.addPlayer()
-        var state = MineExpeditionState(connected.placement, MineExpeditionStage.FACTORY_WATER, factoryProgram = 2)
+        var state = MineFactoryExperiments.normalizeConnected(
+            MineExpeditionState(connected.placement, MineExpeditionStage.FACTORY_WATER, factoryProgram = 2))
         fun complete(step: MineExpeditionStep): Boolean {
             if (step.accepted) state = step.state
             return step.accepted
         }
 
-        val waterTargets = MineExpeditionObjectives.targets(connected.plan, state, null)
-        val repairPickup = waterTargets.single { it.interaction == MineExpeditionInteraction.PICKUP }
-        player.teleport(connected.at(repairPickup.position))
-        actions.interact("connected-factory", connected, state, player, repairPickup, 1_100, ::complete) {}
-        actions.carrying(player, "connected-factory") shouldBe true
-
-        val wrongReceiver = MineExpeditionObjective(
-            "furnace_input", connected.plan.stations.getValue("furnace_input"),
-            MineExpeditionInteraction.DELIVER, "IRON_NUGGET", 0,
-        )
-        player.teleport(connected.at(wrongReceiver.position))
-        actions.interact("connected-factory", connected, state, player, wrongReceiver, 1_200, ::complete) {}
-        actions.carrying(player, "connected-factory") shouldBe true
-
-        val repairReceiver = MineExpeditionObjectives.targets(connected.plan, state, null)
-            .single { it.interaction == MineExpeditionInteraction.DELIVER }
-        player.teleport(connected.at(repairReceiver.position))
-        actions.interact("connected-factory", connected, state, player, repairReceiver, 1_300, ::complete) {}
-        state.completed shouldBe setOf(0)
-        actions.carrying(player, "connected-factory") shouldBe false
-
-        val restored = Gson().fromJson(Gson().toJson(state), MineExpeditionState::class.java)
-        restored.validate()
-        MineExpeditionObjectives.targets(connected.plan, restored, null).single().id shouldBe "water_valve_1"
-        state = restored
-
-        repeat(8) { index ->
-            val valve = MineExpeditionObjectives.targets(connected.plan, state, null).single()
-            player.teleport(connected.at(valve.position))
-            actions.interact("connected-factory", connected, state, player, valve, 2_000L + index * 300L, ::complete) {}
-        }
-        state.completed shouldBe setOf(0, 1)
-        val flywheel = MineExpeditionObjectives.targets(connected.plan, state, null).single()
-        flywheel.id shouldBe "generator_flywheel"
-        player.teleport(connected.at(flywheel.position))
-        actions.interact("connected-factory", connected, state, player, flywheel, 5_000L, ::complete) {}
+        val start = MineExpeditionObjectives.targets(connected.plan, state, null).single()
+        start.id shouldBe "control_crusher_left"
+        player.teleport(connected.at(start.position))
+        actions.interact("connected-factory", connected, state, player, start, 1_000L, ::complete) {}
+        actions.tick("connected-factory", connected, state, listOf(start), listOf(player), 4_000L, { _, step -> complete(step) }) { _, _ -> }
         state.stage shouldBe MineExpeditionStage.FACTORY_COAL
-        state.factoryGeneratorStartedAt shouldBe 5_000L
-        MineFactoryGeneratorCycle.ready(state, 10_999) shouldBe false
-        MineFactoryGeneratorCycle.ready(state, 11_000) shouldBe true
+        state.factoryGeneratorStartedAt shouldBe 0L
 
         var chargeTargets = MineExpeditionObjectives.targets(connected.plan, state, null)
         val rawPickup = chargeTargets.single { it.interaction == MineExpeditionInteraction.PICKUP }

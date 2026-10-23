@@ -1390,6 +1390,7 @@ mine:
       '1': '<color:#f2fff7>Start the left line: the valve, pump and crusher are glowing.</color>'
       '2': '<color:#f2fff7>Start the right line: the valve, pump and crusher are glowing.</color>'
     line:
+      start: '<color:#f2fff7>Use the lever on the crusher console to start the line</color>'
       commission-0: '<color:#f2fff7>Find the highlighted drive gear for the crusher</color>'
       commission-0-carry: '<color:#f2fff7>Fit the gear onto the highlighted crusher shaft</color>'
       commission-1: '<color:#f2fff7>Supply water to the cooling circuit</color>'
@@ -1448,7 +1449,7 @@ mine:
       pour_console: '<color:#f2fff7>Molten metal feed</color>'
       fuel-cart: '<color:#f2fff7>Right-click · take a fuel cart</color>'
       pump-start: '<color:#f2fff7>Start the pump</color>'
-      crusher-start: '<color:#f2fff7>Start the crusher</color>'
+      crusher-start: '<color:#f2fff7>Start the line · left / right click</color>'
       fuel-progress: '<color:#f2fff7>Fuel <count>/<total> · right-click to load the furnace</color>'
       valve: '<color:#f2fff7>Water valve</color>'
       crane-start: '<color:#f2fff7>Transfer the casting</color>'
@@ -1491,7 +1492,7 @@ mine:
       ark_chamber: '<color:#f2fff7>Board the ark and break through to the far chamber</color>'
       ark_cores: '<color:#f2fff7>Find three cores and secure them on board</color>'
       ark_home: '<color:#f2fff7>All aboard — return the ark to its dock</color>'
-      factory_water: '<color:#f2fff7>Open the three water valves by right-clicking repeatedly</color>'
+      factory_water: '<color:#f2fff7>Use the crusher console lever to start the line</color>'
       factory_coal: '<color:#f2fff7>Deliver three carts of fuel to the furnace</color>'
       factory_heat: '<color:#f2fff7>Watch the heat and open the outlet in time</color>'
       factory_pour: '<color:#f2fff7>Open the flow at the mould console · right-click to close on the green signal</color>'
@@ -1682,6 +1683,10 @@ customer-request:
   lab_berry_order: 'The laboratory needs fresh berries for its experiments.'
 reward:
   bundle:
+    miner_cache: 'Miner’s cache'
+    redstone_cache: 'Mechanic’s cache'
+    gem_cache: 'Gem pouch'
+    rich_cache: 'Rich vein'
     field_lunch: 'Field lunch'
     hearty_rations: 'Hearty rations'
     beekeeper_basket: 'Beekeeper basket'

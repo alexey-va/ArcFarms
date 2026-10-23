@@ -15,42 +15,6 @@ import org.bukkit.plugin.Plugin
 import ru.ruscrafting.farms.domain.mine.expedition.*
 
 class MineFactoryPresentationTest : FunSpec({
-    test("diesel supply starts with commissioning, survives a crusher jam and switches off on completion") {
-        val plugin = mockk<Plugin>(relaxed = true)
-        val markers = mockk<MineExpeditionMarkers>(relaxed = true)
-        every { markers.at(any(), any(), any(), any(), any()) } returns null
-        val placement = MineExpeditionPlacement("world", 0, 60, 0, 73)
-        val scene = mockk<MineExpeditionScene> {
-            every { kind } returns MineExpeditionKind.DEAD_FACTORY
-            every { this@mockk.placement } returns placement
-            every { journalSequence } returns 8L
-            every { plan } returns MineExpeditionGenerator.plan(MineExpeditionKind.DEAD_FACTORY, 73L, 3)
-        }
-        val presentation = MineFactoryPresentation(plugin, markers)
-        val preparing = MineExpeditionState(placement, MineExpeditionStage.FACTORY_WATER, completed = setOf(0, 1))
-        presentation.tick(scene, preparing, "factory", 1000, emptyMap())
-        verify(exactly = 0) { markers.rotate(any(), "decor_diesel_generator", any()) }
-        verify { markers.signal("furnish:8", "decor_diesel_generator", org.bukkit.Material.RED_CONCRETE) }
-        clearMocks(markers, answers = false)
-        presentation.tick(scene, preparing, "factory", 1100, mapOf("generator_flywheel" to .5))
-        verify { markers.rotate("furnish:8", "decor_diesel_generator", any()) }
-        verify { markers.signal("furnish:8", "decor_diesel_generator", org.bukkit.Material.RED_CONCRETE) }
-        verify(exactly = 0) { markers.rotate(any(), "decor_crusher_left", any()) }
-        clearMocks(markers, answers = false)
-        presentation.tick(scene, preparing.copy(stage = MineExpeditionStage.FACTORY_COAL), "factory", 4500, emptyMap())
-        verify { markers.rotate("furnish:8", "decor_diesel_generator", 3 * Math.PI) }
-        clearMocks(markers, answers = false)
-        val jammed = preparing.copy(stage = MineExpeditionStage.FACTORY_COAL, completed = setOf(0),
-            factoryExperiments = MineFactoryExperimentPlan(setOf(MineFactoryExperiment.ROCK_JAM)))
-        presentation.tick(scene, jammed, "factory", 1200, emptyMap())
-        verify { markers.rotate("furnish:8", "decor_diesel_generator", any()) }
-        verify(exactly = 0) { markers.rotate(any(), "decor_crusher_left", any()) }
-        clearMocks(markers, answers = false)
-        presentation.tick(scene, jammed.copy(stage = MineExpeditionStage.COMPLETE), "factory", 1500, emptyMap())
-        verify(exactly = 0) { markers.rotate(any(), "decor_diesel_generator", any()) }
-        verify { markers.signal("furnish:8", "decor_diesel_generator", org.bukkit.Material.RED_CONCRETE) }
-    }
-
     test("connected line shows crusher feed during processing and cargo only during transfer") {
         val plugin = mockk<Plugin>(relaxed = true)
         val markers = mockk<MineExpeditionMarkers>(relaxed = true)
@@ -171,48 +135,7 @@ class MineFactoryPresentationTest : FunSpec({
         presentation.clear(scene)
         presentation.cleanup()
     }
-    test("diesel ignition pulses use ramp phase, are deduplicated and stop with the scene") {
-        val plugin = mockk<Plugin>(relaxed = true)
-        every { plugin.config.getBoolean(any(), true) } returns true
-        val world = mockk<World>(relaxed = true)
-        val base = Location(world, 0.0, 60.0, 0.0)
-        val player = mockk<Player>(relaxed = true)
-        every { player.location } returns base
-        every { world.players } returns listOf(player)
-        val markers = mockk<MineExpeditionMarkers>(relaxed = true)
-        every { markers.at(any(), any(), any(), any(), any()) } answers {
-            if (secondArg<String>() == "decor_diesel_generator")
-                base.clone().add(arg<Double>(2), arg<Double>(3), arg<Double>(4)) else null
-        }
-        val placement = MineExpeditionPlacement("world", 0, 60, 0, 73)
-        val scene = mockk<MineExpeditionScene> {
-            every { kind } returns MineExpeditionKind.DEAD_FACTORY
-            every { this@mockk.placement } returns placement
-            every { journalSequence } returns 9L
-            every { plan } returns MineExpeditionGenerator.plan(MineExpeditionKind.DEAD_FACTORY, 73L, 3)
-        }
-        val state = MineExpeditionState(placement, MineExpeditionStage.FACTORY_COAL, factoryGeneratorStartedAt = 1000L)
-        val presentation = MineFactoryPresentation(plugin, markers)
-        presentation.tick(scene, state, "factory", 1000, emptyMap())
-        presentation.tick(scene, state, "factory", 1050, emptyMap())
-        val ignition = MineDieselGeneratorModel.combustionPoints[5] // crank phase 2PI at the eighth hand turn
-        val ignitionAt = base.clone().add(ignition.x.toDouble(), ignition.y.toDouble(), ignition.z.toDouble())
-        verify(exactly = 1) { world.spawnParticle(Particle.SMALL_FLAME, ignitionAt, 3, any<Double>(), any<Double>(), any<Double>(), any<Double>()) }
-        verify(exactly = 1) { player.playSound(any<Location>(), Sound.BLOCK_NOTE_BLOCK_BASEDRUM, any<Float>(), any<Float>()) }
-        verify(exactly = 0) { markers.rotate(any(), "decor_crusher_left", any()) }
-        verify { markers.signal("furnish:9", "decor_diesel_generator", org.bukkit.Material.YELLOW_CONCRETE) }
-        clearMocks(markers, world, player, answers = false)
-        presentation.tick(scene, state, "factory", 7000, emptyMap())
-        verify { markers.rotate("furnish:9", "decor_crusher_left", any()) }
-        verify { markers.signal("furnish:9", "decor_diesel_generator", org.bukkit.Material.LIME_CONCRETE) }
-        clearMocks(markers, world, player, answers = false)
-        presentation.tick(scene, state.copy(stage = MineExpeditionStage.COMPLETE), "factory", 8000, emptyMap())
-        verify { world wasNot Called }
-        verify { player wasNot Called }
-        presentation.cleanup()
-    }
-
-    test("disabled diesel cutaway performs no generator lookup, animation or effects") {
+    test("retired utilities have no lookup animation or effects even with an old generator timestamp") {
         val plugin = mockk<Plugin>(relaxed = true)
         val markers = mockk<MineExpeditionMarkers>(relaxed = true)
         every { markers.at(any(), any(), any(), any(), any()) } returns null
@@ -225,12 +148,15 @@ class MineFactoryPresentationTest : FunSpec({
         }
         val state = MineExpeditionState(placement, MineExpeditionStage.FACTORY_COAL, factoryGeneratorStartedAt = 1_000L)
         MineFactoryPresentation(plugin, markers).tick(
-            scene, state, "factory", 1_050L, emptyMap(), dieselGeneratorEnabled = false,
+            scene, state, "factory", 1_050L, emptyMap(),
         )
 
-        verify(exactly = 0) { markers.at(any(), "decor_diesel_generator", any(), any(), any()) }
-        verify(exactly = 0) { markers.rotate(any(), "decor_diesel_generator", any()) }
-        verify(exactly = 0) { markers.signal(any(), "decor_diesel_generator", any()) }
+        for (id in listOf("decor_diesel_generator", "decor_waterwheel", "decor_pump_left", "decor_tank_left", "crusher_repair")) {
+            verify(exactly = 0) { markers.at(any(), id, any(), any(), any()) }
+            verify(exactly = 0) { markers.rotate(any(), id, any()) }
+            verify(exactly = 0) { markers.signal(any(), id, any()) }
+        }
+        verify { markers.rotate("furnish:13", "decor_crusher_left", any()) }
     }
 
 })

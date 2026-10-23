@@ -1186,7 +1186,6 @@ class ArcFarmsConfig private constructor(
     val bossbars: Boolean,
     val particles: Boolean,
     val sounds: Boolean,
-    val dieselGeneratorEnabled: Boolean,
     val titleStaySeconds: Int,
     val markerHeight: Int,
     val missingBedHighlightThreshold: Int,
@@ -2651,7 +2650,6 @@ class ArcFarmsConfig private constructor(
                 bossbars = config.boolean("ui.bossbars", true),
                 particles = config.boolean("ui.particles", true),
                 sounds = config.boolean("ui.sounds", true),
-                dieselGeneratorEnabled = config.boolean("ui.diesel-generator-enabled", true),
                 titleStaySeconds = config.int("ui.title-stay-seconds", 4).checked("ui.title-stay-seconds", 2, 20),
                 markerHeight = config.int("ui.marker-height", 12).checked("ui.marker-height", 6, 24),
                 missingBedHighlightThreshold = config.int("ui.missing-bed-highlight-threshold", 10)

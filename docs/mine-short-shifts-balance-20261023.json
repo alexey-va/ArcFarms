@@ -1,0 +1,988 @@
+{
+  "version": 1,
+  "title": "ArcFarms short mine shifts and completion rewards 2026-10-23",
+  "assumptions": [
+    "Scenarios are sensitivity assumptions, not measured gameplay cadence. low/base/high: 5/15/30 participating accounts across a day, 0.5/1/2 personal hours, average simultaneous work party 1/2/4.",
+    "Each account supplies 120/360/720 useful matching ore breaks per active hour. Effective group rates are 120/720/2880. Individual share is 100/50/25%; any positive share gets a full payout under existing rules.",
+    "Average quota over unchanged deterministic four-order rotation: 436 before, 54.5 after. Incident and travel overhead: 10/6/4 minutes before, 8/4/2 after; both add the unchanged 1-minute cooldown. New shorter overhead includes grapple travel and simpler factory, not a measured speedup.",
+    "Expected cycles may be fractional over a day because this is a steady-state sensitivity, not a daily guaranteed floor. Daily operating occupancy is 2.5/7.5/15 mine-hours and remains within 24h for the single mine.",
+    "Mine has no personal daily cap or network weekly budget. Participant counts do not assert actual population. Other jobs/farm hours are not summed into this model.",
+    "Difficulty=100+min(quota,100)//2+10 for one event. Before 160%; after coal138/foundry142/deep135/crystal134. Tangible quantities floor individually. Mine has no Farm reward perk or MARKET multiplier.",
+    "After money base200, XP base300, one guaranteed exclusive weighted item bundle (50/30/15/5). No fixed items, command rewards or premium tokens. Grant identity and durable pending/claim protocol remain existing.",
+    "Disposable savings assume retaining 80% of direct completion coins after an unspecified 20% expense allowance. The allowance is not an observed sink and is not included as monetary burn. Item conversion is excluded from savings.",
+    "Current SELL remains an alternative; tracked Ores.yml rates are a separate nominal sensitivity, not a live quote. Observed current shop sales and live resource contracts confirm conversion exists. Future SELL-off sets only shop redemption to zero, never the base payout or eligible contract route.",
+    "Raw mine blocks still do not drop items or XP. External jobs/quests and any pre-existing triggers are unchanged and not assumed paid here. No buy-process-sell loop is introduced: rewards require managed ore actions and one event; inventory resources do not satisfy extraction quotas."
+  ],
+  "participants": [
+    5,
+    15,
+    30
+  ],
+  "currencies": {
+    "vault": {
+      "minor_per_unit": 100,
+      "disposable_per_player_day": {
+        "before": [
+          "0",
+          "0",
+          "0"
+        ],
+        "after": [
+          "181.737931057",
+          "1380.890829697",
+          "6372.272040343"
+        ]
+      },
+      "flows": [
+        {
+          "id": "mine_completion",
+          "kind": "mint",
+          "source": "src/main/resources/config.yml:mine-zones.old_shafts.rewards; classic/plugins/ArcFarms/config.yml same section",
+          "basis": "Each positive contributor gets the full grant. Four orders rotate equally in the long run; mean of actual scaled grants, not unscaled config.",
+          "before": {
+            "enabled": true,
+            "amount_per_event": {
+              "value": "0",
+              "unit": "major"
+            },
+            "events_per_player_day": [
+              "0.131004367",
+              "1.384615385",
+              "8.520710059"
+            ]
+          },
+          "after": {
+            "enabled": true,
+            "amount_per_event": {
+              "value": "274.5",
+              "unit": "major"
+            },
+            "events_per_player_day": [
+              "0.827586207",
+              "6.288209607",
+              "29.017632242"
+            ]
+          }
+        }
+      ]
+    },
+    "tokens": {
+      "minor_per_unit": 1,
+      "flows": []
+    },
+    "vanilla_xp": {
+      "minor_per_unit": 1,
+      "flows": [
+        {
+          "id": "mine_completion_xp",
+          "kind": "mint",
+          "source": "src/main/resources/config.yml:mine-zones.old_shafts.rewards; classic/plugins/ArcFarms/config.yml same section",
+          "basis": "Vanilla XP points are separate from Vault and job XP; every new grant uses integer floor scaling.",
+          "before": {
+            "enabled": true,
+            "amount_per_event": {
+              "value": "352",
+              "unit": "major"
+            },
+            "events_per_player_day": [
+              "0.131004367",
+              "1.384615385",
+              "8.520710059"
+            ]
+          },
+          "after": {
+            "enabled": true,
+            "amount_per_event": {
+              "value": "411.75",
+              "unit": "major"
+            },
+            "events_per_player_day": [
+              "0.827586207",
+              "6.288209607",
+              "29.017632242"
+            ]
+          }
+        }
+      ]
+    },
+    "item_coal": {
+      "minor_per_unit": 1,
+      "flows": [
+        {
+          "id": "mine_reward_coal",
+          "kind": "item",
+          "source": "src/main/resources/config.yml:mine-zones.old_shafts.rewards; classic/plugins/ArcFarms/config.yml same section",
+          "basis": "Expected units of this material from one exclusive guaranteed weighted bundle; floor each item before weighting, then average the four order variants.",
+          "before": {
+            "enabled": true,
+            "amount_per_event": {
+              "value": "0",
+              "unit": "major"
+            },
+            "events_per_player_day": [
+              "0.131004367",
+              "1.384615385",
+              "8.520710059"
+            ]
+          },
+          "after": {
+            "enabled": true,
+            "amount_per_event": {
+              "value": "8.125",
+              "unit": "major"
+            },
+            "events_per_player_day": [
+              "0.827586207",
+              "6.288209607",
+              "29.017632242"
+            ]
+          }
+        }
+      ]
+    },
+    "item_diamond": {
+      "minor_per_unit": 1,
+      "flows": [
+        {
+          "id": "mine_reward_diamond",
+          "kind": "item",
+          "source": "src/main/resources/config.yml:mine-zones.old_shafts.rewards; classic/plugins/ArcFarms/config.yml same section",
+          "basis": "Expected units of this material from one exclusive guaranteed weighted bundle; floor each item before weighting, then average the four order variants.",
+          "before": {
+            "enabled": true,
+            "amount_per_event": {
+              "value": "0",
+              "unit": "major"
+            },
+            "events_per_player_day": [
+              "0.131004367",
+              "1.384615385",
+              "8.520710059"
+            ]
+          },
+          "after": {
+            "enabled": true,
+            "amount_per_event": {
+              "value": "0.55",
+              "unit": "major"
+            },
+            "events_per_player_day": [
+              "0.827586207",
+              "6.288209607",
+              "29.017632242"
+            ]
+          }
+        }
+      ]
+    },
+    "item_gold_ingot": {
+      "minor_per_unit": 1,
+      "flows": [
+        {
+          "id": "mine_reward_gold_ingot",
+          "kind": "item",
+          "source": "src/main/resources/config.yml:mine-zones.old_shafts.rewards; classic/plugins/ArcFarms/config.yml same section",
+          "basis": "Expected units of this material from one exclusive guaranteed weighted bundle; floor each item before weighting, then average the four order variants.",
+          "before": {
+            "enabled": true,
+            "amount_per_event": {
+              "value": "0",
+              "unit": "major"
+            },
+            "events_per_player_day": [
+              "0.131004367",
+              "1.384615385",
+              "8.520710059"
+            ]
+          },
+          "after": {
+            "enabled": true,
+            "amount_per_event": {
+              "value": "1.9",
+              "unit": "major"
+            },
+            "events_per_player_day": [
+              "0.827586207",
+              "6.288209607",
+              "29.017632242"
+            ]
+          }
+        }
+      ]
+    },
+    "item_iron_ingot": {
+      "minor_per_unit": 1,
+      "flows": [
+        {
+          "id": "mine_reward_iron_ingot",
+          "kind": "item",
+          "source": "src/main/resources/config.yml:mine-zones.old_shafts.rewards; classic/plugins/ArcFarms/config.yml same section",
+          "basis": "Expected units of this material from one exclusive guaranteed weighted bundle; floor each item before weighting, then average the four order variants.",
+          "before": {
+            "enabled": true,
+            "amount_per_event": {
+              "value": "6",
+              "unit": "major"
+            },
+            "events_per_player_day": [
+              "0.131004367",
+              "1.384615385",
+              "8.520710059"
+            ]
+          },
+          "after": {
+            "enabled": true,
+            "amount_per_event": {
+              "value": "4",
+              "unit": "major"
+            },
+            "events_per_player_day": [
+              "0.827586207",
+              "6.288209607",
+              "29.017632242"
+            ]
+          }
+        }
+      ]
+    },
+    "item_lapis_lazuli": {
+      "minor_per_unit": 1,
+      "flows": [
+        {
+          "id": "mine_reward_lapis_lazuli",
+          "kind": "item",
+          "source": "src/main/resources/config.yml:mine-zones.old_shafts.rewards; classic/plugins/ArcFarms/config.yml same section",
+          "basis": "Expected units of this material from one exclusive guaranteed weighted bundle; floor each item before weighting, then average the four order variants.",
+          "before": {
+            "enabled": true,
+            "amount_per_event": {
+              "value": "0",
+              "unit": "major"
+            },
+            "events_per_player_day": [
+              "0.131004367",
+              "1.384615385",
+              "8.520710059"
+            ]
+          },
+          "after": {
+            "enabled": true,
+            "amount_per_event": {
+              "value": "1.575",
+              "unit": "major"
+            },
+            "events_per_player_day": [
+              "0.827586207",
+              "6.288209607",
+              "29.017632242"
+            ]
+          }
+        }
+      ]
+    },
+    "item_redstone": {
+      "minor_per_unit": 1,
+      "flows": [
+        {
+          "id": "mine_reward_redstone",
+          "kind": "item",
+          "source": "src/main/resources/config.yml:mine-zones.old_shafts.rewards; classic/plugins/ArcFarms/config.yml same section",
+          "basis": "Expected units of this material from one exclusive guaranteed weighted bundle; floor each item before weighting, then average the four order variants.",
+          "before": {
+            "enabled": true,
+            "amount_per_event": {
+              "value": "0",
+              "unit": "major"
+            },
+            "events_per_player_day": [
+              "0.131004367",
+              "1.384615385",
+              "8.520710059"
+            ]
+          },
+          "after": {
+            "enabled": true,
+            "amount_per_event": {
+              "value": "4.875",
+              "unit": "major"
+            },
+            "events_per_player_day": [
+              "0.827586207",
+              "6.288209607",
+              "29.017632242"
+            ]
+          }
+        }
+      ]
+    }
+  },
+  "prices": [
+    {
+      "id": "pig_L1",
+      "currency": "vault",
+      "before": {
+        "value": "25000",
+        "unit": "major"
+      },
+      "after": {
+        "value": "25000",
+        "unit": "major"
+      }
+    },
+    {
+      "id": "pig_L1_to_L3",
+      "currency": "vault",
+      "before": {
+        "value": "205000",
+        "unit": "major"
+      },
+      "after": {
+        "value": "205000",
+        "unit": "major"
+      }
+    },
+    {
+      "id": "horse_L1",
+      "currency": "vault",
+      "before": {
+        "value": "50000",
+        "unit": "major"
+      },
+      "after": {
+        "value": "50000",
+        "unit": "major"
+      }
+    },
+    {
+      "id": "horse_L1_to_L3",
+      "currency": "vault",
+      "before": {
+        "value": "420000",
+        "unit": "major"
+      },
+      "after": {
+        "value": "420000",
+        "unit": "major"
+      }
+    }
+  ],
+  "model": {
+    "useful_ore_per_account_hour": [
+      120,
+      360,
+      720
+    ],
+    "simultaneous_contributors": [
+      1,
+      2,
+      4
+    ],
+    "personal_hours_per_day": [
+      "0.5",
+      "1",
+      "2"
+    ],
+    "before_quotas": {
+      "coal_order": {
+        "COAL": 256,
+        "IRON": 192
+      },
+      "foundry_order": {
+        "COPPER": 192,
+        "IRON": 192,
+        "GOLD": 128
+      },
+      "deep_alloy": {
+        "IRON": 192,
+        "REDSTONE": 160,
+        "DIAMOND": 48
+      },
+      "crystal_order": {
+        "GOLD": 128,
+        "QUARTZ": 192,
+        "DIAMOND": 64
+      }
+    },
+    "after_quotas": {
+      "coal_order": {
+        "COAL": 32,
+        "IRON": 24
+      },
+      "foundry_order": {
+        "COPPER": 24,
+        "IRON": 24,
+        "GOLD": 16
+      },
+      "deep_alloy": {
+        "IRON": 24,
+        "REDSTONE": 20,
+        "DIAMOND": 6
+      },
+      "crystal_order": {
+        "GOLD": 16,
+        "QUARTZ": 24,
+        "DIAMOND": 8
+      }
+    },
+    "difficulty_percent": {
+      "coal_order": 138,
+      "foundry_order": 142,
+      "deep_alloy": 135,
+      "crystal_order": 134
+    },
+    "cycles_per_hour": {
+      "before": [
+        "0.262008734",
+        "1.384615385",
+        "4.26035503"
+      ],
+      "after": [
+        "1.655172414",
+        "6.288209607",
+        "14.508816121"
+      ]
+    },
+    "events_per_player_day": {
+      "before": [
+        "0.131004367",
+        "1.384615385",
+        "8.520710059"
+      ],
+      "after": [
+        "0.827586207",
+        "6.288209607",
+        "29.017632242"
+      ]
+    },
+    "before_reward": {
+      "vault": "0",
+      "xp": 352,
+      "items": {
+        "IRON_INGOT": 6
+      }
+    },
+    "after_base_reward": {
+      "vault": "200",
+      "xp": 300
+    },
+    "after_actual_by_order": {
+      "coal_order": {
+        "vault": "276",
+        "xp": 414,
+        "items_by_bundle": {
+          "miner_cache": {
+            "IRON_INGOT": 8,
+            "COAL": 16
+          },
+          "redstone_cache": {
+            "GOLD_INGOT": 5,
+            "REDSTONE": 16
+          },
+          "gem_cache": {
+            "DIAMOND": 2,
+            "LAPIS_LAZULI": 11
+          },
+          "rich_cache": {
+            "DIAMOND": 5,
+            "GOLD_INGOT": 8
+          }
+        }
+      },
+      "foundry_order": {
+        "vault": "284",
+        "xp": 426,
+        "items_by_bundle": {
+          "miner_cache": {
+            "IRON_INGOT": 8,
+            "COAL": 17
+          },
+          "redstone_cache": {
+            "GOLD_INGOT": 5,
+            "REDSTONE": 17
+          },
+          "gem_cache": {
+            "DIAMOND": 2,
+            "LAPIS_LAZULI": 11
+          },
+          "rich_cache": {
+            "DIAMOND": 5,
+            "GOLD_INGOT": 8
+          }
+        }
+      },
+      "deep_alloy": {
+        "vault": "270",
+        "xp": 405,
+        "items_by_bundle": {
+          "miner_cache": {
+            "IRON_INGOT": 8,
+            "COAL": 16
+          },
+          "redstone_cache": {
+            "GOLD_INGOT": 5,
+            "REDSTONE": 16
+          },
+          "gem_cache": {
+            "DIAMOND": 2,
+            "LAPIS_LAZULI": 10
+          },
+          "rich_cache": {
+            "DIAMOND": 5,
+            "GOLD_INGOT": 8
+          }
+        }
+      },
+      "crystal_order": {
+        "vault": "268",
+        "xp": 402,
+        "items_by_bundle": {
+          "miner_cache": {
+            "IRON_INGOT": 8,
+            "COAL": 16
+          },
+          "redstone_cache": {
+            "GOLD_INGOT": 5,
+            "REDSTONE": 16
+          },
+          "gem_cache": {
+            "DIAMOND": 2,
+            "LAPIS_LAZULI": 10
+          },
+          "rich_cache": {
+            "DIAMOND": 5,
+            "GOLD_INGOT": 8
+          }
+        }
+      }
+    },
+    "bundle_weights": {
+      "miner_cache": 50,
+      "redstone_cache": 30,
+      "gem_cache": 15,
+      "rich_cache": 5
+    },
+    "expected_items_per_completion": {
+      "COAL": "8.125",
+      "DIAMOND": "0.55",
+      "GOLD_INGOT": "1.9",
+      "IRON_INGOT": "4",
+      "LAPIS_LAZULI": "1.575",
+      "REDSTONE": "4.875"
+    },
+    "mean_vault_per_completion": "274.5",
+    "mean_xp_per_completion": "411.75"
+  },
+  "indirect_conversion_sensitivity": {
+    "classification": "Conditional additional Vault mint, not item mint and not included twice in primary direct totals. SELL and contract routes are alternatives for the same units.",
+    "live_snapshot_contract_quote_vault_per_unit": {
+      "COAL": "8.58",
+      "IRON_INGOT": "8.61",
+      "GOLD_INGOT": "12.91",
+      "REDSTONE": "5.74",
+      "LAPIS_LAZULI": "11.48",
+      "DIAMOND": "76.06"
+    },
+    "contract_vault_per_completion": {
+      "before": "51.66",
+      "after": "216.578"
+    },
+    "contract_daily_potential": {
+      "before": [
+        "6.767685599",
+        "71.529230789",
+        "440.179881648"
+      ],
+      "after": [
+        "179.23696554",
+        "1361.887860265",
+        "6284.580755708"
+      ]
+    },
+    "contract_limits": "Actual amount changes with supply/time/rank, minimum batches and UUID caps; all contracts share 250000 Vault/week, 249686.50 remaining at observation. Do not add this full budget to mine rewards.",
+    "nominal_tracked_sell_per_completion": {
+      "before": "36",
+      "after": "151.1"
+    },
+    "nominal_tracked_sell_daily": {
+      "before": [
+        "4.716157212",
+        "49.84615386",
+        "306.745562124"
+      ],
+      "after": [
+        "125.048275878",
+        "950.148471618",
+        "4384.564231766"
+      ]
+    },
+    "future_sell_off_daily": [
+      "0",
+      "0",
+      "0"
+    ],
+    "limits": "Tracked nominal shop prices are not live effective quotes; current live sample shows coal5.8521 and diamond35.906 per unit. No assumed exchange rate for XP or tokens."
+  },
+  "ceiling": {
+    "one_mine_cooldown_seconds": 60,
+    "physical_work_seconds_minimum": "Positive and incident-specific; no universal safe numeric lower bound proven. The 2-minute high overhead is a scenario, not an enforced minimum.",
+    "supremum_cycles_per_hour": 60,
+    "supremum_cycles_per_24h": 1440,
+    "max_direct_vault_per_account_24h": "408960",
+    "mean_rotating_direct_vault_per_account_24h": "395280",
+    "max_xp_per_account_24h": 613440,
+    "positive_accounts": [
+      1,
+      5,
+      20
+    ],
+    "max_direct_vault_for_accounts_24h": [
+      "408960",
+      "2044800",
+      "8179200"
+    ],
+    "limits": "A loose cooldown-only ceiling ignores nonzero ore/event/travel time; sustained multiaccount payouts multiply linearly. One accepted action can qualify a low contributor for the full grant. No new anti-alt restriction is introduced."
+  },
+  "comparison": {
+    "current_farm_base_vault": "500",
+    "observed_farm_168h_vault": "13728.75",
+    "observed_farm_operations": 14,
+    "observed_farm_mean_vault_per_operation": "980.625",
+    "new_mine_mean_as_fraction_of_observed_farm": "0.279923518",
+    "limits": "Farm and mine times differ; 14 observed farm payments across6players do not establish hourly or typical income. Farm perks and MARKET are not applied to mine."
+  },
+  "observation": {
+    "source": "arc_ops_server(server=classic, economy_hours=168, economy_limit=30, economy_server=all, requested ore materials)",
+    "ledgerSchemaVersion": 2,
+    "sinceEpochMs": 1792110951347,
+    "generatedAtEpochMs": 1792715751348,
+    "windowBoundary": {
+      "exact": true,
+      "excludedCrossingRecords": 0,
+      "excludedCrossingOperations": 0,
+      "excludedCrossingAbsoluteAmount": 0,
+      "excludedFutureRecords": 0,
+      "excludedFutureOperations": 0,
+      "excludedFutureAbsoluteAmount": 0,
+      "evidence": "records crossing since or extending past generatedAt are excluded because their amount cannot be split exactly"
+    },
+    "coverage": {
+      "oldest": 1792110963009,
+      "newest": 1792715190433,
+      "records": 3397,
+      "operations": 34132,
+      "players": 28,
+      "attempts": 245,
+      "enrichedRecords": 3397
+    },
+    "currencies": [
+      {
+        "currency": "tokens",
+        "minted": "59",
+        "burned": "15",
+        "sourceCoverage": {
+          "unclassifiedOperations": 3,
+          "unclassifiedAbsoluteAmount": 15,
+          "classifiedOperationRatio": 0.9302325581395349,
+          "classifiedAmountRatio": 0.7972972972972973
+        },
+        "sources": [
+          {
+            "source": "arc",
+            "income": "2",
+            "expense": "0",
+            "operations": 2,
+            "players": 1,
+            "topPlayerMintShare": "1"
+          },
+          {
+            "source": "ranks",
+            "income": "45",
+            "expense": "0",
+            "operations": 34,
+            "players": 14,
+            "topPlayerMintShare": "0.26666666666666666"
+          },
+          {
+            "source": "unknown",
+            "income": "0",
+            "expense": "15",
+            "operations": 3,
+            "players": 3,
+            "topPlayerMintShare": null
+          },
+          {
+            "source": "voting",
+            "income": "12",
+            "expense": "0",
+            "operations": 4,
+            "players": 3,
+            "topPlayerMintShare": "0.5"
+          }
+        ]
+      },
+      {
+        "currency": "vault",
+        "minted": "67917334.74351543",
+        "burned": "2572343.3499999987",
+        "sourceCoverage": {
+          "unclassifiedOperations": 128,
+          "unclassifiedAbsoluteAmount": 189141.78,
+          "classifiedOperationRatio": 0.9962451230602247,
+          "classifiedAmountRatio": 0.9991000952985265
+        },
+        "sources": [
+          {
+            "source": "admin_command",
+            "income": "67000000",
+            "expense": "0",
+            "operations": 1,
+            "players": 1,
+            "topPlayerMintShare": "1"
+          },
+          {
+            "source": "advanced_enchantments",
+            "income": "3000",
+            "expense": "49250",
+            "operations": 29,
+            "players": 2,
+            "topPlayerMintShare": "1"
+          },
+          {
+            "source": "arc",
+            "income": "3100",
+            "expense": "875710.5900000001",
+            "operations": 98,
+            "players": 10,
+            "topPlayerMintShare": "0.5806451612903226"
+          },
+          {
+            "source": "auction",
+            "income": "0",
+            "expense": "110.6",
+            "operations": 1,
+            "players": 1,
+            "topPlayerMintShare": null
+          },
+          {
+            "source": "denizen",
+            "income": "0",
+            "expense": "8669",
+            "operations": 9,
+            "players": 2,
+            "topPlayerMintShare": null
+          },
+          {
+            "source": "farms",
+            "income": "13728.75",
+            "expense": "0",
+            "operations": 14,
+            "players": 6,
+            "topPlayerMintShare": "0.42857142857142855"
+          },
+          {
+            "source": "jobs",
+            "income": "102446.42944899968",
+            "expense": "0",
+            "operations": 33116,
+            "players": 12,
+            "topPlayerMintShare": "0.4040623008789891"
+          },
+          {
+            "source": "lands",
+            "income": "0",
+            "expense": "790500",
+            "operations": 120,
+            "players": 1,
+            "topPlayerMintShare": null
+          },
+          {
+            "source": "player_transfer",
+            "income": "69845000",
+            "expense": "69845000",
+            "operations": 12,
+            "players": 6,
+            "topPlayerMintShare": null
+          },
+          {
+            "source": "ranks",
+            "income": "24134",
+            "expense": "0",
+            "operations": 184,
+            "players": 22,
+            "topPlayerMintShare": "0.22085025275544876"
+          },
+          {
+            "source": "resource_contracts",
+            "income": "35097.27",
+            "expense": "0",
+            "operations": 21,
+            "players": 2,
+            "topPlayerMintShare": "0.9910676813324797"
+          },
+          {
+            "source": "shop",
+            "income": "55995.33000000001",
+            "expense": "758013.760000001",
+            "operations": 235,
+            "players": 12,
+            "topPlayerMintShare": "0.334958468858028"
+          },
+          {
+            "source": "treasure",
+            "income": "576891.184066",
+            "expense": "0",
+            "operations": 117,
+            "players": 17,
+            "topPlayerMintShare": "0.7897119166807705"
+          },
+          {
+            "source": "unknown",
+            "income": "98941.78",
+            "expense": "90200",
+            "operations": 128,
+            "players": 5,
+            "topPlayerMintShare": "0.5203995723545706"
+          },
+          {
+            "source": "voting",
+            "income": "4000",
+            "expense": "0",
+            "operations": 4,
+            "players": 3,
+            "topPlayerMintShare": "0.5"
+          }
+        ]
+      }
+    ],
+    "storage": {
+      "mode": "SQL",
+      "ready": true,
+      "schemaVersion": 1,
+      "eventCount": 36569,
+      "sqlEventCount": 36569,
+      "pendingEvents": 0,
+      "detail": "pending=0, jobsPending=0"
+    },
+    "oreSalesSelection": {
+      "mode": "requested_materials",
+      "requestedMaterials": [
+        "COAL",
+        "DIAMOND",
+        "GOLD_INGOT",
+        "IRON_INGOT",
+        "LAPIS_LAZULI",
+        "REDSTONE"
+      ],
+      "matchedMaterials": [
+        "COAL",
+        "DIAMOND"
+      ],
+      "missingMaterials": [
+        "GOLD_INGOT",
+        "IRON_INGOT",
+        "LAPIS_LAZULI",
+        "REDSTONE"
+      ],
+      "matchingItemRows": 2,
+      "returnedItemRows": 2,
+      "truncated": false,
+      "complete": true
+    },
+    "observedOreSales": [
+      {
+        "material": "minecraft:diamond",
+        "quantity": 779,
+        "income": "27970.739999999998",
+        "effectiveUnitPrice": "35.90595635430038",
+        "transactions": 2,
+        "players": 2,
+        "incomeEvidence": "exact"
+      },
+      {
+        "material": "minecraft:coal",
+        "quantity": 721,
+        "income": "4219.39",
+        "effectiveUnitPrice": "5.852135922330097",
+        "transactions": 1,
+        "players": 1,
+        "incomeEvidence": "exact"
+      }
+    ],
+    "contracts": {
+      "enabled": true,
+      "mode": "enforce",
+      "submissionRuntimeReady": true,
+      "serverWeeklyBudgetMinor": 25000000,
+      "remainingWeeklyBudgetMinor": 24968650,
+      "orders": [
+        {
+          "id": "bank_gold_ingot",
+          "status": "open",
+          "basePayoutMinorPerUnit": 1125,
+          "payoutMinorPerUnit": 1291,
+          "budgetMinor": 1687500,
+          "targetQuantity": 1500,
+          "minSubmissionQuantity": 16
+        },
+        {
+          "id": "forge_coal",
+          "status": "open",
+          "basePayoutMinorPerUnit": 750,
+          "payoutMinorPerUnit": 858,
+          "budgetMinor": 2500000,
+          "targetQuantity": 6000,
+          "minSubmissionQuantity": 32
+        },
+        {
+          "id": "forge_diamond",
+          "status": "open",
+          "basePayoutMinorPerUnit": 6625,
+          "payoutMinorPerUnit": 7606,
+          "budgetMinor": 800000,
+          "targetQuantity": 120,
+          "minSubmissionQuantity": 1
+        },
+        {
+          "id": "forge_iron_ingot",
+          "status": "open",
+          "basePayoutMinorPerUnit": 750,
+          "payoutMinorPerUnit": 861,
+          "budgetMinor": 3000000,
+          "targetQuantity": 8000,
+          "minSubmissionQuantity": 32
+        },
+        {
+          "id": "forge_lapis_lazuli",
+          "status": "open",
+          "basePayoutMinorPerUnit": 1000,
+          "payoutMinorPerUnit": 1148,
+          "budgetMinor": 500000,
+          "targetQuantity": 500,
+          "minSubmissionQuantity": 16
+        },
+        {
+          "id": "forge_redstone",
+          "status": "open",
+          "basePayoutMinorPerUnit": 500,
+          "payoutMinorPerUnit": 574,
+          "budgetMinor": 500000,
+          "targetQuantity": 1000,
+          "minSubmissionQuantity": 16
+        }
+      ]
+    },
+    "limitations": [
+      "No mine working-hour or completion cadence measurement. Farm 5-minute buckets are not session time.",
+      "Source limits30; ore material selection explicitly complete and untruncated. Missing ore sales do not establish SELL disabled.",
+      "Admin mint excluded from ordinary-player benchmark. No player UUIDs or balances exported.",
+      "Contract quotes are snapshot values before player-specific rank; future dynamic quotations and budgets differ."
+    ]
+  },
+  "decision": "Reduce each resource quota exactly8x, preserve four order IDs and one incident, pay200 base Vault and300 base XP plus one ordinary-resource bundle. Moderate per-completion cash is deliberate given short cycles and full payout to all positive contributors; no economy subsystem or restriction is added.",
+  "post_delivery_checks": [
+    "Only classic: verify active JAR/config, four totals56/64/50/48, all11 incident types and reward entries.",
+    "Active saved crystal_order sequence6 MINING0/384 must survive ordinary reconciliation and use48 new quota without admin state reset; parent owns runtime verification.",
+    "Observe one ordinary completion: single grant per positive contributor, zero for zero contribution, exact scaled money/XP and one bundle; reconnect/reload never rerolls/duplicates existing pending grants.",
+    "Check ledger boundary after activation, currency/source and actual cadence before further tuning. No automatic monitoring or future task created."
+  ]
+}

@@ -15,7 +15,7 @@ class MineFactoryProgramTest : FunSpec({
             MineFactoryProgram.runningMachines(initial, emptySet()) shouldBe emptySet()
             MineFactoryProgram.runningMachines(initial, setOf(control)) shouldBe setOf(crusher)
             val started = MineExpeditionEngine.completeTarget(initial, 2, 3_000).state
-            val plan = MineExpeditionGenerator.plan(MineExpeditionKind.DEAD_FACTORY, 73)
+            val plan = MineExpeditionGenerator.plan(MineExpeditionKind.DEAD_FACTORY, 73, geometryVersion = 1)
             MineFactoryProgram.targets(plan, started).none { it.id == control } shouldBe true
             val restored = Gson().fromJson(Gson().toJson(started), MineExpeditionState::class.java)
             MineFactoryProgram.runningMachines(restored, emptySet()) shouldBe setOf(crusher)
@@ -46,29 +46,17 @@ class MineFactoryProgramTest : FunSpec({
         MineFactoryProgram.runningMachines(state.copy(stage = MineExpeditionStage.ARK_FUEL), setOf("control_crusher_left")) shouldBe emptySet()
     }
 
-    test("connected line variants share the left machine pair and keep water checkpoints ordered") {
-        val base = MineExpeditionGenerator.plan(MineExpeditionKind.DEAD_FACTORY, 73)
-        val plan = base.copy(stations = base.stations + connectedStations())
+    test("connected variants start only the production crusher from its own console") {
+        val plan = MineExpeditionGenerator.plan(MineExpeditionKind.DEAD_FACTORY, 73)
         for (program in 0..2) {
-            var state = MineExpeditionState(placement, MineExpeditionStage.FACTORY_WATER, factoryProgram = program)
-            MineFactoryProgram.targets(plan, state).map { it.id } shouldBe listOf(
-                "repair_supply_$program", "crusher_repair",
-            )
+            val state = MineExpeditionState(placement, MineExpeditionStage.FACTORY_WATER,
+                factoryProgram = program, factoryExperiments = MineFactoryExperimentPlan())
+            MineFactoryProgram.targets(plan, state).single().id shouldBe "control_crusher_left"
             MineFactoryProgram.runningMachines(state, emptySet(), plan) shouldBe emptySet()
-
-            state = state.copy(completed = setOf(0))
-            MineFactoryProgram.targets(plan, state).single().id shouldBe "water_valve_1"
-            MineFactoryProgram.runningMachines(state, emptySet(), plan) shouldBe emptySet()
-
-            state = state.copy(completed = setOf(0, 1))
-            MineFactoryProgram.targets(plan, state).single().id shouldBe "generator_flywheel"
-            MineFactoryProgram.runningMachines(state, emptySet(), plan) shouldBe setOf("decor_pump_left")
-            MineFactoryProgram.runningMachines(state, setOf("control_crusher_left", "generator_flywheel"), plan) shouldBe
-                setOf("decor_pump_left")
-
-            state = state.copy(stage = MineExpeditionStage.FACTORY_COAL, completed = emptySet())
-            MineFactoryProgram.runningMachines(state, emptySet(), plan) shouldBe
-                setOf("decor_pump_left", "decor_crusher_left")
+            MineFactoryProgram.runningMachines(state, setOf("control_crusher_left"), plan) shouldBe
+                setOf("decor_crusher_left")
+            MineFactoryProgram.runningMachines(state.copy(stage = MineExpeditionStage.FACTORY_COAL), emptySet(), plan) shouldBe
+                setOf("decor_crusher_left")
         }
     }
 

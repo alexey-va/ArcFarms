@@ -1,0 +1,2601 @@
+{
+  "title": "ArcFarms short mine shifts and completion rewards 2026-10-23",
+  "assumptions": [
+    "Scenarios are sensitivity assumptions, not measured gameplay cadence. low/base/high: 5/15/30 participating accounts across a day, 0.5/1/2 personal hours, average simultaneous work party 1/2/4.",
+    "Each account supplies 120/360/720 useful matching ore breaks per active hour. Effective group rates are 120/720/2880. Individual share is 100/50/25%; any positive share gets a full payout under existing rules.",
+    "Average quota over unchanged deterministic four-order rotation: 436 before, 54.5 after. Incident and travel overhead: 10/6/4 minutes before, 8/4/2 after; both add the unchanged 1-minute cooldown. New shorter overhead includes grapple travel and simpler factory, not a measured speedup.",
+    "Expected cycles may be fractional over a day because this is a steady-state sensitivity, not a daily guaranteed floor. Daily operating occupancy is 2.5/7.5/15 mine-hours and remains within 24h for the single mine.",
+    "Mine has no personal daily cap or network weekly budget. Participant counts do not assert actual population. Other jobs/farm hours are not summed into this model.",
+    "Difficulty=100+min(quota,100)//2+10 for one event. Before 160%; after coal138/foundry142/deep135/crystal134. Tangible quantities floor individually. Mine has no Farm reward perk or MARKET multiplier.",
+    "After money base200, XP base300, one guaranteed exclusive weighted item bundle (50/30/15/5). No fixed items, command rewards or premium tokens. Grant identity and durable pending/claim protocol remain existing.",
+    "Disposable savings assume retaining 80% of direct completion coins after an unspecified 20% expense allowance. The allowance is not an observed sink and is not included as monetary burn. Item conversion is excluded from savings.",
+    "Current SELL remains an alternative; tracked Ores.yml rates are a separate nominal sensitivity, not a live quote. Observed current shop sales and live resource contracts confirm conversion exists. Future SELL-off sets only shop redemption to zero, never the base payout or eligible contract route.",
+    "Raw mine blocks still do not drop items or XP. External jobs/quests and any pre-existing triggers are unchanged and not assumed paid here. No buy-process-sell loop is introduced: rewards require managed ore actions and one event; inventory resources do not satisfy extraction quotas."
+  ],
+  "scenario_order": [
+    "low",
+    "base",
+    "high"
+  ],
+  "currencies": {
+    "vault": {
+      "before": {
+        "totals": {
+          "mint_per_player_day": [
+            "0E-9",
+            "0E-9",
+            "0E-9"
+          ],
+          "burn_per_player_day": [
+            "0",
+            "0",
+            "0"
+          ],
+          "network_weekly_mint": [
+            "0E-9",
+            "0E-9",
+            "0E-9"
+          ],
+          "network_weekly_burn": [
+            "0",
+            "0",
+            "0"
+          ],
+          "network_weekly_net": [
+            "0E-9",
+            "0E-9",
+            "0E-9"
+          ],
+          "player_daily_potential_net": [
+            "0E-9",
+            "0E-9",
+            "0E-9"
+          ]
+        },
+        "by_kind": {
+          "burn": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          },
+          "escrow": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          },
+          "item": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          },
+          "liability": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          },
+          "mint": {
+            "player_daily": [
+              "0E-9",
+              "0E-9",
+              "0E-9"
+            ],
+            "network_weekly": [
+              "0E-9",
+              "0E-9",
+              "0E-9"
+            ]
+          },
+          "refund": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          },
+          "transfer": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          }
+        },
+        "flows": [
+          {
+            "id": "mine_completion",
+            "kind": "mint",
+            "player_daily_potential": [
+              "0E-9",
+              "0E-9",
+              "0E-9"
+            ],
+            "network_weekly_after_cap": [
+              "0E-9",
+              "0E-9",
+              "0E-9"
+            ],
+            "basis": "Each positive contributor gets the full grant. Four orders rotate equally in the long run; mean of actual scaled grants, not unscaled config."
+          }
+        ]
+      },
+      "after": {
+        "totals": {
+          "mint_per_player_day": [
+            "227.1724138215",
+            "1726.1135371215",
+            "7965.3400504290"
+          ],
+          "burn_per_player_day": [
+            "0",
+            "0",
+            "0"
+          ],
+          "network_weekly_mint": [
+            "7951.0344837525",
+            "181241.9213977575",
+            "1672721.4105900900"
+          ],
+          "network_weekly_burn": [
+            "0",
+            "0",
+            "0"
+          ],
+          "network_weekly_net": [
+            "7951.0344837525",
+            "181241.9213977575",
+            "1672721.4105900900"
+          ],
+          "player_daily_potential_net": [
+            "227.1724138215",
+            "1726.1135371215",
+            "7965.3400504290"
+          ]
+        },
+        "by_kind": {
+          "burn": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          },
+          "escrow": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          },
+          "item": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          },
+          "liability": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          },
+          "mint": {
+            "player_daily": [
+              "227.1724138215",
+              "1726.1135371215",
+              "7965.3400504290"
+            ],
+            "network_weekly": [
+              "7951.0344837525",
+              "181241.9213977575",
+              "1672721.4105900900"
+            ]
+          },
+          "refund": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          },
+          "transfer": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          }
+        },
+        "flows": [
+          {
+            "id": "mine_completion",
+            "kind": "mint",
+            "player_daily_potential": [
+              "227.1724138215",
+              "1726.1135371215",
+              "7965.3400504290"
+            ],
+            "network_weekly_after_cap": [
+              "7951.0344837525",
+              "181241.9213977575",
+              "1672721.4105900900"
+            ],
+            "basis": "Each positive contributor gets the full grant. Four orders rotate equally in the long run; mean of actual scaled grants, not unscaled config."
+          }
+        ]
+      },
+      "weekly_net_delta": [
+        "7951.0344837525",
+        "181241.9213977575",
+        "1672721.4105900900"
+      ]
+    },
+    "tokens": {
+      "before": {
+        "totals": {
+          "mint_per_player_day": [
+            "0",
+            "0",
+            "0"
+          ],
+          "burn_per_player_day": [
+            "0",
+            "0",
+            "0"
+          ],
+          "network_weekly_mint": [
+            "0",
+            "0",
+            "0"
+          ],
+          "network_weekly_burn": [
+            "0",
+            "0",
+            "0"
+          ],
+          "network_weekly_net": [
+            "0",
+            "0",
+            "0"
+          ],
+          "player_daily_potential_net": [
+            "0",
+            "0",
+            "0"
+          ]
+        },
+        "by_kind": {
+          "burn": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          },
+          "escrow": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          },
+          "item": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          },
+          "liability": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          },
+          "mint": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          },
+          "refund": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          },
+          "transfer": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          }
+        },
+        "flows": []
+      },
+      "after": {
+        "totals": {
+          "mint_per_player_day": [
+            "0",
+            "0",
+            "0"
+          ],
+          "burn_per_player_day": [
+            "0",
+            "0",
+            "0"
+          ],
+          "network_weekly_mint": [
+            "0",
+            "0",
+            "0"
+          ],
+          "network_weekly_burn": [
+            "0",
+            "0",
+            "0"
+          ],
+          "network_weekly_net": [
+            "0",
+            "0",
+            "0"
+          ],
+          "player_daily_potential_net": [
+            "0",
+            "0",
+            "0"
+          ]
+        },
+        "by_kind": {
+          "burn": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          },
+          "escrow": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          },
+          "item": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          },
+          "liability": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          },
+          "mint": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          },
+          "refund": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          },
+          "transfer": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          }
+        },
+        "flows": []
+      },
+      "weekly_net_delta": [
+        "0",
+        "0",
+        "0"
+      ]
+    },
+    "vanilla_xp": {
+      "before": {
+        "totals": {
+          "mint_per_player_day": [
+            "46.113537184",
+            "487.384615520",
+            "2999.289940768"
+          ],
+          "burn_per_player_day": [
+            "0",
+            "0",
+            "0"
+          ],
+          "network_weekly_mint": [
+            "1613.973801440",
+            "51175.384629600",
+            "629850.887561280"
+          ],
+          "network_weekly_burn": [
+            "0",
+            "0",
+            "0"
+          ],
+          "network_weekly_net": [
+            "1613.973801440",
+            "51175.384629600",
+            "629850.887561280"
+          ],
+          "player_daily_potential_net": [
+            "46.113537184",
+            "487.384615520",
+            "2999.289940768"
+          ]
+        },
+        "by_kind": {
+          "burn": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          },
+          "escrow": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          },
+          "item": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          },
+          "liability": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          },
+          "mint": {
+            "player_daily": [
+              "46.113537184",
+              "487.384615520",
+              "2999.289940768"
+            ],
+            "network_weekly": [
+              "1613.973801440",
+              "51175.384629600",
+              "629850.887561280"
+            ]
+          },
+          "refund": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          },
+          "transfer": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          }
+        },
+        "flows": [
+          {
+            "id": "mine_completion_xp",
+            "kind": "mint",
+            "player_daily_potential": [
+              "46.113537184",
+              "487.384615520",
+              "2999.289940768"
+            ],
+            "network_weekly_after_cap": [
+              "1613.973801440",
+              "51175.384629600",
+              "629850.887561280"
+            ],
+            "basis": "Vanilla XP points are separate from Vault and job XP; every new grant uses integer floor scaling."
+          }
+        ]
+      },
+      "after": {
+        "totals": {
+          "mint_per_player_day": [
+            "340.75862073225",
+            "2589.17030568225",
+            "11948.01007564350"
+          ],
+          "burn_per_player_day": [
+            "0",
+            "0",
+            "0"
+          ],
+          "network_weekly_mint": [
+            "11926.55172562875",
+            "271862.88209663625",
+            "2509082.11588513500"
+          ],
+          "network_weekly_burn": [
+            "0",
+            "0",
+            "0"
+          ],
+          "network_weekly_net": [
+            "11926.55172562875",
+            "271862.88209663625",
+            "2509082.11588513500"
+          ],
+          "player_daily_potential_net": [
+            "340.75862073225",
+            "2589.17030568225",
+            "11948.01007564350"
+          ]
+        },
+        "by_kind": {
+          "burn": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          },
+          "escrow": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          },
+          "item": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          },
+          "liability": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          },
+          "mint": {
+            "player_daily": [
+              "340.75862073225",
+              "2589.17030568225",
+              "11948.01007564350"
+            ],
+            "network_weekly": [
+              "11926.55172562875",
+              "271862.88209663625",
+              "2509082.11588513500"
+            ]
+          },
+          "refund": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          },
+          "transfer": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          }
+        },
+        "flows": [
+          {
+            "id": "mine_completion_xp",
+            "kind": "mint",
+            "player_daily_potential": [
+              "340.75862073225",
+              "2589.17030568225",
+              "11948.01007564350"
+            ],
+            "network_weekly_after_cap": [
+              "11926.55172562875",
+              "271862.88209663625",
+              "2509082.11588513500"
+            ],
+            "basis": "Vanilla XP points are separate from Vault and job XP; every new grant uses integer floor scaling."
+          }
+        ]
+      },
+      "weekly_net_delta": [
+        "10312.57792418875",
+        "220687.49746703625",
+        "1879231.22832385500"
+      ]
+    },
+    "item_coal": {
+      "before": {
+        "totals": {
+          "mint_per_player_day": [
+            "0",
+            "0",
+            "0"
+          ],
+          "burn_per_player_day": [
+            "0",
+            "0",
+            "0"
+          ],
+          "network_weekly_mint": [
+            "0",
+            "0",
+            "0"
+          ],
+          "network_weekly_burn": [
+            "0",
+            "0",
+            "0"
+          ],
+          "network_weekly_net": [
+            "0",
+            "0",
+            "0"
+          ],
+          "player_daily_potential_net": [
+            "0",
+            "0",
+            "0"
+          ]
+        },
+        "by_kind": {
+          "burn": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          },
+          "escrow": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          },
+          "item": {
+            "player_daily": [
+              "0E-9",
+              "0E-9",
+              "0E-9"
+            ],
+            "network_weekly": [
+              "0E-9",
+              "0E-9",
+              "0E-9"
+            ]
+          },
+          "liability": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          },
+          "mint": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          },
+          "refund": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          },
+          "transfer": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          }
+        },
+        "flows": [
+          {
+            "id": "mine_reward_coal",
+            "kind": "item",
+            "player_daily_potential": [
+              "0E-9",
+              "0E-9",
+              "0E-9"
+            ],
+            "network_weekly_after_cap": [
+              "0E-9",
+              "0E-9",
+              "0E-9"
+            ],
+            "basis": "Expected units of this material from one exclusive guaranteed weighted bundle; floor each item before weighting, then average the four order variants."
+          }
+        ]
+      },
+      "after": {
+        "totals": {
+          "mint_per_player_day": [
+            "0",
+            "0",
+            "0"
+          ],
+          "burn_per_player_day": [
+            "0",
+            "0",
+            "0"
+          ],
+          "network_weekly_mint": [
+            "0",
+            "0",
+            "0"
+          ],
+          "network_weekly_burn": [
+            "0",
+            "0",
+            "0"
+          ],
+          "network_weekly_net": [
+            "0",
+            "0",
+            "0"
+          ],
+          "player_daily_potential_net": [
+            "0",
+            "0",
+            "0"
+          ]
+        },
+        "by_kind": {
+          "burn": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          },
+          "escrow": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          },
+          "item": {
+            "player_daily": [
+              "6.724137931875",
+              "51.091703056875",
+              "235.768261966250"
+            ],
+            "network_weekly": [
+              "235.344827615625",
+              "5364.628820971875",
+              "49511.335012912500"
+            ]
+          },
+          "liability": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          },
+          "mint": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          },
+          "refund": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          },
+          "transfer": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          }
+        },
+        "flows": [
+          {
+            "id": "mine_reward_coal",
+            "kind": "item",
+            "player_daily_potential": [
+              "6.724137931875",
+              "51.091703056875",
+              "235.768261966250"
+            ],
+            "network_weekly_after_cap": [
+              "235.344827615625",
+              "5364.628820971875",
+              "49511.335012912500"
+            ],
+            "basis": "Expected units of this material from one exclusive guaranteed weighted bundle; floor each item before weighting, then average the four order variants."
+          }
+        ]
+      },
+      "weekly_net_delta": [
+        "0",
+        "0",
+        "0"
+      ]
+    },
+    "item_diamond": {
+      "before": {
+        "totals": {
+          "mint_per_player_day": [
+            "0",
+            "0",
+            "0"
+          ],
+          "burn_per_player_day": [
+            "0",
+            "0",
+            "0"
+          ],
+          "network_weekly_mint": [
+            "0",
+            "0",
+            "0"
+          ],
+          "network_weekly_burn": [
+            "0",
+            "0",
+            "0"
+          ],
+          "network_weekly_net": [
+            "0",
+            "0",
+            "0"
+          ],
+          "player_daily_potential_net": [
+            "0",
+            "0",
+            "0"
+          ]
+        },
+        "by_kind": {
+          "burn": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          },
+          "escrow": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          },
+          "item": {
+            "player_daily": [
+              "0E-9",
+              "0E-9",
+              "0E-9"
+            ],
+            "network_weekly": [
+              "0E-9",
+              "0E-9",
+              "0E-9"
+            ]
+          },
+          "liability": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          },
+          "mint": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          },
+          "refund": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          },
+          "transfer": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          }
+        },
+        "flows": [
+          {
+            "id": "mine_reward_diamond",
+            "kind": "item",
+            "player_daily_potential": [
+              "0E-9",
+              "0E-9",
+              "0E-9"
+            ],
+            "network_weekly_after_cap": [
+              "0E-9",
+              "0E-9",
+              "0E-9"
+            ],
+            "basis": "Expected units of this material from one exclusive guaranteed weighted bundle; floor each item before weighting, then average the four order variants."
+          }
+        ]
+      },
+      "after": {
+        "totals": {
+          "mint_per_player_day": [
+            "0",
+            "0",
+            "0"
+          ],
+          "burn_per_player_day": [
+            "0",
+            "0",
+            "0"
+          ],
+          "network_weekly_mint": [
+            "0",
+            "0",
+            "0"
+          ],
+          "network_weekly_burn": [
+            "0",
+            "0",
+            "0"
+          ],
+          "network_weekly_net": [
+            "0",
+            "0",
+            "0"
+          ],
+          "player_daily_potential_net": [
+            "0",
+            "0",
+            "0"
+          ]
+        },
+        "by_kind": {
+          "burn": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          },
+          "escrow": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          },
+          "item": {
+            "player_daily": [
+              "0.45517241385",
+              "3.45851528385",
+              "15.95969773310"
+            ],
+            "network_weekly": [
+              "15.93103448475",
+              "363.14410480425",
+              "3351.53652395100"
+            ]
+          },
+          "liability": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          },
+          "mint": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          },
+          "refund": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          },
+          "transfer": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          }
+        },
+        "flows": [
+          {
+            "id": "mine_reward_diamond",
+            "kind": "item",
+            "player_daily_potential": [
+              "0.45517241385",
+              "3.45851528385",
+              "15.95969773310"
+            ],
+            "network_weekly_after_cap": [
+              "15.93103448475",
+              "363.14410480425",
+              "3351.53652395100"
+            ],
+            "basis": "Expected units of this material from one exclusive guaranteed weighted bundle; floor each item before weighting, then average the four order variants."
+          }
+        ]
+      },
+      "weekly_net_delta": [
+        "0",
+        "0",
+        "0"
+      ]
+    },
+    "item_gold_ingot": {
+      "before": {
+        "totals": {
+          "mint_per_player_day": [
+            "0",
+            "0",
+            "0"
+          ],
+          "burn_per_player_day": [
+            "0",
+            "0",
+            "0"
+          ],
+          "network_weekly_mint": [
+            "0",
+            "0",
+            "0"
+          ],
+          "network_weekly_burn": [
+            "0",
+            "0",
+            "0"
+          ],
+          "network_weekly_net": [
+            "0",
+            "0",
+            "0"
+          ],
+          "player_daily_potential_net": [
+            "0",
+            "0",
+            "0"
+          ]
+        },
+        "by_kind": {
+          "burn": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          },
+          "escrow": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          },
+          "item": {
+            "player_daily": [
+              "0E-9",
+              "0E-9",
+              "0E-9"
+            ],
+            "network_weekly": [
+              "0E-9",
+              "0E-9",
+              "0E-9"
+            ]
+          },
+          "liability": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          },
+          "mint": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          },
+          "refund": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          },
+          "transfer": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          }
+        },
+        "flows": [
+          {
+            "id": "mine_reward_gold_ingot",
+            "kind": "item",
+            "player_daily_potential": [
+              "0E-9",
+              "0E-9",
+              "0E-9"
+            ],
+            "network_weekly_after_cap": [
+              "0E-9",
+              "0E-9",
+              "0E-9"
+            ],
+            "basis": "Expected units of this material from one exclusive guaranteed weighted bundle; floor each item before weighting, then average the four order variants."
+          }
+        ]
+      },
+      "after": {
+        "totals": {
+          "mint_per_player_day": [
+            "0",
+            "0",
+            "0"
+          ],
+          "burn_per_player_day": [
+            "0",
+            "0",
+            "0"
+          ],
+          "network_weekly_mint": [
+            "0",
+            "0",
+            "0"
+          ],
+          "network_weekly_burn": [
+            "0",
+            "0",
+            "0"
+          ],
+          "network_weekly_net": [
+            "0",
+            "0",
+            "0"
+          ],
+          "player_daily_potential_net": [
+            "0",
+            "0",
+            "0"
+          ]
+        },
+        "by_kind": {
+          "burn": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          },
+          "escrow": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          },
+          "item": {
+            "player_daily": [
+              "1.5724137933",
+              "11.9475982533",
+              "55.1335012598"
+            ],
+            "network_weekly": [
+              "55.0344827655",
+              "1254.4978165965",
+              "11578.0352645580"
+            ]
+          },
+          "liability": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          },
+          "mint": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          },
+          "refund": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          },
+          "transfer": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          }
+        },
+        "flows": [
+          {
+            "id": "mine_reward_gold_ingot",
+            "kind": "item",
+            "player_daily_potential": [
+              "1.5724137933",
+              "11.9475982533",
+              "55.1335012598"
+            ],
+            "network_weekly_after_cap": [
+              "55.0344827655",
+              "1254.4978165965",
+              "11578.0352645580"
+            ],
+            "basis": "Expected units of this material from one exclusive guaranteed weighted bundle; floor each item before weighting, then average the four order variants."
+          }
+        ]
+      },
+      "weekly_net_delta": [
+        "0",
+        "0",
+        "0"
+      ]
+    },
+    "item_iron_ingot": {
+      "before": {
+        "totals": {
+          "mint_per_player_day": [
+            "0",
+            "0",
+            "0"
+          ],
+          "burn_per_player_day": [
+            "0",
+            "0",
+            "0"
+          ],
+          "network_weekly_mint": [
+            "0",
+            "0",
+            "0"
+          ],
+          "network_weekly_burn": [
+            "0",
+            "0",
+            "0"
+          ],
+          "network_weekly_net": [
+            "0",
+            "0",
+            "0"
+          ],
+          "player_daily_potential_net": [
+            "0",
+            "0",
+            "0"
+          ]
+        },
+        "by_kind": {
+          "burn": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          },
+          "escrow": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          },
+          "item": {
+            "player_daily": [
+              "0.786026202",
+              "8.307692310",
+              "51.124260354"
+            ],
+            "network_weekly": [
+              "27.510917070",
+              "872.307692550",
+              "10736.094674340"
+            ]
+          },
+          "liability": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          },
+          "mint": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          },
+          "refund": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          },
+          "transfer": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          }
+        },
+        "flows": [
+          {
+            "id": "mine_reward_iron_ingot",
+            "kind": "item",
+            "player_daily_potential": [
+              "0.786026202",
+              "8.307692310",
+              "51.124260354"
+            ],
+            "network_weekly_after_cap": [
+              "27.510917070",
+              "872.307692550",
+              "10736.094674340"
+            ],
+            "basis": "Expected units of this material from one exclusive guaranteed weighted bundle; floor each item before weighting, then average the four order variants."
+          }
+        ]
+      },
+      "after": {
+        "totals": {
+          "mint_per_player_day": [
+            "0",
+            "0",
+            "0"
+          ],
+          "burn_per_player_day": [
+            "0",
+            "0",
+            "0"
+          ],
+          "network_weekly_mint": [
+            "0",
+            "0",
+            "0"
+          ],
+          "network_weekly_burn": [
+            "0",
+            "0",
+            "0"
+          ],
+          "network_weekly_net": [
+            "0",
+            "0",
+            "0"
+          ],
+          "player_daily_potential_net": [
+            "0",
+            "0",
+            "0"
+          ]
+        },
+        "by_kind": {
+          "burn": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          },
+          "escrow": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          },
+          "item": {
+            "player_daily": [
+              "3.310344828",
+              "25.152838428",
+              "116.070528968"
+            ],
+            "network_weekly": [
+              "115.862068980",
+              "2641.048034940",
+              "24374.811083280"
+            ]
+          },
+          "liability": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          },
+          "mint": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          },
+          "refund": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          },
+          "transfer": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          }
+        },
+        "flows": [
+          {
+            "id": "mine_reward_iron_ingot",
+            "kind": "item",
+            "player_daily_potential": [
+              "3.310344828",
+              "25.152838428",
+              "116.070528968"
+            ],
+            "network_weekly_after_cap": [
+              "115.862068980",
+              "2641.048034940",
+              "24374.811083280"
+            ],
+            "basis": "Expected units of this material from one exclusive guaranteed weighted bundle; floor each item before weighting, then average the four order variants."
+          }
+        ]
+      },
+      "weekly_net_delta": [
+        "0",
+        "0",
+        "0"
+      ]
+    },
+    "item_lapis_lazuli": {
+      "before": {
+        "totals": {
+          "mint_per_player_day": [
+            "0",
+            "0",
+            "0"
+          ],
+          "burn_per_player_day": [
+            "0",
+            "0",
+            "0"
+          ],
+          "network_weekly_mint": [
+            "0",
+            "0",
+            "0"
+          ],
+          "network_weekly_burn": [
+            "0",
+            "0",
+            "0"
+          ],
+          "network_weekly_net": [
+            "0",
+            "0",
+            "0"
+          ],
+          "player_daily_potential_net": [
+            "0",
+            "0",
+            "0"
+          ]
+        },
+        "by_kind": {
+          "burn": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          },
+          "escrow": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          },
+          "item": {
+            "player_daily": [
+              "0E-9",
+              "0E-9",
+              "0E-9"
+            ],
+            "network_weekly": [
+              "0E-9",
+              "0E-9",
+              "0E-9"
+            ]
+          },
+          "liability": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          },
+          "mint": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          },
+          "refund": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          },
+          "transfer": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          }
+        },
+        "flows": [
+          {
+            "id": "mine_reward_lapis_lazuli",
+            "kind": "item",
+            "player_daily_potential": [
+              "0E-9",
+              "0E-9",
+              "0E-9"
+            ],
+            "network_weekly_after_cap": [
+              "0E-9",
+              "0E-9",
+              "0E-9"
+            ],
+            "basis": "Expected units of this material from one exclusive guaranteed weighted bundle; floor each item before weighting, then average the four order variants."
+          }
+        ]
+      },
+      "after": {
+        "totals": {
+          "mint_per_player_day": [
+            "0",
+            "0",
+            "0"
+          ],
+          "burn_per_player_day": [
+            "0",
+            "0",
+            "0"
+          ],
+          "network_weekly_mint": [
+            "0",
+            "0",
+            "0"
+          ],
+          "network_weekly_burn": [
+            "0",
+            "0",
+            "0"
+          ],
+          "network_weekly_net": [
+            "0",
+            "0",
+            "0"
+          ],
+          "player_daily_potential_net": [
+            "0",
+            "0",
+            "0"
+          ]
+        },
+        "by_kind": {
+          "burn": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          },
+          "escrow": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          },
+          "item": {
+            "player_daily": [
+              "1.303448276025",
+              "9.903930131025",
+              "45.702770781150"
+            ],
+            "network_weekly": [
+              "45.620689660875",
+              "1039.912663757625",
+              "9597.581864041500"
+            ]
+          },
+          "liability": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          },
+          "mint": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          },
+          "refund": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          },
+          "transfer": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          }
+        },
+        "flows": [
+          {
+            "id": "mine_reward_lapis_lazuli",
+            "kind": "item",
+            "player_daily_potential": [
+              "1.303448276025",
+              "9.903930131025",
+              "45.702770781150"
+            ],
+            "network_weekly_after_cap": [
+              "45.620689660875",
+              "1039.912663757625",
+              "9597.581864041500"
+            ],
+            "basis": "Expected units of this material from one exclusive guaranteed weighted bundle; floor each item before weighting, then average the four order variants."
+          }
+        ]
+      },
+      "weekly_net_delta": [
+        "0",
+        "0",
+        "0"
+      ]
+    },
+    "item_redstone": {
+      "before": {
+        "totals": {
+          "mint_per_player_day": [
+            "0",
+            "0",
+            "0"
+          ],
+          "burn_per_player_day": [
+            "0",
+            "0",
+            "0"
+          ],
+          "network_weekly_mint": [
+            "0",
+            "0",
+            "0"
+          ],
+          "network_weekly_burn": [
+            "0",
+            "0",
+            "0"
+          ],
+          "network_weekly_net": [
+            "0",
+            "0",
+            "0"
+          ],
+          "player_daily_potential_net": [
+            "0",
+            "0",
+            "0"
+          ]
+        },
+        "by_kind": {
+          "burn": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          },
+          "escrow": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          },
+          "item": {
+            "player_daily": [
+              "0E-9",
+              "0E-9",
+              "0E-9"
+            ],
+            "network_weekly": [
+              "0E-9",
+              "0E-9",
+              "0E-9"
+            ]
+          },
+          "liability": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          },
+          "mint": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          },
+          "refund": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          },
+          "transfer": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          }
+        },
+        "flows": [
+          {
+            "id": "mine_reward_redstone",
+            "kind": "item",
+            "player_daily_potential": [
+              "0E-9",
+              "0E-9",
+              "0E-9"
+            ],
+            "network_weekly_after_cap": [
+              "0E-9",
+              "0E-9",
+              "0E-9"
+            ],
+            "basis": "Expected units of this material from one exclusive guaranteed weighted bundle; floor each item before weighting, then average the four order variants."
+          }
+        ]
+      },
+      "after": {
+        "totals": {
+          "mint_per_player_day": [
+            "0",
+            "0",
+            "0"
+          ],
+          "burn_per_player_day": [
+            "0",
+            "0",
+            "0"
+          ],
+          "network_weekly_mint": [
+            "0",
+            "0",
+            "0"
+          ],
+          "network_weekly_burn": [
+            "0",
+            "0",
+            "0"
+          ],
+          "network_weekly_net": [
+            "0",
+            "0",
+            "0"
+          ],
+          "player_daily_potential_net": [
+            "0",
+            "0",
+            "0"
+          ]
+        },
+        "by_kind": {
+          "burn": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          },
+          "escrow": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          },
+          "item": {
+            "player_daily": [
+              "4.034482759125",
+              "30.655021834125",
+              "141.460957179750"
+            ],
+            "network_weekly": [
+              "141.206896569375",
+              "3218.777292583125",
+              "29706.801007747500"
+            ]
+          },
+          "liability": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          },
+          "mint": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          },
+          "refund": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          },
+          "transfer": {
+            "player_daily": [
+              "0",
+              "0",
+              "0"
+            ],
+            "network_weekly": [
+              "0",
+              "0",
+              "0"
+            ]
+          }
+        },
+        "flows": [
+          {
+            "id": "mine_reward_redstone",
+            "kind": "item",
+            "player_daily_potential": [
+              "4.034482759125",
+              "30.655021834125",
+              "141.460957179750"
+            ],
+            "network_weekly_after_cap": [
+              "141.206896569375",
+              "3218.777292583125",
+              "29706.801007747500"
+            ],
+            "basis": "Expected units of this material from one exclusive guaranteed weighted bundle; floor each item before weighting, then average the four order variants."
+          }
+        ]
+      },
+      "weekly_net_delta": [
+        "0",
+        "0",
+        "0"
+      ]
+    }
+  },
+  "prices": [
+    {
+      "id": "pig_L1",
+      "currency": "vault",
+      "before": {
+        "price": "25000",
+        "days_to_save": [
+          null,
+          null,
+          null
+        ]
+      },
+      "after": {
+        "price": "25000",
+        "days_to_save": [
+          "137.5607164371153711609296567",
+          "18.10425521146055356821548864",
+          "3.923247444824142524590855213"
+        ]
+      }
+    },
+    {
+      "id": "pig_L1_to_L3",
+      "currency": "vault",
+      "before": {
+        "price": "205000",
+        "days_to_save": [
+          null,
+          null,
+          null
+        ]
+      },
+      "after": {
+        "price": "205000",
+        "days_to_save": [
+          "1127.997874784346043519623185",
+          "148.4548927339765392593670069",
+          "32.17062904755796870164501275"
+        ]
+      }
+    },
+    {
+      "id": "horse_L1",
+      "currency": "vault",
+      "before": {
+        "price": "50000",
+        "days_to_save": [
+          null,
+          null,
+          null
+        ]
+      },
+      "after": {
+        "price": "50000",
+        "days_to_save": [
+          "275.1214328742307423218593134",
+          "36.20851042292110713643097729",
+          "7.846494889648285049181710426"
+        ]
+      }
+    },
+    {
+      "id": "horse_L1_to_L3",
+      "currency": "vault",
+      "before": {
+        "price": "420000",
+        "days_to_save": [
+          null,
+          null,
+          null
+        ]
+      },
+      "after": {
+        "price": "420000",
+        "days_to_save": [
+          "2311.020036143538235503618232",
+          "304.1514875525372999460202092",
+          "65.91055707304559441312636758"
+        ]
+      }
+    }
+  ]
+}

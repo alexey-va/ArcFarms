@@ -93,7 +93,7 @@ internal class MineExpeditionActions(private val plugin: Plugin, private val loc
                 ?: Component.text(pourLabel(scope,now))
         }
         valves.values.filter { it.scope == scope && it.lastPlayer == player.uniqueId }.maxByOrNull { it.nextClickAt }?.let {
-            return text(if (it.objective == "generator_flywheel") "generator-cranking" else "valve-progress", player, mapOf("count" to it.clicks, "total" to VALVE_CLICKS))
+            return text("valve-progress", player, mapOf("count" to it.clicks, "total" to VALVE_CLICKS))
         }
         heat[scope]?.takeIf { it.owner == null || it.owner == player.uniqueId }?.let { session ->
             return heatText(player, session.state)
@@ -116,10 +116,6 @@ internal class MineExpeditionActions(private val plugin: Plugin, private val loc
         // The connected line intentionally exposes one numbered checkpoint at
         // a time.  Keep the durable completed set authoritative even when a
         // stale marker or a direct interaction reaches this owner.
-        if (!MineFactoryGeneratorCycle.ready(state, now)) {
-            player.sendActionBar(text("generator-warming", player, mapOf("percent" to (MineFactoryGeneratorCycle.progress(state, now) * 100).toInt())))
-            return
-        }
         if (!factoryTargetIsPermitted(scene, state, target)) return
         when (target.interaction) {
             MineExpeditionInteraction.POUR -> pour(scope,scene,state,player,target,now,complete)
@@ -164,16 +160,6 @@ internal class MineExpeditionActions(private val plugin: Plugin, private val loc
                 player.sendActionBar(text("turn", player))
             }
             MineExpeditionInteraction.OPERATE -> {
-                if (target.id == "generator_flywheel") {
-                    val center = scene.at(target.position)
-                    if (cargo.containsKey(player.uniqueId) || player.world !== center.world ||
-                        player.location.distanceSquared(center) > 25.0) return
-                    if (complete(MineFactoryGeneratorCycle.completeStart(state, now))) {
-                        if (sounds()) player.playSound(center, Sound.BLOCK_LEVER_CLICK, .7f, 1.0f)
-                        player.sendActionBar(text("generator-warming", player, mapOf("percent" to 0)))
-                    }
-                    return
-                }
                 if (state.stage == MineExpeditionStage.FACTORY_HEAT &&
                     MineFactoryProgram.usesConnectedCrusherLine(scene.plan)) {
                     operateFactoryHeat(scope, scene, state, player, target, now, complete)
@@ -512,23 +498,17 @@ internal class MineExpeditionActions(private val plugin: Plugin, private val loc
         valve.nextClickAt = now + 250
         valve.lastPlayer = player.uniqueId
         valve.clicks = (valve.clicks + 1).coerceAtMost(VALVE_CLICKS)
-        val generator = target.id == "generator_flywheel"
-        val at = center.clone().add(0.0, if (generator) 1.8 else 2.5, 0.0)
-        if (sounds()) center.world.playSound(at, if (generator) Sound.BLOCK_CHAIN_STEP else Sound.BLOCK_GRINDSTONE_USE,
-            if (generator) .22f else .35f, if (generator) .65f + valve.clicks * .025f else 1.05f + valve.clicks * .025f)
-        if (!generator && particles()) center.world.spawnParticle(Particle.CRIT, at, 3, .2, .15, .2, .015)
-        player.sendActionBar(text(if (generator) "generator-cranking" else "valve-progress", player,
-            mapOf("count" to valve.clicks, "total" to VALVE_CLICKS)))
-        if (valve.clicks == VALVE_CLICKS && complete(if (generator) MineFactoryGeneratorCycle.completeStart(state, now)
-                else MineExpeditionEngine.completeTarget(state, target.target, now))) {
+        val at = center.clone().add(0.0, 2.5, 0.0)
+        if (sounds()) center.world.playSound(at, Sound.BLOCK_GRINDSTONE_USE, .35f, 1.05f + valve.clicks * .025f)
+        if (particles()) center.world.spawnParticle(Particle.CRIT, at, 3, .2, .15, .2, .015)
+        player.sendActionBar(text("valve-progress", player, mapOf("count" to valve.clicks, "total" to VALVE_CLICKS)))
+        if (valve.clicks == VALVE_CLICKS && complete(MineExpeditionEngine.completeTarget(state, target.target, now))) {
             valves.remove(key)
-            if (generator) player.sendActionBar(text("generator-warming", player, mapOf("percent" to 0)))
-            else {
-                if (sounds()) center.world.playSound(at, Sound.BLOCK_CHAIN_PLACE, .7f, 1.35f)
-                if (particles()) center.world.spawnParticle(Particle.HAPPY_VILLAGER, at, 6, .3, .2, .3, 0.0)
-            }
+            if (sounds()) center.world.playSound(at, Sound.BLOCK_CHAIN_PLACE, .7f, 1.35f)
+            if (particles()) center.world.spawnParticle(Particle.HAPPY_VILLAGER, at, 6, .3, .2, .3, 0.0)
         }
     }
+
     fun release(player: Player) = release(player.uniqueId)
     private fun release(id: UUID) {
         cargo.remove(id)?.let { held -> held.display?.let(renderer::remove);held.cart?.let(carts::remove) }
