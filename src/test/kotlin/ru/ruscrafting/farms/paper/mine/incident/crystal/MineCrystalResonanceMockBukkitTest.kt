@@ -91,4 +91,45 @@ class MineCrystalResonanceMockBukkitTest : FunSpec({
         runtime.state.objective!!.completed shouldBe 1
         graph.crystalResonance.hit(runtime, first.id, player, true) shouldBe false
     }
+
+    listOf(MineCrystalPhase.DRILLING to 5_000L, MineCrystalPhase.EXTRACTING to 6_200L).forEach { (phase, lastTick) ->
+        test("a recovered wall conflict during $phase resumes the order without credit or overwriting the edit") {
+            val world = paper.server.addSimpleWorld("world")
+            val player = paper.server.addPlayer("RecoveryConflict")
+            var now = 1_000L
+            val journal = ImmediateMineJournal()
+            val graph = testMineComponentGraph(paper.createSimplePlugin("CrystalConflict"), CuboidRegionGateway(),
+                immediateMinePort(), { now }, journal)
+            val settings = mineV2Settings()
+            graph.module.rebuild(listOf(settings), mapOf(settings.id to MineShiftState(engineVersion = 2,
+                phase = MinePhase.MINING, sequence = 1, orderId = "ore_run")), 5_000L)
+            val runtime = graph.registry.byId(settings.id)!!
+            installCrystalTestScene(graph, runtime)
+            graph.crystalResonance.start(runtime, 4, now) shouldBe true
+            runtime.state.objective!!.targets.forEach { target ->
+                player.teleport(Location(world, target.position.x + .5, target.position.y.toDouble(), target.position.z + .5))
+                graph.crystalResonance.hit(runtime, target.id, player, true) shouldBe true
+            }
+            val cuts = runtime.state.incident!!.crystal!!.cuts
+            for (time in 2_400L..lastTick step 200L) {
+                now = time
+                graph.crystalResonance.tick(runtime, emptyList(), now)
+            }
+            runtime.state.incident!!.crystal!!.phase shouldBe phase
+            journal.records().size shouldBe cuts.size
+            val edited = cuts.first().position
+            world.getBlockAt(edited.x, edited.y, edited.z).type = Material.GRANITE
+            graph.crystalResonance.cleanupAll()
+            now = 8_500L
+            graph.crystalResonance.tick(runtime, emptyList(), now)
+            runtime.state.phase shouldBe MinePhase.MINING
+            runtime.state.incident shouldBe null
+            runtime.state.mined shouldBe 0
+            player.teleport(Location(world, 0.5, 64.0, 0.5))
+            graph.recovery.processDue(now + 20_000L)
+            world.getBlockAt(edited.x, edited.y, edited.z).type shouldBe Material.GRANITE
+            cuts.drop(1).all { world.getBlockAt(it.position.x, it.position.y, it.position.z).type.name == it.material } shouldBe true
+            journal.records().isEmpty() shouldBe true
+        }
+    }
 })

@@ -40,6 +40,7 @@ import ru.ruscrafting.farms.paper.mine.index.MineAnchorRole
 import ru.ruscrafting.farms.paper.mine.index.MineBlockIndex
 import ru.ruscrafting.farms.paper.mine.recovery.MineBlockRecoveryController
 import ru.ruscrafting.farms.paper.mine.recovery.MineIncidentBlockJournal
+import ru.ruscrafting.farms.paper.mine.recovery.MineTemporaryEnsureResult
 import ru.ruscrafting.farms.paper.worksite.WorksiteStatePort
 import java.util.logging.Level
 
@@ -153,7 +154,9 @@ internal class MineCrystalResonanceIncident(
             MineCrystalPhase.CHARGING -> Unit
             MineCrystalPhase.CONVERGING -> if (age >= MineCrystalGeometry.CONVERGE_MILLIS) phase(runtime, MineCrystalPhase.DRILLING, now)
             MineCrystalPhase.DRILLING -> drill(runtime, crystal, session, age, now)
-            MineCrystalPhase.EXTRACTING -> if (age >= MineCrystalGeometry.EXTRACT_MILLIS) finish(runtime, participants)
+            MineCrystalPhase.EXTRACTING -> if (age >= MineCrystalGeometry.EXTRACT_MILLIS && ensureBore(runtime, crystal)) {
+                finish(runtime, participants)
+            }
         }
         updateVisuals(runtime, participants, now)
     }
@@ -163,7 +166,7 @@ internal class MineCrystalResonanceIncident(
         val cutPositions = journal.positions(runtime, INCIDENT_ID).toSet()
         val next = crystal.cuts.indexOfFirst { it.position !in cutPositions }
         if (next == -1) {
-            if (crystal.cuts.any { !journal.ensureTemporary(it.position, Material.AIR) }) return
+            if (!ensureBore(runtime, crystal)) return
             if (age >= MineCrystalGeometry.DRILL_MILLIS) phase(runtime, MineCrystalPhase.EXTRACTING, now)
             return
         }
@@ -191,6 +194,15 @@ internal class MineCrystalResonanceIncident(
                 }
             }
         }
+    }
+
+    private fun ensureBore(runtime: MineRuntime, crystal: MineCrystalState): Boolean {
+        val results = crystal.cuts.map { journal.ensureTemporaryResult(it.position, Material.AIR) }
+        if (MineTemporaryEnsureResult.REJECTED in results) {
+            abort(runtime, "wall_recovery_conflict")
+            return false
+        }
+        return MineTemporaryEnsureResult.PENDING !in results
     }
 
     private fun finish(runtime: MineRuntime, participants: Collection<Player>) {
