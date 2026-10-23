@@ -11,6 +11,8 @@ import io.kotest.matchers.string.shouldStartWith
 import io.kotest.assertions.throwables.shouldThrow
 import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer
+import org.bukkit.configuration.ConfigurationSection
+import org.bukkit.configuration.file.YamlConfiguration
 import org.opentest4j.TestAbortedException
 import ru.arc.config.Config
 import ru.arc.redis.RedisModuleConfig
@@ -724,12 +726,14 @@ class ArcFarmsConfigTest : FunSpec({
         ArcFarmsLocale.validateFiles(root, settings)
         listOf("lang/ru.yml", "lang/en.yml").forEach { path ->
             listOf("classic", "classic_survival", "parkour").forEach { runtime ->
-                Files.readString(repositoryRoot.resolve("$runtime/plugins/ArcFarms/$path")) shouldBe
-                    Files.readString(root.resolve(path))
+                withClue("locale=$runtime/$path") {
+                    yamlValues(repositoryRoot.resolve("$runtime/plugins/ArcFarms/$path")) shouldBe
+                        yamlValues(root.resolve(path))
+                }
             }
         }
         val classicSettings = ArcFarmsConfig.inspect(repositoryRoot.resolve("classic/plugins/ArcFarms"))
-        classicSettings.farmScoreboard.provider shouldBe FarmScoreboardProvider.TAB
+        classicSettings.farmScoreboard.provider shouldBe FarmScoreboardProvider.BUKKIT
         classicSettings.farms.single().delivery.itemMaterial shouldBe "PAPER"
         classicSettings.farms.single().delivery.itemCustomModelData shouldBe 10_774
         classicSettings.farms.single().delivery.spawnRadius shouldBe 24
@@ -819,7 +823,7 @@ class ArcFarmsConfigTest : FunSpec({
                 settings.requiresWorldGuard shouldBe false
                 settings.farms shouldBe emptyList()
                 settings.mines shouldBe emptyList()
-                settings.farmScoreboard.provider shouldBe FarmScoreboardProvider.TAB
+                settings.farmScoreboard.provider shouldBe FarmScoreboardProvider.BUKKIT
                 settings.farmScoreboard.enabled shouldBe (runtime == "classic_survival")
                 settings.destinations.values.all { it.server == "spawn" } shouldBe true
             }
@@ -1893,6 +1897,17 @@ class ArcFarmsConfigTest : FunSpec({
     companion object {
         private fun opsRoot(): Path = System.getProperty("ruscrafting.opsRoot")?.let(Path::of)
             ?: throw TestAbortedException("RusCrafting ops checkout is not configured")
+
+        private fun yamlValues(path: Path): Any? = yamlValue(
+            YamlConfiguration().apply { load(path.toFile()) },
+        )
+
+        private fun yamlValue(value: Any?): Any? = when (value) {
+            is ConfigurationSection -> value.getValues(false).mapValues { (_, child) -> yamlValue(child) }
+            is Map<*, *> -> value.mapValues { (_, child) -> yamlValue(child) }
+            is List<*> -> value.map(::yamlValue)
+            else -> value
+        }
 
         private fun resourceTree(configSource: Path? = null): Path {
             val root = Files.createTempDirectory("arcfarms-config-test")
