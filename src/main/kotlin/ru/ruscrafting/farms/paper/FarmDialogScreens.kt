@@ -123,9 +123,14 @@ internal object FarmDialogScreens {
                 id = "farms.${session.menuId.value}.detail",
                 title = recolor(detail?.let { name(it.entry.item) } ?: text(session.player, "details"), detailTitleColor),
                 body = if (detail != null) {
-                    if (detail.entry.details.isNotEmpty()) listOf(DialogTables.body(nativeRows(detail.entry.details), frame = DialogTables.Frame.LEGENDARY))
-                    else listOf(PaperDialogBody(join(lore(detail.entry.item)), 468))
-                } else listOf(DialogTables.body(information.map { row -> nativeBody(name(row.entry.item)) to nativeBody(join(lore(row.entry.item))) })),
+                    val frame = when (detail.entry.category) {
+                        FarmMenuCategory.FOOD -> DialogTables.Frame.UNCOMMON
+                        FarmMenuCategory.PREMIUM_PERK -> DialogTables.Frame.EPIC
+                        else -> DialogTables.Frame.COMMON
+                    }
+                    if (detail.entry.details.isNotEmpty()) listOf(DialogTables.body(nativeRows(detail.entry.details), headers = null, frame = frame, width = 320, columns = DialogTables.Columns.AUTO))
+                    else listOf(DialogTables.framedBody(join(lore(detail.entry.item)), frame = frame, width = 400))
+                } else listOf(DialogTables.body(information.map { row -> nativeBody(name(row.entry.item)) to nativeBody(join(lore(row.entry.item))) }, headers = null, frame = DialogTables.Frame.COMMON, width = 400, columns = DialogTables.Columns.AUTO)),
                 buttons = buildList {
                     if (session.menuId == ArcFarmsMenuPlatform.FARM_PERKS && detail?.actionable == true) {
                         add(button("buy_perk", text(session.player, if (detail.entry.category == FarmMenuCategory.FOOD) "buy-food" else "buy-perk"), style = LabelStyle(SAVE)) {
@@ -141,17 +146,17 @@ internal object FarmDialogScreens {
         }
         val body = mutableListOf(PaperDialogBody(restyle(text(session.player, "intro.${session.menuId.value}")), 468))
         val farmShop = session.menuId == ArcFarmsMenuPlatform.FARM_PERKS
-        if (content.summary.isNotEmpty()) body += DialogTables.body(
-            nativeRows(content.summary),
-            frame = if (farmShop) DialogTables.Frame.LEGENDARY else DialogTables.Frame.EPIC,
+        if (content.summary.isNotEmpty()) body += DialogTables.filledBody(
+            rows = nativeRows(content.summary).map { (label, value) -> listOf(label.append(Component.text(": ", BODY)).append(value)) },
+            headers = null,
             width = if (farmShop) FARM_SHOP_TABLE_WIDTH else 320,
-            columns = if (farmShop) DialogTables.Columns.LABEL_WIDE else DialogTables.Columns.AUTO,
+            columnWeights = listOf(1),
         )
         val catalog = rows.mapNotNull { row ->
             row.entry.catalogValue?.let { recolor(name(row.entry.item), BODY) to it.color(TRADE).decoration(TextDecoration.ITALIC, false) }
         }
         if (catalog.isNotEmpty()) body += DialogTables.body(
-            catalog, frame = DialogTables.Frame.LEGENDARY,
+            catalog, headers = null, frame = DialogTables.Frame.LEGENDARY,
             width = FARM_SHOP_TABLE_WIDTH, columns = DialogTables.Columns.LABEL_WIDE,
         )
         val buttons = mutableListOf<PaperDialogButton>()
