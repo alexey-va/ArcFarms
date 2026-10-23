@@ -7,6 +7,7 @@ import io.kotest.matchers.ints.shouldBeGreaterThanOrEqual
 import io.kotest.matchers.doubles.plusOrMinus
 import io.kotest.matchers.shouldBe
 import io.mockk.every
+import io.mockk.verify
 import org.bukkit.Material
 import org.bukkit.NamespacedKey
 import org.bukkit.block.BlockFace
@@ -16,7 +17,6 @@ import org.bukkit.entity.Horse
 import org.bukkit.entity.Interaction
 import org.bukkit.entity.ItemDisplay
 import org.bukkit.entity.Mob
-import org.bukkit.entity.TextDisplay
 import org.bukkit.entity.Zombie
 import org.bukkit.attribute.Attribute
 import org.bukkit.event.Event
@@ -28,11 +28,13 @@ import org.bukkit.event.player.PlayerInteractEvent
 import org.bukkit.inventory.EquipmentSlot
 import org.bukkit.inventory.ItemStack
 import org.bukkit.persistence.PersistentDataType
+import ru.arc.paper.display.PacketTextDisplay
 import ru.ruscrafting.farms.domain.FarmIncidentType
 import ru.ruscrafting.farms.domain.FarmPhase
 import ru.ruscrafting.farms.domain.FarmPointPosition
 import ru.ruscrafting.farms.domain.FarmShiftState
 import ru.ruscrafting.farms.paper.fixtures.FarmIncidentScenarioFixture
+import ru.ruscrafting.farms.paper.fixtures.mockFarmPacketTextDisplay
 import ru.ruscrafting.farms.paper.fixtures.requiredMockBukkitScenario
 
 class FarmFoodDeliveryLifecycleMockBukkitIntegrationTest : FunSpec({
@@ -86,12 +88,18 @@ class FarmFoodDeliveryLifecycleMockBukkitIntegrationTest : FunSpec({
             var delivery = fixture.foodDelivery(runtime, route)
             val driver = fixture.paper.addPlayer("CaravanDriver")
             val gunner = fixture.paper.addPlayer("CaravanGunner")
+            val portalLabels = mutableListOf<PacketTextDisplay>()
+            every { fixture.displays.spawnText(any(), any()) } answers {
+                mockFarmPacketTextDisplay(firstArg()).also(portalLabels::add)
+            }
 
             delivery.ensure(runtime, 1_000L)
             runtime.state.incidentProgress shouldBe 1
             runtime.state.incidentRequired shouldBe route.size
             requireNotNull(runtime.state.specialIncident).routeName shouldBe "main"
-            fixture.world.entities.filter(delivery::owns) shouldHaveSize 9
+            // The portal label is a packet handle, separate from native scene entities.
+            fixture.world.entities.filter(delivery::owns) shouldHaveSize 8
+            portalLabels shouldHaveSize 1
             val routeRole = NamespacedKey(fixture.plugin, "farm_food_route_role")
             val cart = fixture.world.entities.filterIsInstance<ItemDisplay>().single { entity ->
                 entity.persistentDataContainer.get(routeRole, PersistentDataType.STRING) == "cart"
@@ -99,26 +107,32 @@ class FarmFoodDeliveryLifecycleMockBukkitIntegrationTest : FunSpec({
             cart.isGlowing shouldBe true
 
             delivery.cleanup("simulated_restart")
+            verify(exactly = 1) { portalLabels.single().remove() }
             runtime = fixture.persistAndReload(runtime)
             delivery = fixture.foodDelivery(runtime, route)
             delivery.ensure(runtime, 2_000L)
             val restartedIds = fixture.world.entities.filter(delivery::owns).mapTo(linkedSetOf()) { it.uniqueId }
-            restartedIds shouldHaveSize 9
+            restartedIds shouldHaveSize 8
             repeat(4) { delivery.ensure(runtime, 2_000L + it) }
             fixture.world.entities.filter(delivery::owns).mapTo(linkedSetOf()) { it.uniqueId } shouldBe restartedIds
+            portalLabels shouldHaveSize 2
 
             var horse = fixture.world.entities.filterIsInstance<Horse>().single(delivery::owns)
             val portal = fixture.world.entities.filterIsInstance<Interaction>().single { entity ->
                 entity.persistentDataContainer.get(routeRole, PersistentDataType.STRING) == "portal"
             }
-            val portalLabel = fixture.world.entities.filterIsInstance<TextDisplay>().single { entity ->
-                entity.persistentDataContainer.get(routeRole, PersistentDataType.STRING) == "portal_label"
-            }
             portal.location.x shouldBe (12.5 plusOrMinus 0.0001)
             portal.location.z shouldBe (12.5 plusOrMinus 0.0001)
             portal.interactionWidth shouldBe fixture.zone.routeDelivery.portalWidth
-            portalLabel.location.pitch shouldBe 0f
-            portalLabel.transformation.scale.x shouldBe fixture.zone.routeDelivery.portalLabelScale
+            val portalLabel = portalLabels.last()
+            verify(atLeast = 1) {
+                portalLabel.teleport(match {
+                    it.x == portal.location.x && it.z == portal.location.z &&
+                        it.y == portal.location.y + fixture.zone.routeDelivery.portalLabelHeight &&
+                        it.yaw == 0f && it.pitch == 0f
+                })
+                portalLabel.transformation = match { it.scale.x == fixture.zone.routeDelivery.portalLabelScale }
+            }
             val passerby = fixture.paper.addPlayer("PortalPasserby")
             passerby.teleport(portal.location)
             delivery.enterPortal(passerby, portal.location, listOf(runtime)) shouldBe true
@@ -298,6 +312,7 @@ class FarmFoodDeliveryLifecycleMockBukkitIntegrationTest : FunSpec({
 
             delivery.ensure(runtime, 13_004L)
             fixture.world.entities.none(delivery::owns) shouldBe true
+            portalLabels.forEach { label -> verify(exactly = 1) { label.remove() } }
             gunner.inventory.contents.filterNotNull().none(delivery::ownsServiceItem) shouldBe true
             fixture.transitions.count { it.result.accepted } shouldBeGreaterThanOrEqual 2
         } }

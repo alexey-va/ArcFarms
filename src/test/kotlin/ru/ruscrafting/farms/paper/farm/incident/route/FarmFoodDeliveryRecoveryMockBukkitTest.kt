@@ -16,8 +16,8 @@ import org.bukkit.Material
 import org.bukkit.NamespacedKey
 import org.bukkit.entity.Horse
 import org.bukkit.entity.Interaction
-import org.bukkit.entity.TextDisplay
 import org.bukkit.persistence.PersistentDataType
+import ru.arc.paper.display.PacketTextDisplay
 import ru.ruscrafting.farms.domain.FarmIncidentType
 import ru.ruscrafting.farms.domain.FarmPhase
 import ru.ruscrafting.farms.domain.FarmPointPosition
@@ -25,6 +25,7 @@ import ru.ruscrafting.farms.domain.FarmShiftState
 import ru.arc.core.TestTaskScheduler
 import ru.ruscrafting.farms.paper.RuntimeTaskSupervisor
 import ru.ruscrafting.farms.paper.fixtures.FarmIncidentScenarioFixture
+import ru.ruscrafting.farms.paper.fixtures.mockFarmPacketTextDisplay
 import ru.ruscrafting.farms.paper.fixtures.requiredMockBukkitScenario
 import ru.ruscrafting.farms.paper.platform.FarmRouteChunkLoader
 import java.util.concurrent.CompletableFuture
@@ -110,6 +111,10 @@ class FarmFoodDeliveryRecoveryMockBukkitTest : FunSpec({
             delivery = fixture.foodDelivery(runtime, route, chunkLoader)
             runtime.state.incidentProgress shouldBe persistedProgress
             player.resetPlayerTime()
+            val portalLabels = mutableListOf<PacketTextDisplay>()
+            every { fixture.displays.spawnText(any(), any()) } answers {
+                mockFarmPacketTextDisplay(firstArg()).also(portalLabels::add)
+            }
 
             // The missing checkpoint requests exactly once while portal/ambience
             // are restored immediately, without resetting persisted progress.
@@ -117,7 +122,8 @@ class FarmFoodDeliveryRecoveryMockBukkitTest : FunSpec({
             delivery.ensure(runtime, 2_001L)
             loadRequests shouldBe 1
             runtime.state.incidentProgress shouldBe persistedProgress
-            fixture.world.entities.filter(delivery::owns).shouldHaveSize(2)
+            fixture.world.entities.filter(delivery::owns).shouldHaveSize(1)
+            portalLabels shouldHaveSize 1
             fixture.world.time shouldBe runtime.settings.routeDelivery.playerTime
             player.isPlayerTimeRelative shouldBe true
 
@@ -145,15 +151,13 @@ class FarmFoodDeliveryRecoveryMockBukkitTest : FunSpec({
             runtime.state.incidentProgress shouldBe persistedProgress
 
             val role = NamespacedKey(fixture.plugin, "farm_food_route_role")
-            fixture.world.entities.filter(delivery::owns).shouldHaveSize(9)
+            fixture.world.entities.filter(delivery::owns).shouldHaveSize(8)
             val portal = fixture.world.entities.filterIsInstance<Interaction>().single { entity ->
                 entity.persistentDataContainer.get(role, PersistentDataType.STRING) == "portal"
             }
             portal.location.x shouldBe (12.5 plusOrMinus 0.0001)
             portal.location.z shouldBe (12.5 plusOrMinus 0.0001)
-            fixture.world.entities.filterIsInstance<TextDisplay>().count { entity ->
-                entity.persistentDataContainer.get(role, PersistentDataType.STRING) == "portal_label"
-            } shouldBe 1
+            portalLabels shouldHaveSize 1
             fixture.world.entities.filterIsInstance<Horse>().count(delivery::owns) shouldBe 1
 
             fixture.world.time = 6_000L
@@ -165,6 +169,7 @@ class FarmFoodDeliveryRecoveryMockBukkitTest : FunSpec({
             delivery.ensure(runtime, 2_001L)
             fixture.world.entities.filter(delivery::owns).mapTo(linkedSetOf()) { it.uniqueId } shouldBe ids
             delivery.cleanup("test_complete")
+            verify(exactly = 1) { portalLabels.single().remove() }
             retained.isEmpty() shouldBe true
         } }
     }
