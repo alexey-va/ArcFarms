@@ -7,9 +7,7 @@ import org.bukkit.Material
 import org.bukkit.NamespacedKey
 import org.bukkit.block.BlockFace
 import org.bukkit.entity.Interaction
-import org.bukkit.entity.ItemDisplay
 import org.bukkit.entity.Mob
-import org.bukkit.entity.TextDisplay
 import org.bukkit.entity.Player
 import org.bukkit.event.block.Action
 import org.bukkit.event.player.PlayerInteractEntityEvent
@@ -18,9 +16,16 @@ import org.bukkit.inventory.EquipmentSlot
 import org.bukkit.inventory.ItemStack
 import org.bukkit.persistence.PersistentDataType
 import org.bukkit.plugin.Plugin
+import org.bukkit.util.Transformation
+import org.joml.Quaternionf
+import org.joml.Vector3f
 import org.mockbukkit.mockbukkit.entity.PlayerMock
 import org.mockbukkit.mockbukkit.world.WorldMock
 import ru.arc.paper.testing.MockBukkitTestRuntime
+import ru.arc.paper.display.PacketBlockDisplay
+import ru.arc.paper.display.PacketItemDisplay
+import ru.arc.paper.display.PacketTextDisplay
+import ru.arc.paper.display.PaperPacketDisplays
 import ru.ruscrafting.farms.config.ArcFarmsConfig
 import ru.ruscrafting.farms.config.ArcFarmsLocale
 import ru.ruscrafting.farms.config.CuboidBounds
@@ -109,6 +114,26 @@ internal class FarmIncidentScenarioFixture private constructor(
     val raidRiderVisibilityEvents = mutableListOf<Triple<java.util.UUID, java.util.UUID, Boolean>>()
     val raidNavigationMoves = mutableListOf<Triple<java.util.UUID, Location, Double>>()
 
+    // Packet visuals are not Bukkit entities; keep their handles live so bounded
+    // scene creation can progress to the native interaction targets.
+    val displays = mockk<PaperPacketDisplays>(relaxed = true).apply {
+        every { spawnBlock(any(), any()) } answers {
+            val at = firstArg<Location>().clone()
+            mockk<PacketBlockDisplay>(relaxed = true) {
+                every { isValid } returns true
+                every { location } answers { at.clone() }
+            }
+        }
+        every { spawnItem(any(), any()) } answers {
+            val at = firstArg<Location>().clone()
+            mockk<PacketItemDisplay>(relaxed = true) {
+                every { isValid } returns true
+                every { location } answers { at.clone() }
+            }
+        }
+        every { spawnText(any(), any()) } answers { mockFarmPacketTextDisplay(firstArg()) }
+    }
+
     private val processingRoleKey = NamespacedKey(plugin, "farm_processing_role")
     private val processingIndexKey = NamespacedKey(plugin, "farm_processing_index")
     private val transitionSink = FarmTransitionSink { runtime, result, actor ->
@@ -156,7 +181,7 @@ internal class FarmIncidentScenarioFixture private constructor(
         transitions = transitionSink,
         blockPassability = MockBukkitFarmBlockPassability,
         textDisplays = MockBukkitFarmTextDisplays,
-        displays = io.mockk.mockk(relaxed = true),
+        displays = displays,
     )
 
     fun barnFire(): FarmBarnFireIncident = FarmBarnFireIncident(
@@ -291,7 +316,7 @@ internal class FarmIncidentScenarioFixture private constructor(
             nightShift = night,
             debrisVisuals = raidDebrisVisuals,
             random = random,
-            displays = io.mockk.mockk(relaxed = true),
+            displays = displays,
             viewerParticles = io.mockk.mockk(relaxed = true),
         )
         return controller
@@ -336,7 +361,7 @@ internal class FarmIncidentScenarioFixture private constructor(
             mobDespawns = MockBukkitFarmMobDespawns,
             vehiclePassengers = MockBukkitFarmVehiclePassengers,
             textDisplays = MockBukkitFarmTextDisplays,
-            displays = io.mockk.mockk(relaxed = true),
+            displays = displays,
             viewerParticles = io.mockk.mockk(relaxed = true),
         )
     }
@@ -382,20 +407,6 @@ internal class FarmIncidentScenarioFixture private constructor(
             findProcessingInteraction(role, index)?.let { return it }
         }
         error("Processing interaction $role/$index was not created")
-    }
-
-    fun processingDisplays(role: FarmProcessingSceneRole): List<ItemDisplay> =
-        world.entities.asSequence().filterIsInstance<ItemDisplay>().filter { entity ->
-            entity.persistentDataContainer.get(processingRoleKey, PersistentDataType.STRING) == role.name
-        }.toList()
-
-    fun processingTextDisplays(role: String): List<TextDisplay> =
-        world.entities.asSequence().filterIsInstance<TextDisplay>().filter { entity ->
-            entity.persistentDataContainer.get(processingRoleKey, PersistentDataType.STRING) == role
-        }.toList()
-
-    fun processingTextDisplay(index: Int): TextDisplay = processingTextDisplays(FarmProcessingSceneRole.LABEL.name).single { entity ->
-        entity.persistentDataContainer.get(processingIndexKey, PersistentDataType.INTEGER) == index
     }
 
     fun clickProcessing(
@@ -533,5 +544,14 @@ internal class FarmIncidentScenarioFixture private constructor(
             }
             return root
         }
+    }
+}
+
+internal fun mockFarmPacketTextDisplay(location: Location): PacketTextDisplay {
+    val at = location.clone()
+    return mockk(relaxed = true) {
+        every { isValid } returns true
+        every { this@mockk.location } answers { at.clone() }
+        every { transformation } answers { Transformation(Vector3f(), Quaternionf(), Vector3f(1f), Quaternionf()) }
     }
 }

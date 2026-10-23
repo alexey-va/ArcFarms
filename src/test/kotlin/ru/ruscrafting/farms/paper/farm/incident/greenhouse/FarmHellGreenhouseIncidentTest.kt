@@ -40,7 +40,7 @@ class FarmHellGreenhouseIncidentTest : FunSpec({
                 f.port, f.port, f.port, FarmIncidentBedProvider { setOf(FarmPlotPosition(f.world.name, 24, 64, 24)) },
                 FarmTransitionSink { target, result, _ -> target.state = result.state }, FarmBlockLedger(f.plugin),
                 MockBukkitFarmTextDisplays, rooms, f.port,
-                displays = io.mockk.mockk(relaxed = true),
+                displays = f.displays,
                 viewerParticles = io.mockk.mockk(relaxed = true),
             )
             val player = f.paper.addPlayer("GreenhouseExplorer")
@@ -108,7 +108,7 @@ class FarmHellGreenhouseIncidentTest : FunSpec({
             val owner = FarmHellGreenhouseIncident(f.plugin, { f.settings }, f.locale, f.port, f.port, f.port,
                 FarmIncidentBedProvider { setOf(FarmPlotPosition(f.world.name, 24, 64, 24)) }, FarmTransitionSink { target, result, _ -> target.state = result.state },
                 FarmBlockLedger(f.plugin), MockBukkitFarmTextDisplays, rooms, f.port,
-                displays = io.mockk.mockk(relaxed = true),
+                displays = f.displays,
                 viewerParticles = io.mockk.mockk(relaxed = true),
             )
             owner.initialize(runtime) shouldBe true

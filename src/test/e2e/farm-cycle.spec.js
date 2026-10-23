@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { test, expect, waitUntil } from '@drownek/plugwright';
+import { test, expect, waitUntil, waitForStable } from '@drownek/plugwright';
 
 async function state() {
   try {
@@ -34,8 +34,6 @@ async function command(server, player, commands) {
 
 test('ordinary farm work reaches mounted delivery, rewards once and survives rejoin', async ({ player, server, signal }) => {
   const playerId = player.bot.player.uuid;
-  // First common bakery contract, one crop, unchanged difficulty plan and base XP.
-  const rewardExperience = 161;
   await command(server, player, [
     'minecraft:gamerule randomTickSpeed 0',
     'minecraft:forceload add 96 -16 144 16',
@@ -120,9 +118,27 @@ test('ordinary farm work reaches mounted delivery, rewards once and survives rej
     player.bot.physicsEnabled = physicsEnabled;
     player.bot.clearControlStates();
   }
-  await waitUntil(() => player.bot.experience.points === rewardExperience, {
-    signal, timeout: 15000, message: 'Bakery contract must deliver exactly 161 XP',
-  });
+  // Difficulty/placement seeds may evolve independently of delivery. Compare the
+  // real player balance to this shift's durable entitlement, not an old seed's XP.
+  let rewardExperience;
+  try {
+    await waitUntil(async () => {
+      const log = await readFile(join(process.env.SERVER_DIR, 'logs/latest.log'), 'utf8');
+      const planned = log.split('\n').filter(line => line.includes(
+        `event=farm_reward_planned zone=communal_farm sequence=${started.sequence} player=${playerId} `,
+      ));
+      if (planned.length === 0) return false;
+      assert.equal(planned.length, 1, 'The shift must create one durable reward entitlement');
+      assert.match(planned[0], /\bpersisted=true\b/);
+      rewardExperience = Number(planned[0].match(/\bexperience=(\d+)\b/)?.[1]);
+      assert.ok(Number.isSafeInteger(rewardExperience) && rewardExperience > 0, 'The fixture must earn positive XP');
+      return player.bot.experience.points === rewardExperience;
+    }, { signal, timeout: 15000, message: 'Bakery contract must deliver its exact persisted XP entitlement' });
+  } catch (error) {
+    console.error('Farm reward mismatch:', { playerId, sequence: started.sequence,
+      expected: rewardExperience ?? 'no persisted reward observed', actual: player.bot.experience.points });
+    throw error;
+  }
   const completed = await state();
   assert.equal(completed.farms.communal_farm.outcome, 'COMPLETED');
   assert.equal(completed.stats[playerId].completedShifts.FARM, 1);
@@ -130,6 +146,16 @@ test('ordinary farm work reaches mounted delivery, rewards once and survives rej
   assert.deepEqual(completed.pendingFarmRewards, []);
   await player.rejoin();
   await command(server, player, [`minecraft:tellraw ${player.username} {"text":"farm-rejoined"}`]);
-  assert.equal(player.bot.experience.points, rewardExperience);
-  assert.equal((await state()).stats[playerId].completedShifts.FARM, 1);
+  // Join recovery is deferred by a tick. Observe the balance and durable claim
+  // across that recovery window instead of accepting the first equal XP packet.
+  await waitUntil(() => player.bot.experience.points === rewardExperience, { signal, timeout: 15000 });
+  await waitForStable(async () => {
+    const recovered = await state();
+    assert.equal(player.bot.experience.points, rewardExperience);
+    assert.equal(recovered.stats[playerId].completedShifts.FARM, 1);
+    assert.equal(recovered.claimedFarmRewardSequences[`communal_farm:${playerId}`], started.sequence);
+    assert.deepEqual(recovered.pendingFarmRewards, []);
+    return true;
+  }, { signal, duration: 2000, timeout: 2000,
+    message: 'Rejoin recovery must preserve XP and the completed claim without replay' });
 });

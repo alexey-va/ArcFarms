@@ -18,9 +18,11 @@ import org.bukkit.event.player.PlayerInteractEntityEvent
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer
 import ru.arc.config.Config
 import ru.arc.paper.testing.MockBukkitTestRuntime
+import ru.arc.paper.display.PaperPacketDisplays
 import ru.ruscrafting.farms.paper.fixtures.awaitFarmsReady
 import ru.ruscrafting.farms.paper.fixtures.awaitFarmsReload
 import ru.ruscrafting.farms.paper.fixtures.drainFarmsPlugin
+import ru.ruscrafting.farms.paper.fixtures.mockFarmPacketTextDisplay
 import ru.ruscrafting.farms.config.ArcFarmsLocale
 import ru.ruscrafting.farms.config.MessageKey
 import ru.ruscrafting.farms.domain.ArcFarmsState
@@ -62,6 +64,10 @@ class ArcFarmsReloadMockBukkitIntegrationTest : FunSpec({
             every { PaperFarmRouteChunkLoader.release(any(), any()) } just Runs
             mockkObject(PaperFarmTextDisplayRenderer)
             every { PaperFarmTextDisplayRenderer.render(any(), any(), any()) } just Runs
+            mockkConstructor(PaperPacketDisplays::class)
+            every { anyConstructed<PaperPacketDisplays>().spawnText(any(), any()) } answers {
+                mockFarmPacketTextDisplay(firstArg())
+            }
             paper.server.pluginManager.enablePlugin(plugin)
             paper.awaitFarmsReady(plugin)
 

@@ -10,6 +10,8 @@ import org.bukkit.configuration.file.YamlConfiguration
 import ru.arc.paper.testing.MockBukkitTestRuntime
 import ru.ruscrafting.farms.paper.ArcFarmsPlugin
 import ru.ruscrafting.farms.paper.installArcSidebarHost
+import ru.ruscrafting.farms.paper.fixtures.awaitFarmsReady
+import ru.ruscrafting.farms.paper.fixtures.drainFarmsPlugin
 import java.io.InputStreamReader
 import kotlin.io.path.createDirectories
 import kotlin.io.path.writeText
@@ -49,6 +51,7 @@ class MineLiftRuntimeManagerTest : FunSpec({
             corrupt.writeText("corrupt-west-journal")
 
             paper.server.pluginManager.enablePlugin(plugin)
+            paper.awaitFarmsReady(plugin)
             plugin.isEnabled shouldBe true
             val operator = paper.addPlayer("LiftOperator")
             operator.isOp = true
@@ -64,6 +67,7 @@ class MineLiftRuntimeManagerTest : FunSpec({
             Files.readString(corrupt) shouldBe "corrupt-west-journal"
             paper.server.pluginManager.disablePlugin(plugin)
         } finally {
+            paper.drainFarmsPlugin()
             paper.close()
         }
     }

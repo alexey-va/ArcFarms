@@ -2,7 +2,7 @@ package ru.ruscrafting.farms.hellgreenhouse
 
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.FunSpec
-import io.kotest.matchers.collections.shouldContain
+import io.kotest.matchers.collections.shouldNotContain
 import io.kotest.matchers.shouldBe
 import io.mockk.every
 import io.mockk.mockk
@@ -18,9 +18,9 @@ import ru.ruscrafting.farms.paper.ArcFarmsService
 import java.nio.file.Files
 import java.nio.file.Path
 
-/** Red contract tests for the HELL_GREENHOUSE config, admin and locale seam. */
+/** Legacy configuration and explicit admin access remain valid after random-pool retirement. */
 class HellGreenhouseContractTest : FunSpec({
-    test("bundled greenhouse defaults and incident pools are present") {
+    test("bundled greenhouse defaults stay readable without re-enabling the retired random incident") {
         val root = resourceRoot()
         val config = Config(root, "config.yml")
         config.intOrNull("farm-zones.communal_farm.special-incidents.hell-greenhouse.quota") shouldBe 4
@@ -30,7 +30,7 @@ class HellGreenhouseContractTest : FunSpec({
         config.intOrNull("farm-zones.communal_farm.special-incidents.hell-greenhouse.heat-per-harvest") shouldBe 10
         config.intOrNull("farm-zones.communal_farm.special-incidents.hell-greenhouse.evacuation-seconds") shouldBe 15
 
-        ArcFarmsConfig.inspect(root).farms.single().incidentTypes.map { it.name } shouldContain "HELL_GREENHOUSE"
+        ArcFarmsConfig.inspect(root).farms.single().incidentTypes.map { it.name } shouldNotContain "HELL_GREENHOUSE"
     }
 
     test("greenhouse config rejects quota outside 1..8") {

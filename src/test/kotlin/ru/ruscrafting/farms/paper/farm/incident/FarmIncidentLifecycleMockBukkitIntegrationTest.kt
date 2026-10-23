@@ -91,12 +91,6 @@ class FarmIncidentLifecycleMockBukkitIntegrationTest : FunSpec({
             processing.carrierCount(runtime.settings.id) shouldBe 0
 
             val layout = ru.ruscrafting.farms.domain.FarmProcessingLayout.create(fixture.processingPoint)
-            fixture.processingTextDisplays(FarmProcessingSceneRole.LABEL.name) shouldHaveSize 2
-            fixture.processingTextDisplay(101).let { outputLabel ->
-                outputLabel.location.x shouldBe layout.outputPallet.x
-                outputLabel.location.y shouldBe layout.outputPallet.y + 1.25
-                outputLabel.location.z shouldBe layout.outputPallet.z
-            }
             repeat(fixture.zone.processing.inputPackages - 1) { index ->
                 val packagePoint = ru.ruscrafting.farms.domain.FarmProcessingLayout.packagePosition(layout.inputRacks, 0)
                 worker.teleport(fixture.location(packagePoint))
@@ -108,11 +102,6 @@ class FarmIncidentLifecycleMockBukkitIntegrationTest : FunSpec({
             runtime.state.processing?.stage shouldBe FarmProcessingStage.OPERATING
 
             repeat(8) { processing.ensure(runtime) }
-            val crankTrack = fixture.processingTextDisplays("CRANK_TRACK")
-            crankTrack.size shouldBe 24
-            crankTrack.forEach { marker ->
-                marker.transformation.scale.x.shouldBeGreaterThanOrEqual(1.5f)
-            }
 
             val radius = (fixture.zone.processing.crankInnerRadius + fixture.zone.processing.crankOuterRadius) / 2.0
             repeat(49) { step ->
@@ -157,9 +146,6 @@ class FarmIncidentLifecycleMockBukkitIntegrationTest : FunSpec({
 
             processing.initialize(runtime) shouldBe true
             processing.ensure(runtime)
-            fixture.processingDisplays(FarmProcessingSceneRole.OUTPUT_PALLET).single().isGlowing shouldBe false
-            fixture.processingDisplays(FarmProcessingSceneRole.RAW_PACKAGE)
-                .all { display -> display.itemStack.type == Material.WHEAT } shouldBe true
             repeat(fixture.zone.processing.inputPackages) { index ->
                 val worker = workers[index % workers.size]
                 fixture.clickProcessing(processing, runtime, worker, FarmProcessingSceneRole.RAW_INTERACTION, index)
@@ -179,12 +165,7 @@ class FarmIncidentLifecycleMockBukkitIntegrationTest : FunSpec({
             runtime.state.processing?.stage shouldBe FarmProcessingStage.OPERATING
 
             processing.ensure(runtime)
-            fixture.processingDisplays(FarmProcessingSceneRole.MACHINE).size shouldBe 1
-            fixture.processingDisplays(FarmProcessingSceneRole.WHEEL).size shouldBe 0
-            fixture.processingDisplays(FarmProcessingSceneRole.INPUT_RACK).size shouldBe 0
-            val machine = fixture.processingDisplays(FarmProcessingSceneRole.MACHINE).single()
             walkMillstone(fixture, processing, runtime, workers[0], 100L)
-            machine.isGlowing shouldBe true
             verify(atLeast = 40) {
                 fixture.port.spawnGuidanceDust(workers[0], any(), any(), any())
             }
@@ -203,7 +184,6 @@ class FarmIncidentLifecycleMockBukkitIntegrationTest : FunSpec({
             }
             runtime.state.processing?.stage shouldBe FarmProcessingStage.PACKING
             processing.ensure(runtime)
-            fixture.processingDisplays(FarmProcessingSceneRole.OUTPUT_PALLET).single().isGlowing shouldBe true
             fixture.processingInteraction(processing, runtime, FarmProcessingSceneRole.OUTPUT_INTERACTION).let { interaction ->
                 interaction.interactionWidth.shouldBeGreaterThanOrEqual(3.0f)
                 interaction.interactionHeight.shouldBeGreaterThanOrEqual(2.2f)

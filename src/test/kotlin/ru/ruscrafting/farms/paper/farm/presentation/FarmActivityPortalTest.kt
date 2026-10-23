@@ -15,7 +15,7 @@ class FarmActivityPortalTest : FunSpec({
                 sequence = 903, orderId = "bakery_supply", incidentType = FarmIncidentType.FOOD_DELIVERY))
             val portals = FarmActivityPortal(fixture.plugin, fixture.locale, fixture.port,
                 fixture.port, fixture.port, MockBukkitFarmTextDisplays, "test_portal",
-                displays = io.mockk.mockk(relaxed = true),
+                displays = fixture.displays,
                 viewerParticles = io.mockk.mockk(relaxed = true),
             )
             val point = FarmPointPosition(fixture.world.name, 12.5, 65.0, 12.5)

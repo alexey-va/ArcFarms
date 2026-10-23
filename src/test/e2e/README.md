@@ -11,7 +11,7 @@ help route.
 The farm scenario performs preparation with a hoe, planting, mandatory weed
 care, harvesting, carrying a crate on foot, and mounted food delivery. It
 checks persisted phase transitions, consumed crops, one completion, the bakery
-contract's 161 experience reward, and no repeated reward after rejoining. The fixture
+contract's exact persisted experience entitlement, and no repeated reward after rejoining. The fixture
 uses the first common contract, one crop and a short route; growth is accelerated
 with a world command. Reward settings and difficulty scaling are unchanged.
 Its receiving point uses the normal saved-point override, so procedural care

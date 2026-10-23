@@ -29,7 +29,10 @@ class ArcFarmsCompletionTest : FunSpec({
             every { minePointKinds() } returns listOf("working_1", "working_2", "ore_input", "ore_crusher")
             every { worksiteAdmins } returns WorksiteAdminRegistry(listOf(mine))
         }
-        val sender = mockk<CommandSender> { every { hasPermission("arcfarms.admin") } returns true }
+        val sender = mockk<CommandSender> {
+            every { hasPermission("arcfarms.admin") } returns true
+            every { hasPermission("arcfarms.bypass") } returns false
+        }
         val command = mockk<Command>()
         val handler = ArcFarmsCommand(service, mockk<ArcFarmsLocale>(), mockk<ArcFarmsMenu>()) { java.util.concurrent.CompletableFuture.completedFuture(Unit) }
         val cases = listOf(
