@@ -117,8 +117,7 @@ internal class MineOreWorkshopController(
 
     /** Fixed packet machinery is visible between incidents; only current actions glow. */
     fun reconcile(runtime: MineRuntime, participants: Collection<Player> = emptyList(), now: Long = clock()) {
-        val points = points(runtime) ?: run { clearScene(runtime.settings.id); return }
-        val scene = ensureScene(runtime, points) ?: return
+        val scene = prepareScene(runtime) ?: return
         val working = activeWorking(runtime)
         val process = working?.let { process(runtime, it, now) }
         updateStationState(runtime, scene, working)
@@ -126,8 +125,12 @@ internal class MineOreWorkshopController(
     }
 
     fun tick(runtime: MineRuntime, participants: Collection<Player>, now: Long) {
-        reconcile(runtime, participants, now)
-        val working = activeWorking(runtime) ?: run { clearTransient(runtime.settings.id); return }
+        val working = activeWorking(runtime) ?: run {
+            reconcile(runtime, participants, now)
+            clearTransient(runtime.settings.id)
+            return
+        }
+        prepareScene(runtime)
         updateCarriers(runtime, working)
         val process = process(runtime, working, now)
         val elapsed = (now - process.lastTick).coerceAtLeast(0L)
@@ -501,6 +504,11 @@ internal class MineOreWorkshopController(
         scenes[runtime.settings.id]?.values?.firstNotNullOfOrNull { it.machine.controls[role] }
             ?: scenes[runtime.settings.id]?.get(role)?.machine?.interactionCenter
             ?: points(runtime)?.get(role)?.clone()?.add(0.0, .7, 0.0)
+
+    private fun prepareScene(runtime: MineRuntime): Map<String, StationEntities>? {
+        val points = points(runtime) ?: run { clearScene(runtime.settings.id); return null }
+        return ensureScene(runtime, points)
+    }
 
     private fun ensureScene(runtime: MineRuntime, points: Map<String, Location>): MutableMap<String, StationEntities>? {
         val zone = runtime.settings.id

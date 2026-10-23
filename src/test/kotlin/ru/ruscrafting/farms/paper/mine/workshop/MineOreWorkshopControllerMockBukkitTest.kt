@@ -7,6 +7,7 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.mockkConstructor
 import io.mockk.unmockkConstructor
+import io.mockk.verify
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer
 import org.bukkit.Location
 import org.bukkit.entity.Entity
@@ -76,6 +77,39 @@ class MineOreWorkshopControllerMockBukkitTest : FunSpec({
         workshopEntities(world) shouldHaveSize 0
         controller.reconcile(runtime, now = 1_002L)
         workshopInteractions(world) shouldHaveSize 9
+    }
+
+    test("each tick renders once while explicit reconcile and missing stations still refresh") {
+        val created = mutableListOf<MineWorkshopMachines.Machine>()
+        every { anyConstructed<MineWorkshopMachines>().create(any(), any()) } answers {
+            fixtureMachine(firstArg<String>(), secondArg<Location>()).also(created::add)
+        }
+        val world = paper.server.addSimpleWorld("workshop_render_cycle")
+        val plugin = paper.createSimplePlugin("MineOreWorkshopRenderCycleTest")
+        val runtime = activeRuntime(world)
+        val controller = controller(plugin, runtime)
+
+        controller.tick(runtime, emptyList(), 1_000L)
+        controller.tick(runtime, emptyList(), 1_050L)
+        controller.reconcile(runtime, now = 1_100L)
+
+        created shouldHaveSize 5
+        created.forEach { machine ->
+            verify(exactly = 3) { machine.renderProcess(any(), any()) }
+            verify(exactly = 3) { machine.caption(any(), any()) }
+            verify(exactly = 3) { machine.highlight(any(), any()) }
+        }
+
+        roleEntity(world, "ore").remove()
+        controller.tick(runtime, emptyList(), 1_150L)
+
+        created shouldHaveSize 6
+        workshopInteractions(world) shouldHaveSize 9
+        verify(exactly = 1) { created.last().renderProcess(any(), 1_150L) }
+
+        runtime.state = runtime.state.copy(phase = MinePhase.IDLE, incident = null)
+        controller.tick(runtime, emptyList(), 1_200L)
+        verify(exactly = 1) { created.last().renderProcess(any(), 1_200L) }
     }
 
     test("pickup is idempotent, feed is an explicit front-hopper click, and guidance names it") {
