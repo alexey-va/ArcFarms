@@ -577,6 +577,7 @@ class ArcFarmsStateRepository(dataRoot: Path) : AutoCloseable {
 
         private fun validateMine(mine: MineShiftState) {
             validateSequenceAndTimes(mine.sequence, mine.startedAt, mine.cooldownEndsAt)
+            validateMineCrystal(mine)
             require(mine.incident?.working == null || mine.incident.expedition == null) {
                 "Mine incident cannot carry both lateral-working and expedition state"
             }

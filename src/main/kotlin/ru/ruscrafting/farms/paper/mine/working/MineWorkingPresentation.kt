@@ -85,7 +85,7 @@ internal class MineWorkingPresentation(
                     if (entity is Interaction) interactions[entity.uniqueId] = runtime.settings.id to target
                 },
                 values = mapOf("floor" to Component.text(working.placement.floorId),
-                    "batch" to Component.text(working.batch + 1), "batches" to Component.text(MineWorkingEngine.BATCHES)),
+                    "batch" to Component.text(working.batch + 1), "batches" to Component.text(MineWorkingEngine.workshopBatchCount(runtime.state.incident?.required ?: 0))),
             ).orEmpty()
             current[target.id] = Marker(target, entities)
         }
@@ -143,7 +143,7 @@ internal class MineWorkingPresentation(
             if (readyToQuench) MineWorkingEngine.HEAT_WINDOW_MILLIS else 0L
         return locale?.renderPath("mine.working.$path", player, mapOf(
             "seconds" to Component.text(((deadline - now).coerceAtLeast(0) + 999) / 1000),
-            "batch" to Component.text(working.batch + 1), "batches" to Component.text(MineWorkingEngine.BATCHES),
+            "batch" to Component.text(working.batch + 1), "batches" to Component.text(MineWorkingEngine.workshopBatchCount(runtime.state.incident?.required ?: 0)),
             "floor" to Component.text(working.placement.floorId),
         ))
     }

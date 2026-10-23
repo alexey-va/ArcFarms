@@ -1,0 +1,654 @@
+{
+  "version": 1,
+  "title": "ArcFarms mine events and workshop throughput economy 2026-10-23",
+  "assumptions": [
+    "Comparison is current live ArcFarms .49 vs the proposed event-pool/workshop revision; it is not the earlier pre-.49 payout change.",
+    "Sensitivity only: active hours/player-day [0.25, 1, 2]; cycles/hour before [3, 6, 10], after [3.2, 6.5, 11]. Assumed completions/day are their products: before [0.75, 6, 20], after [0.8, 6.5, 22]. These are not telemetry or guarantees.",
+    "Participants [5, 10, 20] are active eligible contributors in the low/base/high network scenarios. The full mine-completion reward is granted to each positive contributor; no group splitting is assumed.",
+    "Four orders rotate equally over the long run. Their current .49 per-completion direct payouts average 274.5 Vault and 411.75 vanilla XP; same before and after. Bundle item EV is also unchanged per completion and uses integer-floor scaling before weighting.",
+    "Crystal Resonance adds at most 4 shared zone-order progress credits once when that incident resolves. It is not a player-inventory item or currency, and adds no Vault, tokens, vanilla XP, physical drops, SELL or contract redemption. Its frequency is not assumed.",
+    "Current live .49 config and active 11-type pool were verified by the parent; CRYSTAL_RESONANCE is force-only there. Candidate pool is 14 types (old 11 plus CRYSTAL_RESONANCE, FREIGHT_WINCH and DRAINAGE_PUMP), still one scheduled incident per cycle. No 1/14 frequency is inferred.",
+    "The workshop sensitivity is supplied as an assumption: an automatic batch takes 4s crush + 3s transfer + 6s heat + 5s pour = 18s; 3 batches are 54s and 2 are 36s. Existing accepted 18-credit work retains 3 batches; newly accepted 12-credit work uses 2.",
+    "Savings retain 80% of direct mine Vault as in the earlier assessment. This expense allowance is not measured and is not modeled as a burn.",
+    "Existing bundle SELL and contract amounts below are alternative all-units-converted sensitivities from the earlier assessment, not direct mine rewards. The same item cannot be sold through both routes; actual dynamic prices, acceptance, individual caps and available contract budget can reduce them."
+  ],
+  "participants": [
+    5,
+    10,
+    20
+  ],
+  "currencies": {
+    "vault": {
+      "minor_per_unit": 100,
+      "disposable_per_player_day": {
+        "before": [
+          "164.7",
+          "1317.6",
+          "4392"
+        ],
+        "after": [
+          "175.68",
+          "1427.4",
+          "4831.2"
+        ]
+      },
+      "flows": [
+        {
+          "id": "mine_completion_vault",
+          "kind": "mint",
+          "source": "src/main/resources/config.yml:mine-zones.old_shafts.rewards",
+          "basis": "Current .49 per-shift direct grant; four-order long-run mean, paid in full to each positive contributor. Throughput counts are sensitivity assumptions.",
+          "before": {
+            "enabled": true,
+            "amount_per_event": {
+              "value": "274.5",
+              "unit": "major"
+            },
+            "events_per_player_day": [
+              "0.75",
+              "6",
+              "20"
+            ]
+          },
+          "after": {
+            "enabled": true,
+            "amount_per_event": {
+              "value": "274.5",
+              "unit": "major"
+            },
+            "events_per_player_day": [
+              "0.8",
+              "6.5",
+              "22"
+            ]
+          }
+        }
+      ]
+    },
+    "tokens": {
+      "minor_per_unit": 1,
+      "flows": [
+        {
+          "id": "mine_completion_tokens",
+          "kind": "mint",
+          "source": "src/main/resources/config.yml:mine-zones.old_shafts.rewards",
+          "basis": "No direct token reward is configured in the current or proposed mine flow.",
+          "before": {
+            "enabled": true,
+            "amount_per_event": {
+              "value": "0",
+              "unit": "major"
+            },
+            "events_per_player_day": [
+              "0.75",
+              "6",
+              "20"
+            ]
+          },
+          "after": {
+            "enabled": true,
+            "amount_per_event": {
+              "value": "0",
+              "unit": "major"
+            },
+            "events_per_player_day": [
+              "0.8",
+              "6.5",
+              "22"
+            ]
+          }
+        }
+      ]
+    },
+    "vanilla_xp": {
+      "minor_per_unit": 1,
+      "flows": [
+        {
+          "id": "mine_completion_vanilla_xp",
+          "kind": "mint",
+          "source": "src/main/resources/config.yml:mine-zones.old_shafts.rewards",
+          "basis": "Current .49 vanilla XP grant, separate from Vault and job XP; four-order long-run mean.",
+          "before": {
+            "enabled": true,
+            "amount_per_event": {
+              "value": "411.75",
+              "unit": "major"
+            },
+            "events_per_player_day": [
+              "0.75",
+              "6",
+              "20"
+            ]
+          },
+          "after": {
+            "enabled": true,
+            "amount_per_event": {
+              "value": "411.75",
+              "unit": "major"
+            },
+            "events_per_player_day": [
+              "0.8",
+              "6.5",
+              "22"
+            ]
+          }
+        }
+      ]
+    },
+    "item_iron_ingot": {
+      "minor_per_unit": 1,
+      "flows": [
+        {
+          "id": "mine_bundle_iron_ingot",
+          "kind": "item",
+          "source": "src/main/resources/config.yml:mine-zones.old_shafts.rewards",
+          "basis": "Expected IRON_INGOT units from the existing exclusive weighted bundle; floor each order-scaled item before weighting, average four orders. Same before/after.",
+          "before": {
+            "enabled": true,
+            "amount_per_event": {
+              "value": "4",
+              "unit": "major"
+            },
+            "events_per_player_day": [
+              "0.75",
+              "6",
+              "20"
+            ]
+          },
+          "after": {
+            "enabled": true,
+            "amount_per_event": {
+              "value": "4",
+              "unit": "major"
+            },
+            "events_per_player_day": [
+              "0.8",
+              "6.5",
+              "22"
+            ]
+          }
+        }
+      ]
+    },
+    "item_coal": {
+      "minor_per_unit": 1,
+      "flows": [
+        {
+          "id": "mine_bundle_coal",
+          "kind": "item",
+          "source": "src/main/resources/config.yml:mine-zones.old_shafts.rewards",
+          "basis": "Expected COAL units from the existing exclusive weighted bundle; floor each order-scaled item before weighting, average four orders. Same before/after.",
+          "before": {
+            "enabled": true,
+            "amount_per_event": {
+              "value": "8.125",
+              "unit": "major"
+            },
+            "events_per_player_day": [
+              "0.75",
+              "6",
+              "20"
+            ]
+          },
+          "after": {
+            "enabled": true,
+            "amount_per_event": {
+              "value": "8.125",
+              "unit": "major"
+            },
+            "events_per_player_day": [
+              "0.8",
+              "6.5",
+              "22"
+            ]
+          }
+        }
+      ]
+    },
+    "item_gold_ingot": {
+      "minor_per_unit": 1,
+      "flows": [
+        {
+          "id": "mine_bundle_gold_ingot",
+          "kind": "item",
+          "source": "src/main/resources/config.yml:mine-zones.old_shafts.rewards",
+          "basis": "Expected GOLD_INGOT units from the existing exclusive weighted bundle; floor each order-scaled item before weighting, average four orders. Same before/after.",
+          "before": {
+            "enabled": true,
+            "amount_per_event": {
+              "value": "1.9",
+              "unit": "major"
+            },
+            "events_per_player_day": [
+              "0.75",
+              "6",
+              "20"
+            ]
+          },
+          "after": {
+            "enabled": true,
+            "amount_per_event": {
+              "value": "1.9",
+              "unit": "major"
+            },
+            "events_per_player_day": [
+              "0.8",
+              "6.5",
+              "22"
+            ]
+          }
+        }
+      ]
+    },
+    "item_redstone": {
+      "minor_per_unit": 1,
+      "flows": [
+        {
+          "id": "mine_bundle_redstone",
+          "kind": "item",
+          "source": "src/main/resources/config.yml:mine-zones.old_shafts.rewards",
+          "basis": "Expected REDSTONE units from the existing exclusive weighted bundle; floor each order-scaled item before weighting, average four orders. Same before/after.",
+          "before": {
+            "enabled": true,
+            "amount_per_event": {
+              "value": "4.875",
+              "unit": "major"
+            },
+            "events_per_player_day": [
+              "0.75",
+              "6",
+              "20"
+            ]
+          },
+          "after": {
+            "enabled": true,
+            "amount_per_event": {
+              "value": "4.875",
+              "unit": "major"
+            },
+            "events_per_player_day": [
+              "0.8",
+              "6.5",
+              "22"
+            ]
+          }
+        }
+      ]
+    },
+    "item_diamond": {
+      "minor_per_unit": 1,
+      "flows": [
+        {
+          "id": "mine_bundle_diamond",
+          "kind": "item",
+          "source": "src/main/resources/config.yml:mine-zones.old_shafts.rewards",
+          "basis": "Expected DIAMOND units from the existing exclusive weighted bundle; floor each order-scaled item before weighting, average four orders. Same before/after.",
+          "before": {
+            "enabled": true,
+            "amount_per_event": {
+              "value": "0.55",
+              "unit": "major"
+            },
+            "events_per_player_day": [
+              "0.75",
+              "6",
+              "20"
+            ]
+          },
+          "after": {
+            "enabled": true,
+            "amount_per_event": {
+              "value": "0.55",
+              "unit": "major"
+            },
+            "events_per_player_day": [
+              "0.8",
+              "6.5",
+              "22"
+            ]
+          }
+        }
+      ]
+    },
+    "item_lapis_lazuli": {
+      "minor_per_unit": 1,
+      "flows": [
+        {
+          "id": "mine_bundle_lapis_lazuli",
+          "kind": "item",
+          "source": "src/main/resources/config.yml:mine-zones.old_shafts.rewards",
+          "basis": "Expected LAPIS_LAZULI units from the existing exclusive weighted bundle; floor each order-scaled item before weighting, average four orders. Same before/after.",
+          "before": {
+            "enabled": true,
+            "amount_per_event": {
+              "value": "1.575",
+              "unit": "major"
+            },
+            "events_per_player_day": [
+              "0.75",
+              "6",
+              "20"
+            ]
+          },
+          "after": {
+            "enabled": true,
+            "amount_per_event": {
+              "value": "1.575",
+              "unit": "major"
+            },
+            "events_per_player_day": [
+              "0.8",
+              "6.5",
+              "22"
+            ]
+          }
+        }
+      ]
+    }
+  },
+  "prices": [
+    {
+      "id": "pig_L1",
+      "currency": "vault",
+      "before": {
+        "value": "25000",
+        "unit": "major"
+      },
+      "after": {
+        "value": "25000",
+        "unit": "major"
+      }
+    },
+    {
+      "id": "pig_L1_to_L3",
+      "currency": "vault",
+      "before": {
+        "value": "205000",
+        "unit": "major"
+      },
+      "after": {
+        "value": "205000",
+        "unit": "major"
+      }
+    },
+    {
+      "id": "horse_L1",
+      "currency": "vault",
+      "before": {
+        "value": "50000",
+        "unit": "major"
+      },
+      "after": {
+        "value": "50000",
+        "unit": "major"
+      }
+    },
+    {
+      "id": "horse_L1_to_L3",
+      "currency": "vault",
+      "before": {
+        "value": "420000",
+        "unit": "major"
+      },
+      "after": {
+        "value": "420000",
+        "unit": "major"
+      }
+    }
+  ],
+  "model": {
+    "comparison_scope": "Current live .49 -> proposed event/workshop revision; per-completion reward amounts and bundle contents unchanged.",
+    "hours_per_player_day": [
+      "0.25",
+      "1",
+      "2"
+    ],
+    "cycles_per_hour": {
+      "before": [
+        "3",
+        "6",
+        "10"
+      ],
+      "after": [
+        "3.2",
+        "6.5",
+        "11"
+      ]
+    },
+    "completions_per_player_day": {
+      "before": [
+        "0.75",
+        "6",
+        "20"
+      ],
+      "after": [
+        "0.8",
+        "6.5",
+        "22"
+      ]
+    },
+    "per_order_grant": [
+      {
+        "order": "coal_order",
+        "vault": "276",
+        "vanilla_xp": "414"
+      },
+      {
+        "order": "foundry_order",
+        "vault": "284",
+        "vanilla_xp": "426"
+      },
+      {
+        "order": "deep_alloy",
+        "vault": "270",
+        "vanilla_xp": "405"
+      },
+      {
+        "order": "crystal_order",
+        "vault": "268",
+        "vanilla_xp": "402"
+      }
+    ],
+    "bundle_item_expected_units_per_completion": {
+      "IRON_INGOT": "4",
+      "COAL": "8.125",
+      "GOLD_INGOT": "1.9",
+      "REDSTONE": "4.875",
+      "DIAMOND": "0.55",
+      "LAPIS_LAZULI": "1.575"
+    },
+    "bundle_item_flows": {
+      "IRON_INGOT": {
+        "before_per_grant": "4",
+        "after_per_grant": "4",
+        "unit": "one item of this material"
+      },
+      "COAL": {
+        "before_per_grant": "8.125",
+        "after_per_grant": "8.125",
+        "unit": "one item of this material"
+      },
+      "GOLD_INGOT": {
+        "before_per_grant": "1.9",
+        "after_per_grant": "1.9",
+        "unit": "one item of this material"
+      },
+      "REDSTONE": {
+        "before_per_grant": "4.875",
+        "after_per_grant": "4.875",
+        "unit": "one item of this material"
+      },
+      "DIAMOND": {
+        "before_per_grant": "0.55",
+        "after_per_grant": "0.55",
+        "unit": "one item of this material"
+      },
+      "LAPIS_LAZULI": {
+        "before_per_grant": "1.575",
+        "after_per_grant": "1.575",
+        "unit": "one item of this material"
+      }
+    },
+    "incident_pool": {
+      "live_count": 11,
+      "candidate_count": 14,
+      "new_types": [
+        "CRYSTAL_RESONANCE",
+        "FREIGHT_WINCH",
+        "DRAINAGE_PUMP"
+      ],
+      "scheduled_incidents_per_cycle": 1,
+      "frequency_model": null,
+      "crystal_current_direct_payout": {
+        "Vault": "0",
+        "tokens": "0",
+        "vanilla_xp": "0",
+        "player_items_or_drops": "0"
+      },
+      "crystal_candidate_effect": {
+        "shared_zone_order_progress_credits_max_per_resolved_incident": 4,
+        "player_inventory_item_grant": "0",
+        "direct_Vault": "0",
+        "tokens": "0",
+        "vanilla_xp": "0"
+      },
+      "progress_semantics": "The four credits advance the one shared mine order; they are not multiplied by contributor count and cannot be sold or submitted to contracts.",
+      "existing_types": [
+        "CREATURE_NEST",
+        "CAVE_IN",
+        "FLOODING",
+        "GAS_LEAK",
+        "TRACK_DAMAGE",
+        "TUNNEL_DRIVE",
+        "RAIL_EXTENSION",
+        "ORE_WORKSHOP",
+        "LAST_DESCENT",
+        "DRILLING_ARK",
+        "DEAD_FACTORY"
+      ],
+      "selection_source": "src/main/kotlin/ru/ruscrafting/farms/domain/MineShift.kt:124-141; deterministic sequence/order score, no configured equal weights."
+    },
+    "workshop": {
+      "batch_seconds": {
+        "crush": 4,
+        "transfer": 3,
+        "heat": 6,
+        "pour": 5,
+        "total": 18
+      },
+      "minimum_automatic_seconds": {
+        "before_three_batches": 54,
+        "after_two_batches": 36
+      },
+      "new_work_order_credits": 12,
+      "new_work_order_batches": 2,
+      "already_accepted_legacy_credits": 18,
+      "already_accepted_legacy_batches": 3,
+      "source": "src/main/kotlin/ru/ruscrafting/farms/domain/MineWorking.kt:90-108; src/main/kotlin/ru/ruscrafting/farms/domain/MineWorkshopHeat.kt:3-27; src/main/kotlin/ru/ruscrafting/farms/paper/mine/workshop/MineOreWorkshopController.kt:616-618."
+    },
+    "cooldown_only_ceiling": {
+      "cooldown_seconds": 60,
+      "max_order_vault_grant": "284",
+      "maximum_vault_per_player_hour": "17040",
+      "qualification": "Loose ceiling only; physical mining, event and travel time are nonzero, so this is unattainable."
+    }
+  },
+  "indirect_conversion_sensitivity": {
+    "source": "docs/mine-short-shifts-balance-20261023.json:indirect_conversion_sensitivity; prior same-day snapshot, not refreshed here.",
+    "existing_bundle_all_units_sell_vault_per_completion": "151.1",
+    "existing_bundle_all_units_contract_vault_per_completion": "216.578",
+    "contract_quotes_vault_per_unit": {
+      "COAL": "8.58",
+      "IRON_INGOT": "8.61",
+      "GOLD_INGOT": "12.91",
+      "REDSTONE": "5.74",
+      "LAPIS_LAZULI": "11.48",
+      "DIAMOND": "76.06"
+    },
+    "contract_network_weekly_budget_vault": "250000",
+    "contract_budget_remaining_at_prior_observation_vault": "249686.50",
+    "alternative_network_weekly_all-items-converted_before": {
+      "sell_nominal_uncapped": [
+        "3966.375",
+        "63462",
+        "423080"
+      ],
+      "contracts_uncapped": [
+        "5685.1725",
+        "90962.76",
+        "606418.4"
+      ],
+      "contracts_if_full_250000_budget_available": [
+        "5685.1725",
+        "90962.76",
+        "250000"
+      ]
+    },
+    "alternative_network_weekly_all-items-converted_after": {
+      "sell_nominal_uncapped": [
+        "4230.8",
+        "68750.5",
+        "465388"
+      ],
+      "contracts_uncapped": [
+        "6064.184",
+        "98542.99",
+        "667060.24"
+      ],
+      "contracts_if_full_250000_budget_available": [
+        "6064.184",
+        "98542.99",
+        "250000"
+      ]
+    },
+    "same_items_counted_once": true,
+    "limits": "Conditional whole-bundle liquidation, not observed mine income. SELL is active; contracts are also a current alternative. The shared weekly contract budget and personal quotas apply to the contract branch; current quote/supply can change."
+  },
+  "observation": {
+    "type": "read-only arc_ops_server 168h snapshot, one replica; generated 2026-10-23T09:40:05.882Z",
+    "artifact": "/private/tmp/mine-economy-168h-20261023.json",
+    "window": "2026-10-16T09:40:05.881Z through 2026-10-23T09:40:05.882Z; exact boundary, no crossing/future records",
+    "coverage": {
+      "records": 3370,
+      "operations": 33792,
+      "players": 29
+    },
+    "vault_excluding_admin_67000000": {
+      "minted": "910862.78298615",
+      "burned": "2572343.35",
+      "classified_mint_burn_net": "-1661480.56701385",
+      "transfer_net_separate": "-110.6",
+      "unclassified_operations": 128,
+      "unclassified_absolute_amount": "189141.78"
+    },
+    "tokens": {
+      "minted": "62",
+      "burned": "15",
+      "net": "47",
+      "unclassified_operations": 3,
+      "unclassified_absolute_amount": "15"
+    },
+    "farm_source": {
+      "income_vault": "13728.75",
+      "operations": 14,
+      "players": 6,
+      "scope": "All farms aggregate, not mine-specific."
+    },
+    "shop_sell_source": {
+      "income_vault": "55995.33",
+      "operations": 235,
+      "players": 12
+    },
+    "resource_contract_source": {
+      "income_vault": "37788.50",
+      "operations": 24,
+      "players": 2
+    }
+  },
+  "decision": "Per-completion direct money, XP and bundles are unchanged. Any per-player-day or network-week difference comes only from the explicitly assumed completion-rate change. Crystal progress is a shared order-progress mechanic, with no separate item or currency emission.",
+  "post_delivery_checks": [
+    "Read back active ArcFarms version/config and confirm the 14 candidate incident types and one scheduled incident per cycle.",
+    "Confirm Crystal completion adds at most 4 credits once to shared order progress and grants no player item, drop, Vault, token or XP.",
+    "Observe post-activation cycles/day and event mix before replacing these sensitivity assumptions with measured results."
+  ]
+}

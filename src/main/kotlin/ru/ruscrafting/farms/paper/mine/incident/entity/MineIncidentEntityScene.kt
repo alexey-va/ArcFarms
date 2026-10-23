@@ -176,6 +176,16 @@ internal class PaperMineIncidentEntityEffects(plugin: Plugin) : MineIncidentEnti
                         it.translation.set(0f, -0.02f, 0f)
                         it.scale.set(1f, 0.015f, 1f)
                     }
+                } else if (kind == MineIncidentEntityKind.CRYSTAL_MARKER) {
+                    // A centred scale cannot separate an amethyst model's crossed planes.
+                    // Keep the authored cluster untouched; this tiny cue sits clear of its tip.
+                    block = Material.AMETHYST_BLOCK.createBlockData()
+                    val facing = (world.getBlockAt(position.x, position.y, position.z).blockData as? org.bukkit.block.data.Directional)
+                        ?.facing ?: BlockFace.UP
+                    transformation = transformation.also {
+                        it.translation.set(.44f + facing.modX * .58f, .44f + facing.modY * .58f, .44f + facing.modZ * .58f)
+                        it.scale.set(.12f)
+                    }
                 } else if (kind in ACTUAL_BLOCK_GLOW_KINDS) {
                     WorksiteBlockGlow.apply(this, world.getBlockAt(position.x, position.y, position.z).blockData, markerColor(kind))
                 } else {

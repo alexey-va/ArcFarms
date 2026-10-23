@@ -327,7 +327,7 @@ internal class MineWorkingController(
     private fun advance(runtime: MineRuntime, player: Player, target: Int, required: Int, drillSection: Boolean = false) {
         val incident = runtime.state.incident ?: return
         val working = incident.working ?: return
-        var step = MineWorkingEngine.completeTarget(working, target, required, clock())
+        var step = MineWorkingEngine.completeTarget(working, target, required, clock(), MineWorkingEngine.workshopBatchCount(incident.required))
         var amount = 1
         if (drillSection && step.accepted && working.stage == MineWorkingStage.EXCAVATE) {
             val excavation = world.scene(runtime)?.plan?.excavation.orEmpty()

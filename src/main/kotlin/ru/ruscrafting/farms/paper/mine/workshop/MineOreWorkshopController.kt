@@ -245,7 +245,7 @@ internal class MineOreWorkshopController(
         }.coerceIn(0.0, 1.0)
         return locale?.renderPath("mine.working.workshop.$key", player, mapOf(
             "batch" to Component.text(working.batch + 1),
-            "batches" to Component.text(MineWorkingEngine.BATCHES),
+            "batches" to Component.text(MineWorkingEngine.workshopBatchCount(runtime.state.incident?.required ?: 0)),
             "temperature" to Component.text((process.heat.progress * 100).toInt()),
             "progress" to Component.text((progress * 100).toInt()),
         )) ?: Component.text(key)
@@ -457,8 +457,9 @@ internal class MineOreWorkshopController(
     private fun advance(runtime: MineRuntime, player: Player, target: Int, total: Int, now: Long, heat: MineWorkshopHeat? = null): Boolean {
         val incident = runtime.state.incident ?: return false
         val working = incident.working ?: return false
-        val step = if (heat != null) MineWorkingEngine.completeWorkshopHeat(working, heat, now)
-            else MineWorkingEngine.completeTarget(working, target, total, now)
+        val batches = MineWorkingEngine.workshopBatchCount(incident.required)
+        val step = if (heat != null) MineWorkingEngine.completeWorkshopHeat(working, heat, now, batches)
+            else MineWorkingEngine.completeTarget(working, target, total, now, batches)
         if (!step.accepted) return false
         val next = runtime.state.copy(incident = incident.copy(working = step.state))
         val result = incidents.work(runtime, player, state = next)

@@ -4,6 +4,8 @@ import org.bukkit.Bukkit
 import org.bukkit.Location
 import org.bukkit.attribute.Attribute
 import org.bukkit.entity.Mob
+import ru.ruscrafting.farms.domain.worksite.WorksiteDeterministicSeed
+import ru.ruscrafting.farms.domain.worksite.WorksitePosition
 import ru.ruscrafting.farms.paper.mine.MineRuntime
 import kotlin.math.abs
 
@@ -11,7 +13,8 @@ import kotlin.math.abs
 internal interface MineCreatureNavigation {
     fun initialize(mob: Mob)
     fun stop(mob: Mob)
-    fun chase(mob: Mob, destination: Location, runtime: MineRuntime, floorY: Int)
+    fun chase(mob: Mob, destination: Location, runtime: MineRuntime, floorY: Int): Boolean
+    fun roam(mob: Mob, anchor: WorksitePosition, runtime: MineRuntime, step: Long): Boolean
 }
 
 internal object PaperMineCreatureNavigation : MineCreatureNavigation {
@@ -27,14 +30,30 @@ internal object PaperMineCreatureNavigation : MineCreatureNavigation {
 
     override fun stop(mob: Mob) { mob.pathfinder.stopPathfinding(); mob.target = null }
 
-    override fun chase(mob: Mob, destination: Location, runtime: MineRuntime, floorY: Int) {
+    override fun chase(mob: Mob, destination: Location, runtime: MineRuntime, floorY: Int): Boolean =
+        move(mob, destination, runtime, floorY, 1.25)
+
+    override fun roam(mob: Mob, anchor: WorksitePosition, runtime: MineRuntime, step: Long): Boolean =
+        roamDestinations(runtime, anchor, WorksiteDeterministicSeed.derive(runtime.state.sequence, mob.uniqueId.leastSignificantBits + step))
+            .any { move(mob, it, runtime, anchor.y, .55) }
+
+    internal fun roamDestinations(runtime: MineRuntime, anchor: WorksitePosition, seed: Long): List<Location> =
+        listOf(3 to 0, 2 to 2, 0 to 3, -2 to 2, -3 to 0, -2 to -2, 0 to -3, 2 to -2)
+            .sortedBy { (dx, dz) -> WorksiteDeterministicSeed.positionScore(seed, anchor.world, anchor.x + dx, anchor.y, anchor.z + dz) }
+            .mapNotNull { (dx, dz) ->
+                (anchor.y..anchor.y + 2).firstNotNullOfOrNull { y ->
+                    val at = Location(runtime.region.world, anchor.x + dx + .5, y.toDouble(), anchor.z + dz + .5)
+                    at.takeIf { safeStep(runtime, it, anchor.y) && it.block.isPassable && it.clone().add(0.0, 1.0, 0.0).block.isPassable }
+                }
+            }
+
+    private fun move(mob: Mob, destination: Location, runtime: MineRuntime, floorY: Int, speed: Double): Boolean {
         // A location path also follows creative players; vanilla target goals deliberately ignore them.
         val path = mob.pathfinder.findPath(destination)
         if (path == null || path.points.isEmpty() || path.points.any { !safeStep(runtime, it, floorY) }) {
-            stop(mob)
-            return
+            return false
         }
-        mob.pathfinder.moveTo(path, 1.25)
+        return mob.pathfinder.moveTo(path, speed)
     }
 
     internal fun safeStep(runtime: MineRuntime, location: Location, floorY: Int): Boolean {

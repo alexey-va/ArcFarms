@@ -124,6 +124,8 @@ admin:
       last_descent: '<gray>точка expedition_gate и готовая локация «Последний спуск»</gray>'
       drilling_ark: '<gray>точка expedition_gate и готовая локация «Буровой ковчег»</gray>'
       dead_factory: '<gray>точка expedition_gate и готовая локация «Мёртвый завод»</gray>'
+      freight_winch: <gray>точка freight_winch, сплошной пол и свободный проход для тяги</gray>
+      drainage_pump: <gray>точка drainage_pump и свободное место для ручного насоса</gray>
     reason:
       expedition_gate_missing: '<red>сначала задайте точку expedition_gate через /arcfarms admin point</red>'
       expedition_reserve_not_ready: '<gold>готовая локация ещё восстанавливается; состояние видно в /arcfarms admin expeditions status</gold>'
@@ -148,6 +150,12 @@ admin:
       async_scan_failed: '<red><count> — фоновый поиск завершился с ошибкой; подробности в журнале</red>'
       state_transition_rejected: '<red><count> — состояние смены изменилось до установки завала</red>'
       in_place_implementation_missing: '<red><count> — для события нет реализации прямо в шахте</red>'
+      floor_machine_point_missing: <red><count> — не задана точка механизма</red>
+      floor_machine_outside_region: <red><count> — площадка выходит за регион шахты</red>
+      floor_machine_chunk_unloaded: <red><count> — чанк площадки не загружен</red>
+      floor_machine_floor_missing: <red><count> — у механизма или дорожки нет сплошного пола</red>
+      floor_machine_obstructed: <red><count> — место механизма или дорожки занято блоками</red>
+      floor_machine_unavailable: <red><count> — владелец механизма не подключён</red>
   point-help-header: '<prefix> <gold>/arcfarms admin point <zone> \<точка></gold> <gray>сохраняет ваше текущее положение и направление взгляда:</gray>'
   point-help-entry: '  <dark_gray>•</dark_gray> <white><id></white> <dark_gray>—</dark_gray> <point><gray>: </gray><description>'
   point-help-footer: '<dark_gray>Встаньте внутри фермы, но не на грядке.</dark_gray><newline><dark_gray>Точки travel и rival-farm можно ставить снаружи.</dark_gray><newline><gray>Сброс:</gray> <white>/arcfarms admin point зона точка clear</white>'
@@ -178,6 +186,8 @@ admin:
     working_10: '<color:#d8a56d>Боковой штрек 10</color>'
     working_11: '<color:#d8a56d>Боковой штрек 11</color>'
     working_12: '<color:#d8a56d>Боковой штрек 12</color>'
+    freight_winch: <color:#ffc857>Грузовая лебёдка</color>
+    drainage_pump: <color:#45c8f5>Дренажная помпа</color>
   mine-point-description:
     expedition_gate: '<gray>место отправления в глубины и возвращения в шахту</gray>'
     ore_input: '<gray>фиксированная станция, где берут видимую руду</gray>'
@@ -197,6 +207,8 @@ admin:
     working_10: '<gray>вход в боковую выработку; точка ног и направление</gray>'
     working_11: '<gray>вход в боковую выработку; точка ног и направление</gray>'
     working_12: '<gray>вход в боковую выработку; точка ног и направление</gray>'
+    freight_winch: <gray>центр лебёдки и свободной тяговой дорожки среднего яруса</gray>
+    drainage_pump: <gray>центр ручного насоса нижнего яруса</gray>
   stage-help-header: '<prefix> <gold>/arcfarms admin stage <zone> \<этап></gold> <gray>принудительно переключает тестовый заказ:</gray>'
   stage-help-entry: '  <dark_gray>•</dark_gray> <white><id></white> <dark_gray>—</dark_gray> <stage><gray>: </gray><description>'
   event-help-header: '<prefix> <gold>/arcfarms admin event <zone> \<событие></gold> <gray>немедленно запускает выбранный сюжет:</gray>'
@@ -1230,6 +1242,8 @@ mine:
     tunnel_drive: '<color:#d8a56d>Проходка бокового штрека</color>'
     rail_extension: '<color:#ffc857>Прокладка рельсов</color>'
     ore_workshop: '<color:#c778ff>Рудный цех</color>'
+    freight_winch: <color:#ffc857>Грузовая лебёдка</color>
+    drainage_pump: <color:#45c8f5>Дренажная помпа</color>
   incident:
     last_descent: '<color:#ffc857>Спуститься в бездну и запустить глубинную машину</color>'
     drilling_ark: '<color:#ffc857>Провести буровой ковчег через пещеры и вернуть керны</color>'
@@ -1237,6 +1251,8 @@ mine:
     tunnel_drive: '<color:#f2fff7>Пройти настоящую боковую выработку с этого этажа</color>'
     rail_extension: '<color:#f2fff7>Проложите рельсы до камеры</color>'
     ore_workshop: '<color:#f2fff7>Обработать три партии руды и отправить заготовки</color>'
+    freight_winch: <color:#f2fff7>Поднять и перегрузить ящик на среднем ярусе</color>
+    drainage_pump: <color:#f2fff7>Собрать помпу и осушить накопитель на нижнем ярусе</color>
   creature-nest:
     creature-name: '<color:#ff5f6d>Тварь из логова</color>'
     nest-name: '<color:#ff7a45>Логово тварей</color>'
@@ -1283,13 +1299,15 @@ mine:
     gas_leak: '<color:#f2fff7>Газ ранит и вызывает тошноту: закройте светящиеся решётки и отойдите</color>'
     flooding: '<color:#f2fff7>Пустым ведром уберите 20–30 блоков воды; ведро останется пустым</color>'
     track_damage: '<color:#f2fff7>Расчистите путь, замените повреждённые секции рельсов и проведите проверочную вагонетку</color>'
-    crystal_resonance: '<color:#f2fff7>ПКМ по светящимся кристаллам</color>'
+    crystal_resonance: '<color:#e4bdff>ПКМ по каждому из четырёх кристаллов</color>'
     creature_nest: '<color:#f2fff7>Твари грызут породу. Уничтожьте их и светящиеся логова</color>'
     power_failure: '<color:#f2fff7>Старая авария с питанием сохранена только для совместимости и не запускается вручную</color>'
     lost_miner: '<color:#f2fff7>Войдите в пещеру и найдите шахтёра. ПКМ по нему — завершить спасение</color>'
     tunnel_drive: '<color:#f2fff7>Сядьте в бурмашину и пробейте путь до подсвеченной цели, обходя бедрок</color>'
     rail_extension: '<color:#f2fff7>Ведите путеукладчик к подсвеченной камере</color>'
     ore_workshop: '<color:#f2fff7>Возьмите партию руды</color>'
+    freight_winch: <color:#ffc857>Средний ярус · зацепите груз лебёдкой</color>
+    drainage_pump: <color:#45c8f5>Нижний ярус · вставьте патрубок в помпу</color>
   expedition:
     charge-loaded: '<color:#55d98b>Сырьё загружено · включите рычаг подачи на дробилке</color>'
     mix-loaded: '<color:#55d98b>Смесь в печи · дождитесь зелёного сигнала нагрева</color>'
@@ -1578,6 +1596,32 @@ mine:
       furnace: '<color:#ffad42>Печь</color>'
       output: '<color:#d8a56d>Выход заготовки</color>'
       shipping: '<color:#55d98b>Точка отгрузки</color>'
+  floorwork:
+    winch:
+      travel: <color:#ffc857>Поднимитесь к лебёдке на среднем ярусе</color>
+      hook: <color:#ffc857>ПКМ по ящику · закрепить крюк</color>
+      rope: <color:#f2fff7>Встаньте перед барабаном и возьмите рукоять ПКМ</color>
+      pull: <color:#ffc857>Отступайте по медной дорожке · натяжение <percent>%</color>
+      swing: <color:#f2fff7>ПКМ по рычагу у стойки · повернуть стрелу</color>
+      swinging: <color:#ffc857>Ящик переходит на приёмную опору</color>
+      unload: <color:#55d98b>ПКМ по поднятому ящику · принять груз</color>
+      busy: <color:#f2fff7>Другой шахтёр управляет лебёдкой</color>
+    pump:
+      travel: <color:#45c8f5>Спуститесь к помпе на нижнем ярусе</color>
+      pipe: <color:#45c8f5>ПКМ по медному патрубку на подставке</color>
+      socket: <color:#f2fff7>Поднесите патрубок к разрыву трубы · ПКМ</color>
+      handle: <color:#f2fff7>Встаньте перед помпой · ПКМ по рукояти</color>
+      stroke: <color:#45c8f5>Зажмите Shift на полсекунды и отпустите · ходы <strokes>/4</color>
+      valve: <color:#55d98b>Давление набрано · откройте красный вентиль ПКМ</color>
+      draining: <color:#45c8f5>Вода уходит из накопителя</color>
+      busy: <color:#f2fff7>Другой шахтёр работает с помпой</color>
+  crystal:
+    charging: <color:#e4bdff>Зарядите четыре кристалла · <done>/4</color>
+    charged: <color:#e4bdff>Кристалл заряжен · <done>/4</color>
+    converging: <color:#ead2ff>Кристаллы собирают общий луч</color>
+    drilling: <color:#efdfff>Луч пробивает рудную стену</color>
+    extracting: <color:#ffdf8a>Руда поступает в заказ</color>
+    result: <color:#8be0a5>Резонанс завершён · +<count> к заказу</color>
 shift:
   winner: '<color:#ffc857>Лучший вклад</color> <color:#707a76>•</color> <white><player></white> <color:#f2fff7>— <amount></color>'
 care:

@@ -1,0 +1,14 @@
+# Mine events revision 0.45.50
+
+The current `rc_atelier_compact_mine` capture is the world baseline. Historical Atelier recipes are not pasted into the server. The two obsolete native machines have 114 middle-floor and 113 bottom-floor owned blocks; the bounded patch removes those cells only. Forty unrelated blocks in their old bounding boxes and 129 unrelated block entities remain. Editable capture, ownership inventory and exact native diff live in ops `world-content/mines/events-20261023/`.
+
+- Nest creatures use slow native pathfinding around their own anchor when no reachable same-floor player is available. Every route retains the existing loaded-chunk, region and supported-floor checks. Chase, bounded damage, drops and rewards keep their existing rules.
+- Crystal resonance charges four authored upward-facing crystals. Separate light cues avoid a second overlapping cluster. Charge links converge at a hub, then a common beam drills an exposed, backed natural wall selected from the existing mine index. Temporary cuts use the existing recovery journal. At most four missing shared order credits and incident retirement are committed in one shift snapshot, without item, XP or currency side effects. Existing partial two-of-four objectives migrate when their target geometry is still valid.
+- Gas uses rolling layered clouds and a narrow vent source; damage and nausea rules are unchanged.
+- The middle floor has a freight winch: hook the cargo, pull it by walking along the lane, swing the boom and receive the crate. The bottom floor has a drainage pump: carry and install a connector, make four deliberate down/up pumping strokes and open the outlet. The existing incident coordinator owns four/six durable progress steps. Packet displays and non-persistent interactions own the props; cleanup releases operators and restores the scene from saved progress.
+- New ore workshop events take two batches (12 credits). Accepted legacy 18-credit events retain three batches and can finish. Automatic timing per batch is unchanged.
+- Four order pools include the previous eleven types plus resonance, freight winch and drainage pump. One incident per cycle, ore quotas, cooldown and per-completion rewards are unchanged.
+
+The implementation reuses `MineIncidentCoordinator`, `MineShiftEngine`, `ObjectiveTargetPool`, `MineTransitionCoordinator`, the mine block journal/recovery owner, `WorksiteCarryable`, guidance and the existing lifecycle. It introduces no scheduler, independent reward ledger or alternate persistent progress store. Crystal recovery additionally revalidates Gson-created nested state.
+
+See [balance assessment](mine-events-balance-20261023.md) and [scoped locale checks](mine-events-scoped-validation-20261023.md). Native client controls, particle appearance, interpolation and sound remain distinct from canonical-geometry preview and MockBukkit checks. Delivery and activation evidence is recorded separately in ops.

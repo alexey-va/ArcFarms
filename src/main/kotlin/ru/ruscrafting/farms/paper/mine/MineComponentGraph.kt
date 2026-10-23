@@ -81,7 +81,7 @@ internal class MineComponentGraph(
     val trackDamage = MineTrackDamageIncident(registry, index, incidents, serviceItems, ports.state, locale)
     val candidateStock = ru.ruscrafting.farms.paper.mine.incident.MineIncidentCandidateStock(index)
     val gasLeak = MineGasLeakIncident(registry, index, incidents, candidateStock)
-    val crystalResonance = MineCrystalResonanceIncident(registry, index, incidents, candidateStock)
+    val crystalResonance = MineCrystalResonanceIncident(registry, index, incidents, transitions, incidentJournal, recovery, ports.state, locale, candidateStock, clock)
     val flooding = MineFloodingIncident(registry, index, incidents, incidentJournal, ports.state, ports.access, serviceItems, locale, candidateStock)
     val powerFailure = MinePowerFailureIncident(registry, index, incidents, incidentJournal, ports.state)
     val cartScene = MineCartScene(cartEffects)
@@ -144,6 +144,13 @@ internal class MineComponentGraph(
             org.bukkit.Bukkit.getWorld(point.world)?.let { world -> station to org.bukkit.Location(world, point.x, point.y, point.z, point.yaw, 0f) }
         }.toMap() }, incidents, ports.access, ports.state, locale, clock,
     )
+    val floorActivities = ru.ruscrafting.farms.paper.mine.floorwork.MineFloorActivities(
+        plugin, { runtime, key -> points?.configured(runtime.settings.id, key, runtime.region.world.name)?.let { point ->
+            org.bukkit.Bukkit.getWorld(point.world)?.let { world ->
+                org.bukkit.Location(world, point.x, point.y, point.z, point.yaw, 0f)
+            }
+        } }, incidents, ports.access, ports.state, locale,
+    )
     private val workingEquipment = ru.ruscrafting.farms.paper.mine.working.MineWorkingEquipment(registry, serviceItems, ports.state, locale)
     private val driveController = ru.ruscrafting.farms.paper.mine.working.MineDriveController(plugin, workingWorld, ports.access, ports.state, ports.tasks, workingPresentation)
     private val railDriveService = ru.ruscrafting.farms.paper.mine.working.MineRailDriveService(plugin,workingEquipment,workingPresentation,driveController,ports.access)
@@ -176,17 +183,18 @@ internal class MineComponentGraph(
     )
     val incidentScheduler = MineIncidentScheduler(
         caveIn, gasLeak, flooding, trackDamage, crystalResonance, creatureNest, powerFailure, lostMiner,
-        workings, ru.ruscrafting.farms.paper.mine.incident.MineIncidentPlacementDiagnostics(index, candidateStock), ports.state, workshop, expeditions, ports.tasks,
+        workings, ru.ruscrafting.farms.paper.mine.incident.MineIncidentPlacementDiagnostics(index, candidateStock), ports.state, workshop, expeditions, ports.tasks, floorActivities,
     )
     val incidentSet = MineIncidentSet(
         registry, caveIn, trackDamage, gasLeak, crystalResonance, flooding, powerFailure, creatureNest, lostMiner, objectiveMarkers,
-        incidents, incidentScheduler, incidentJournal, workings, workshop, ports.access, expeditions, candidateStock,
+        incidents, incidentScheduler, incidentJournal, workings, workshop, ports.access, expeditions, candidateStock, floorActivities,
     )
     val guidance = MineGuidanceSource(
         registry, ports.audience, locale, extraction::guidanceTarget, { extraction.routeFor(it)?.finalIndex ?: 1 }, clock,
-        { runtime, player, now -> expeditions.guidanceHint(runtime, player, now) ?: if (runtime.state.incident?.type == ru.ruscrafting.farms.domain.MineIncidentType.ORE_WORKSHOP)
+        { runtime, player, now -> crystalResonance.hint(runtime, player) ?: floorActivities.guidanceHint(runtime, player) ?: expeditions.guidanceHint(runtime, player, now) ?: if (runtime.state.incident?.type == ru.ruscrafting.farms.domain.MineIncidentType.ORE_WORKSHOP)
             workshop.guidanceHint(runtime, player, now) else workings.guidanceHint(runtime, player, now) },
-        { runtime, player -> if (runtime.state.incident?.type?.let(ru.ruscrafting.farms.domain.mine.expedition.MineExpeditionEngine::supports) == true)
+        { runtime, player -> if (runtime.state.incident?.type in ru.ruscrafting.farms.paper.mine.floorwork.MineFloorActivities.TYPES)
+            floorActivities.guidanceTargets(runtime, player) else if (runtime.state.incident?.type?.let(ru.ruscrafting.farms.domain.mine.expedition.MineExpeditionEngine::supports) == true)
             expeditions.guidanceTargets(runtime, player) else if (runtime.state.incident?.type == ru.ruscrafting.farms.domain.MineIncidentType.ORE_WORKSHOP)
             workshop.guidanceTargets(runtime, player) else workings.guidanceTargets(runtime, player) },
         expeditions::participants, expeditions::runtimeFor, ru.ruscrafting.farms.paper.mine.presentation.MineOrderOreGuidance(index),

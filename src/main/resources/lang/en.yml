@@ -124,6 +124,8 @@ admin:
       last_descent: '<gray>an expedition_gate point and a ready Last Descent location</gray>'
       drilling_ark: '<gray>an expedition_gate point and a ready Drilling Ark location</gray>'
       dead_factory: '<gray>an expedition_gate point and a ready Dead Factory location</gray>'
+      freight_winch: <gray>freight_winch point, solid floor and clear pulling lane</gray>
+      drainage_pump: <gray>drainage_pump point and clear space for the hand pump</gray>
     reason:
       expedition_gate_missing: '<red>set expedition_gate with /arcfarms admin point first</red>'
       expedition_reserve_not_ready: '<gold>the reserve location is still being restored; check /arcfarms admin expeditions status</gold>'
@@ -148,6 +150,12 @@ admin:
       async_scan_failed: '<red><count> — background placement search failed; see the server log</red>'
       state_transition_rejected: '<red><count> — shift state changed before rubble placement</red>'
       in_place_implementation_missing: '<red><count> — the incident has no in-place implementation</red>'
+      floor_machine_point_missing: <red><count> — the machine point is missing</red>
+      floor_machine_outside_region: <red><count> — the machine footprint leaves the mine region</red>
+      floor_machine_chunk_unloaded: <red><count> — the platform chunk is not loaded</red>
+      floor_machine_floor_missing: <red><count> — the machine or pulling lane has no solid floor</red>
+      floor_machine_obstructed: <red><count> — the machine or lane is obstructed</red>
+      floor_machine_unavailable: <red><count> — the machine owner is unavailable</red>
   point-help-header: '<prefix> <gold>/arcfarms admin point <zone> \<point></gold> <gray>saves your current position and facing direction:</gray>'
   point-help-entry: '  <dark_gray>•</dark_gray> <white><id></white> <dark_gray>—</dark_gray> <point><gray>: </gray><description>'
   point-help-footer: '<dark_gray>Stand inside the farm, but not on a crop bed.</dark_gray><newline><dark_gray>Travel and rival-farm may be outside.</dark_gray><newline><gray>Clear:</gray> <white>/arcfarms admin point zone point clear</white>'
@@ -178,6 +186,8 @@ admin:
     working_10: '<color:#d8a56d>Side working 10</color>'
     working_11: '<color:#d8a56d>Side working 11</color>'
     working_12: '<color:#d8a56d>Side working 12</color>'
+    freight_winch: <color:#ffc857>Freight winch</color>
+    drainage_pump: <color:#45c8f5>Drainage pump</color>
   mine-point-description:
     expedition_gate: '<gray>departure point for the depths and return to the mine</gray>'
     ore_input: '<gray>fixed station where visible ore is picked up</gray>'
@@ -197,6 +207,8 @@ admin:
     working_10: '<gray>side-working entrance; player feet and facing direction</gray>'
     working_11: '<gray>side-working entrance; player feet and facing direction</gray>'
     working_12: '<gray>side-working entrance; player feet and facing direction</gray>'
+    freight_winch: <gray>winch centre and clear pulling lane on the middle level</gray>
+    drainage_pump: <gray>hand pump centre on the bottom level</gray>
   stage-help-header: '<prefix> <gold>/arcfarms admin stage <zone> \<stage></gold> <gray>forces a test order into the selected stage:</gray>'
   stage-help-entry: '  <dark_gray>•</dark_gray> <white><id></white> <dark_gray>—</dark_gray> <stage><gray>: </gray><description>'
   event-help-header: '<prefix> <gold>/arcfarms admin event <zone> \<event></gold> <gray>starts the selected story immediately:</gray>'
@@ -1230,6 +1242,8 @@ mine:
     tunnel_drive: '<color:#d8a56d>Side tunnel drive</color>'
     rail_extension: '<color:#ffc857>Track laying</color>'
     ore_workshop: '<color:#c778ff>Ore workshop</color>'
+    freight_winch: <color:#ffc857>Freight winch</color>
+    drainage_pump: <color:#45c8f5>Drainage pump</color>
   incident:
     last_descent: '<color:#ffc857>Descend into the abyss and start the deep engine</color>'
     drilling_ark: '<color:#ffc857>Drive the drilling ark through the caves and return with cores</color>'
@@ -1237,6 +1251,8 @@ mine:
     tunnel_drive: '<color:#f2fff7>Drive a real side tunnel from this floor</color>'
     rail_extension: '<color:#f2fff7>Lay tracks to the chamber</color>'
     ore_workshop: '<color:#f2fff7>Process three ore batches and ship the billets</color>'
+    freight_winch: <color:#f2fff7>Hoist and unload the crate on the middle level</color>
+    drainage_pump: <color:#f2fff7>Assemble the pump and drain the sump on the bottom level</color>
   creature-nest:
     creature-name: '<color:#ff5f6d>Nest creature</color>'
     nest-name: '<color:#ff7a45>Creature nest</color>'
@@ -1283,13 +1299,15 @@ mine:
     gas_leak: '<color:#f2fff7>Gas hurts and causes nausea: close the glowing vents and get clear</color>'
     flooding: '<color:#f2fff7>Use an empty bucket on 20–30 water blocks; the bucket stays empty</color>'
     track_damage: '<color:#f2fff7>Clear the track, replace the damaged rail sections, and escort the test cart</color>'
-    crystal_resonance: '<color:#f2fff7>Right-click the glowing crystals</color>'
+    crystal_resonance: '<color:#e4bdff>Right-click each of the four crystals</color>'
     creature_nest: '<color:#f2fff7>Creatures are chewing through rock. Destroy them and their glowing nests</color>'
     power_failure: '<color:#f2fff7>Legacy power incidents are kept for save compatibility and cannot be started manually</color>'
     lost_miner: '<color:#f2fff7>Enter the cave and find the miner. Right-click him to finish the rescue</color>'
     tunnel_drive: '<color:#f2fff7>Board the drilling rig and bore to the glowing goal, steering around bedrock</color>'
     rail_extension: '<color:#f2fff7>Drive the tracklayer toward the glowing chamber</color>'
     ore_workshop: '<color:#f2fff7>Pick up the ore batch</color>'
+    freight_winch: <color:#ffc857>Middle level · hook the winch cargo</color>
+    drainage_pump: <color:#45c8f5>Bottom level · fit the pump pipe</color>
   expedition:
     charge-loaded: '<color:#55d98b>Charge loaded · switch the crusher feed lever</color>'
     mix-loaded: '<color:#55d98b>Mix loaded into the furnace · wait for the green heat signal</color>'
@@ -1578,6 +1596,32 @@ mine:
       furnace: '<color:#ffad42>Furnace</color>'
       output: '<color:#d8a56d>Billet output</color>'
       shipping: '<color:#55d98b>Shipping point</color>'
+  floorwork:
+    winch:
+      travel: <color:#ffc857>Go to the winch on the middle level</color>
+      hook: <color:#ffc857>Right-click the crate to attach the hook</color>
+      rope: <color:#f2fff7>Stand in front of the drum and right-click its grip</color>
+      pull: <color:#ffc857>Walk backwards along the copper lane · tension <percent>%</color>
+      swing: <color:#f2fff7>Right-click the lever by the column to swing the boom</color>
+      swinging: <color:#ffc857>The crate is moving onto the receiving plinth</color>
+      unload: <color:#55d98b>Right-click the delivered crate to unload it</color>
+      busy: <color:#f2fff7>Another miner is operating the winch</color>
+    pump:
+      travel: <color:#45c8f5>Go to the pump on the bottom level</color>
+      pipe: <color:#45c8f5>Right-click the copper pipe on the rack</color>
+      socket: <color:#f2fff7>Carry the pipe to the gap and right-click</color>
+      handle: <color:#f2fff7>Stand in front of the pump and right-click its handle</color>
+      stroke: <color:#45c8f5>Hold Shift for half a second, then release · strokes <strokes>/4</color>
+      valve: <color:#55d98b>Pressure ready · right-click the red valve</color>
+      draining: <color:#45c8f5>The sump is draining</color>
+      busy: <color:#f2fff7>Another miner is working on the pump</color>
+  crystal:
+    charging: <color:#e4bdff>Charge all four crystals · <done>/4</color>
+    charged: <color:#e4bdff>Crystal charged · <done>/4</color>
+    converging: <color:#ead2ff>Crystals are focusing one beam</color>
+    drilling: <color:#efdfff>The beam is drilling the ore wall</color>
+    extracting: <color:#ffdf8a>Ore is flowing into the order</color>
+    result: <color:#8be0a5>Resonance complete · +<count> order progress</color>
 shift:
   winner: '<color:#ffc857>Top contribution</color> <color:#707a76>•</color> <white><player></white> <color:#f2fff7>— <amount></color>'
 care:

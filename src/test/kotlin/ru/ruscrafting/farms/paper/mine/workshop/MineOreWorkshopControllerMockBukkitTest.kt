@@ -269,10 +269,11 @@ class MineOreWorkshopControllerMockBukkitTest : FunSpec({
         calls shouldHaveSize 1
     }
 
-    test("three batches require the five-second pour before billet collection and contribute eighteen steps") {
+    listOf(12, 18).forEach { quota ->
+    test("workshop quota $quota completes each pour and preserves accepted legacy batches") {
         val world = paper.server.addSimpleWorld("workshop_full")
         val plugin = paper.createSimplePlugin("MineOreWorkshopFullFlowTest")
-        val runtime = activeRuntime(world)
+        val runtime = activeRuntime(world, required = quota)
         val now = AtomicLong(1_000L)
         val points = stationPoints(world)
         val calls = mutableListOf<MineShiftState>()
@@ -309,7 +310,8 @@ class MineOreWorkshopControllerMockBukkitTest : FunSpec({
             clickControl("furnace_tap")
         }
 
-        repeat(MineWorkingEngine.BATCHES) { batch ->
+        val batches = MineWorkingEngine.workshopBatchCount(quota)
+        repeat(batches) { batch ->
             click("ore")
             player.teleport(points.getValue("crusher"))
             now.addAndGet(50L)
@@ -340,13 +342,14 @@ class MineOreWorkshopControllerMockBukkitTest : FunSpec({
             runtime.state.incident!!.working!!.stage shouldBe MineWorkingStage.SHIP
             now.addAndGet(1L)
             click("output")
-            if (batch + 1 < MineWorkingEngine.BATCHES) {
+            if (batch + 1 < batches) {
                 runtime.state.incident!!.working!!.stage shouldBe MineWorkingStage.LOAD
             }
         }
 
         runtime.state.incident shouldBe null
-        calls shouldHaveSize 18
+        calls shouldHaveSize quota
+    }
     }
 
     test("cleanup removes all station hitboxes and transient cargo") {
@@ -397,6 +400,7 @@ private fun activeRuntime(
     stage: MineWorkingStage = MineWorkingStage.LOAD,
     completed: Set<Int> = emptySet(),
     batch: Int = 0,
+    required: Int = MineWorkingEngine.BATCHES * (MineWorkingEngine.CRUSH_STROKES + 3),
 ): MineRuntime {
     val position = WorksitePosition(world.name, 40, 111, 17)
     return MineRuntime(
@@ -409,7 +413,7 @@ private fun activeRuntime(
             sequence = 7L,
             incident = MineIncidentState(
                 type = MineIncidentType.ORE_WORKSHOP,
-                required = 18,
+                required = required,
                 objectiveNonce = 9L,
                 startedAt = 1_000L,
                 working = ru.ruscrafting.farms.domain.MineWorkingState(

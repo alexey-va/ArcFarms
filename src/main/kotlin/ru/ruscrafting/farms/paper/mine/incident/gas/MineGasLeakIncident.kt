@@ -24,6 +24,7 @@ internal class MineGasLeakIncident(
 ) {
     private data class Session(
         val sequence: Long,
+        val nonce: Long,
         var lastHazardAt: Long? = null,
         var lastCloudAt: Long = 0L,
     )
@@ -48,8 +49,8 @@ internal class MineGasLeakIncident(
             return
         }
         val session = sessions[runtime.settings.id]
-            ?.takeIf { it.sequence == runtime.state.sequence }
-            ?: Session(runtime.state.sequence).also { sessions[runtime.settings.id] = it }
+            ?.takeIf { it.sequence == runtime.state.sequence && it.nonce == runtime.state.incident?.objectiveNonce }
+            ?: Session(runtime.state.sequence, runtime.state.incident!!.objectiveNonce).also { sessions[runtime.settings.id] = it }
         val points = targets.map { target ->
             org.bukkit.Location(runtime.region.world, target.position.x + 0.5, target.position.y + 1.0, target.position.z + 0.5)
         }
@@ -76,12 +77,18 @@ internal class MineGasLeakIncident(
     private fun renderClouds(session: Session, points: Collection<org.bukkit.Location>, viewers: Collection<Player>, now: Long) {
         if (viewers.isEmpty() || now - session.lastCloudAt < 250L) return
         session.lastCloudAt = now
-        points.forEach { point ->
+        val lobes = MineGasCloudGeometry.sample(now)
+        points.take(4).forEach { point ->
             viewers.filter { it.location.distanceSquared(point) <= VIEW_RADIUS_SQUARED }.forEach { player ->
-                player.spawnParticle(Particle.CLOUD, point, CLOUD_COUNT, 3.8, 1.2, 3.8, 0.015)
-                player.spawnParticle(Particle.SMOKE, point.clone().add(0.0, 0.32, 0.0), SMOKE_COUNT, 2.8, 1.0, 2.8, 0.02)
-                player.spawnParticle(Particle.DUST, point, CLOUD_COUNT, 3.8, 1.1, 3.8, 0.0,
-                    Particle.DustOptions(org.bukkit.Color.fromRGB(139, 163, 89), 2.4f))
+                // A narrow hissing source ties the rolling banks to the actual vent control.
+                player.spawnParticle(Particle.SMOKE, point, 8, .13, .2, .13, .025)
+                player.spawnParticle(Particle.CLOUD, point.clone().add(0.0, .35, 0.0), 4, .25, .2, .25, .018)
+                lobes.forEach { lobe ->
+                    val at = point.clone().add(lobe.x, lobe.y, lobe.z)
+                    player.spawnParticle(Particle.DUST, at, 5, lobe.spread, .24, lobe.spread, 0.0,
+                        Particle.DustOptions(org.bukkit.Color.fromRGB(lobe.color), lobe.size))
+                    player.spawnParticle(Particle.CLOUD, at, if (lobe.wisps) 2 else 1, .55, .25, .55, .008)
+                }
             }
         }
     }
@@ -96,7 +103,5 @@ internal class MineGasLeakIncident(
         const val VIEW_RADIUS_SQUARED = 40.0 * 40.0
         const val HIT_DAMAGE = 1.0
         const val NAUSEA_DURATION_TICKS = 60
-        const val CLOUD_COUNT = 36
-        const val SMOKE_COUNT = 18
     }
 }

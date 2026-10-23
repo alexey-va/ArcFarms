@@ -1,0 +1,81 @@
+// Source poses only. Recorded inputs drive the same geometry as the live two floor activities.
+allprojects {
+    afterEvaluate {
+        tasks.register('exportMineFloorActivities') {
+            dependsOn 'classes'
+            doLast {
+                def urls = (sourceSets.main.runtimeClasspath + sourceSets.main.compileClasspath).files.collect { it.toURI().toURL() } as URL[]
+                def cl = new URLClassLoader(urls, (ClassLoader) null)
+                def geo = cl.loadClass('ru.ruscrafting.farms.paper.mine.floorwork.MineFloorActivityGeometry')
+                def poseClass = cl.loadClass('ru.ruscrafting.farms.paper.mine.floorwork.MineFloorActivityGeometry$Pose')
+                def poseConstructor = poseClass.declaredConstructors.find { it.parameterCount == 8 }
+                poseConstructor.accessible = true
+                def partsMethod = geo.declaredMethods.find { it.name == 'parts' }
+                partsMethod.accessible = true
+                def types = cl.loadClass('ru.ruscrafting.farms.domain.MineIncidentType')
+                def vector = cl.loadClass('org.joml.Vector3f')
+                def vectorConstructor = vector.getConstructor(Float.TYPE, Float.TYPE, Float.TYPE)
+                def output = new File(project.findProperty('mineFloorPreviewOut') ?: '/private/tmp/mine-floor-activities-20261023')
+                output.mkdirs()
+                def clamp = { value -> Math.max(0d, Math.min(1d, value as double)) as float }
+                def vec = { value -> [value.x as Number, value.y as Number, value.z as Number] }
+                [['middle', 'FREIGHT_WINCH', 11500], ['bottom', 'DRAINAGE_PUMP', 12800]].each { entry ->
+                    def floor = entry[0], type = Enum.valueOf(types, entry[1]), duration = entry[2]
+                    def frames = []
+                    for (int time = 0; time <= duration; time += 100) {
+                        int progress = 0
+                        float pull = 0f, swing = 0f, press = 0f, drain = 0f, returning = 0f
+                        def pipe = null
+                        if (floor == 'middle') {
+                            progress = time < 800 ? 0 : time < 4000 ? 1 : time < 6700 ? 2 : time < 8000 ? 3 : 4
+                            pull = time >= 4000 ? 1f : clamp((time - 1200) / 2800d)
+                            swing = clamp((time - 4700) / 2000d)
+                            returning = clamp((time - 9500) / 2000d)
+                        } else {
+                            progress = time < 2400 ? 0 : time < 3000 ? 1 : time < 8600 ? 1 + (int)((time - 3000) / 1400) : time < 11300 ? 5 : 6
+                            if (time >= 800 && time < 2400) {
+                                float travel = clamp((time - 800) / 1600d)
+                                pipe = vectorConstructor.newInstance((-2.2f + 3.48f * travel) as float,
+                                    (.8f + .4f * Math.sin(travel * Math.PI) - .2f * travel) as float,
+                                    (1.2f - .9f * travel) as float)
+                            }
+                            if (time >= 3000 && time < 8600) {
+                                def strokeAge = (time - 3000) % 1400
+                                press = strokeAge < 600 ? clamp(strokeAge / 300d) : clamp(1d - (strokeAge - 600) / 300d)
+                            }
+                            drain = clamp((time - 9300) / 2000d)
+                        }
+                        def pose = poseConstructor.newInstance(progress, pull, swing, press, drain, pipe, 0f, returning)
+                        def parts = partsMethod.invoke(geo.getField('INSTANCE').get(null), type, pose)
+                        frames << [time: time, progress: progress, parts: parts.collect { p ->
+                            [id:p.id, block:"minecraft:${p.material.name().toLowerCase()}",center:vec(p.center),size:vec(p.size),
+                             quaternion:[p.rotation.x as Number,p.rotation.y as Number,p.rotation.z as Number,p.rotation.w as Number],visible:p.visible]
+                        }]
+                    }
+                    def source = new File(output, "${floor}-after.atelier.json")
+                    def recipe = new groovy.json.JsonSlurper().parse(source)
+                    recipe.title = floor == 'middle' ? 'Грузовая лебёдка · средний ярус' : 'Дренажная помпа · нижний ярус'
+                    recipe.subtitle = 'Исходная live-геометрия · canonical Kotlin poses · 10 Hz · native input/audio unverified'
+                    recipe.displayModels = [:]
+                    recipe.displayAssemblies = []
+                    frames[0].parts.eachWithIndex { p, index ->
+                        def id = "floor_${p.id}"
+                        recipe.palette[id] = [block:p.block,color:'#858580',name:p.id]
+                        recipe.displayModels[id] = [[block:p.block,center:p.center,size:p.size,angle:0,moving:false,motion:'fixed',idleHidden:false,pivot:[0,0,0]]]
+                        recipe.displayAssemblies << [id:id,model:id,at:[11.5,2,8.5],scale:1,yaw:0]
+                    }
+                    recipe.floorActivityFrames = [cadence:100, duration:duration, frames:frames,
+                        scope:'Canonical geometry and scripted accepted-input poses; excludes native interpolation, controls, particles and audio.']
+                    recipe.preview.defaultView = 'overview'
+                    recipe.preview.views += [
+                        [id:'front',label:'Спереди',camera:[11.5,4.7,19],target:[11.5,3.6,9],fov:65],
+                        [id:'side',label:'Сбоку',camera:[23,5.5,9],target:[11.5,3.4,9],fov:65],
+                        [id:'operator',label:'У рукояти',camera:[floor == 'middle' ? 9.85 : 11.5,3.62,floor == 'middle' ? 10.5 : 10.7],target:[floor == 'middle' ? 9.85 : 11.5,floor == 'middle' ? 3.0 : 3.3,floor == 'middle' ? 9.75 : 8.9],fov:78],
+                    ]
+                    new File(output, "${floor}-with-displays.atelier.json").text = groovy.json.JsonOutput.toJson(recipe)
+                    println("${floor}: ${frames.size()} source frames / ${frames[0].parts.size()} stable parts")
+                }
+            }
+        }
+    }
+}

@@ -48,6 +48,7 @@ internal class MineIncidentSet(
     private val access: WorksiteAccessPort,
     private val expeditions: ru.ruscrafting.farms.paper.mine.expedition.MineExpeditionController? = null,
     private val candidateStock: MineIncidentCandidateStock? = null,
+    private val floorActivities: ru.ruscrafting.farms.paper.mine.floorwork.MineFloorActivities? = null,
 ) {
     /** Farm-style admin switch: retire the current scene before forcing the requested incident. */
     fun forceAdmin(runtime: MineRuntime, type: ru.ruscrafting.farms.domain.MineIncidentType, now: Long): Boolean {
@@ -94,6 +95,7 @@ internal class MineIncidentSet(
         workshop.tick(runtime, participants, now)
         expeditions?.tick(runtime, now)
         gasLeak.tick(runtime, participants, now)
+        crystalResonance.tick(runtime, participants, now)
         caveIn.reconcile(runtime)
         trackDamage.reconcile(runtime)
         participants.forEach { trackDamage.ensureKit(runtime, it); flooding.ensureKit(runtime, it) }
@@ -130,7 +132,7 @@ internal class MineIncidentSet(
     fun blocksOreSupply(runtime: MineRuntime): Boolean = workings.blocksOreSupply(runtime)
 
     fun protectsTemporaryBlock(location: Location): Boolean = expeditions?.protects(location) == true ||
-        flooding.protects(location) || workings.protects(location) || lostMiner.protects(location)
+        flooding.protects(location) || crystalResonance.protects(location) || workings.protects(location) || lostMiner.protects(location)
 
     fun retainOnTeleport(player: Player, destination: Location): Boolean =
         expeditions?.retains(player, destination) == true || workings.retains(player, destination) || lostMiner.retainOnTeleport(player, destination)
@@ -177,6 +179,7 @@ internal class MineIncidentSet(
 
     fun onInteractEntity(event: PlayerInteractEntityEvent): Boolean {
         if (expeditions?.onInteractEntity(event) == true) return true
+        if (floorActivities?.onInteract(event, registry.snapshot(), System.currentTimeMillis()) == true) return true
         if (workshop.onInteractEntity(event, registry.snapshot()) || workings.onInteractEntity(event)) return true
         val identity = objectiveMarkers.identity(event.rightClicked)
         if (identity == null || !identity.kind.isObjectiveMarkerHitbox) return lostMiner.onInteractEntity(event)
@@ -217,6 +220,7 @@ internal class MineIncidentSet(
 
     fun releasePlayer(player: Player, reason: WorksitePlayerReleaseReason) {
         workshop.releasePlayer(player, reason)
+        floorActivities?.releasePlayer(player)
         trackDamage.releasePlayer(player.uniqueId)
         lostMiner.releasePlayer(player, reason)
         workings.releasePlayer(player, reason)
@@ -245,6 +249,7 @@ internal class MineIncidentSet(
 
     fun reconcileRecovery(chunk: Chunk? = null): Int {
         if (chunk == null) {
+            floorActivities?.cleanupAll()
             registry.snapshot().forEach(::abortIncompatibleObjective)
             lostMiner.activateLoadedState()
             workings.reconcileLoaded()
@@ -259,7 +264,7 @@ internal class MineIncidentSet(
         return journal.restoreOrphans(registry.snapshot(), chunk)
     }
 
-    fun beforeReload() { workings.beforeReload(); workshop.cleanup(); expeditions?.beforeReload() }
+    fun beforeReload() { workings.beforeReload(); workshop.cleanup(); floorActivities?.cleanupAll(); crystalResonance.cleanupAll(); expeditions?.beforeReload() }
 
     fun cleanup(shutdown: Boolean = false) {
         registry.snapshot().forEach { runtime ->
@@ -275,6 +280,8 @@ internal class MineIncidentSet(
         lostMiner.clearQueues()
         workings.cleanup()
         workshop.cleanup()
+        floorActivities?.cleanupAll()
+        crystalResonance.cleanupAll()
         expeditions?.cleanup(shutdown)
     }
 
@@ -287,6 +294,8 @@ internal class MineIncidentSet(
         expeditions?.updateVisuals(now)
         workings.updateDrive(now)
         registry.snapshot().forEach { runtime ->
+            floorActivities?.update(runtime, runtime.region.world.players, now)
+            crystalResonance.updateVisuals(runtime, runtime.region.world.players, now)
             if (runtime.state.incident?.type == ru.ruscrafting.farms.domain.MineIncidentType.ORE_WORKSHOP) {
                 workshop.tick(runtime, runtime.region.world.players, now)
             }
@@ -296,6 +305,8 @@ internal class MineIncidentSet(
 
     private fun clearActive(runtime: MineRuntime) {
         expeditions?.retire(runtime)
+        floorActivities?.cleanup(runtime)
+        crystalResonance.cleanup(runtime)
         if (runtime.state.incident?.type == ru.ruscrafting.farms.domain.MineIncidentType.ORE_WORKSHOP) workshop.cleanup(runtime)
         if (runtime.state.incident?.working != null) workings.retire(runtime)
         runtime.state.incident?.serviceLeases?.values?.toSet().orEmpty().forEach(trackDamage::releasePlayer)

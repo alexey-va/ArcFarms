@@ -104,7 +104,7 @@ internal class MineGuidanceSource(
         MineResourceText.name(locale, resource, player)
 
     private fun targets(player: Player, runtime: MineRuntime): List<WorksiteGuidanceTarget> {
-        if (runtime.state.incident?.let { it.working != null ||
+        if (runtime.state.incident?.let { it.working != null || it.type in ru.ruscrafting.farms.paper.mine.floorwork.MineFloorActivities.TYPES ||
                 ru.ruscrafting.farms.domain.mine.expedition.MineExpeditionEngine.supports(it.type) } == true)
             return workingTargets(runtime, player)
         if (runtime.settings.miningOnly && runtime.state.phase == MinePhase.MINING) return oreGuidance?.targets(runtime, player).orEmpty()
@@ -114,6 +114,9 @@ internal class MineGuidanceSource(
                 (target.status != ObjectiveTargetStatus.LEASED || target.leasedBy == playerId)
         }.mapNotNull { target -> target.position.guidance(target.id, target.role) }
         if (objective.isNotEmpty()) return objective
+        runtime.state.incident?.crystal?.cuts?.firstOrNull()?.position?.let { cut ->
+            return listOfNotNull(cut.guidance("crystal_wall", ObjectiveTargetRole("crystal_node")))
+        }
         val route = if (!runtime.settings.miningOnly && runtime.state.phase == MinePhase.EXTRACTION) routeTarget(runtime) else null
         if (route != null) return listOfNotNull(route.guidance("route_next", ObjectiveTargetRole("extraction")))
         if (runtime.state.phase in setOf(MinePhase.IDLE, MinePhase.COOLDOWN, MinePhase.EXTRACTION)) return emptyList()

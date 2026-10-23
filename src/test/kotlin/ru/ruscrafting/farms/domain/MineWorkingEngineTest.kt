@@ -1,5 +1,6 @@
 package ru.ruscrafting.farms.domain
 
+import com.google.gson.Gson
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
 import ru.ruscrafting.farms.domain.worksite.WorksitePosition
@@ -65,5 +66,14 @@ class MineWorkingEngineTest : FunSpec({
             first.y shouldBe 51
             kotlin.math.abs(first.x - second.x) + kotlin.math.abs(first.z - second.z) shouldBe 1
         }
+    }
+
+    test("saved third workshop batch remains valid and finishes its accepted legacy contract") {
+        val old = MineWorkingState(placement, MineWorkingStage.SHIP, batch = 2)
+        val restored = Gson().fromJson(Gson().toJson(old), MineWorkingState::class.java)
+        restored.validate()
+        MineWorkingEngine.workshopBatchCount(18) shouldBe 3
+        MineWorkingEngine.workshopBatchCount(12) shouldBe 2
+        MineWorkingEngine.completeTarget(restored, 0, 1, 100L, MineWorkingEngine.workshopBatchCount(18)).finished shouldBe true
     }
 })

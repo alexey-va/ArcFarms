@@ -7,6 +7,7 @@ import org.bukkit.Chunk
 import org.bukkit.block.BlockFace
 import org.bukkit.GameMode
 import org.bukkit.Location
+import ru.ruscrafting.farms.paper.mine.incident.crystal.installCrystalTestScene
 import org.bukkit.Material
 import org.bukkit.entity.Entity
 import org.bukkit.entity.EntityType
@@ -209,12 +210,9 @@ class MineEntityIncidentsMockBukkitTest : FunSpec({
         } shouldBe true
     }
 
-    test("crystal resonance uses real amethyst blocks without synthetic markers") {
+    test("four native crystals use separated tip cues and keep the incident until drilling finishes") {
         val world = paper.server.addSimpleWorld("world")
         val player = paper.server.addPlayer("CrystalOperator")
-        val crystals = (1..5).map { x ->
-            world.getBlockAt(x, 64, 5).also { it.type = Material.AMETHYST_CLUSTER }
-        }
         val graph = testMineComponentGraph(
             paper.createSimplePlugin("MineCrystalDirectTargets"), CuboidRegionGateway(), immediateMinePort(),
             clock = { 1_000L }, journal = ImmediateMineJournal(),
@@ -225,21 +223,23 @@ class MineEntityIncidentsMockBukkitTest : FunSpec({
             5_000L,
         )
         val runtime = graph.registry.byId("old_shafts")!!
-        replaceEntityIndex(graph, runtime, crystals, MineAnchorRole.CRYSTAL)
-
-        graph.crystalResonance.start(runtime, required = 2, now = 1_000L) shouldBe true
+        val crystals = installCrystalTestScene(graph, runtime)
+        graph.crystalResonance.start(runtime, required = 4, now = 1_000L) shouldBe true
         graph.incidentSet.tick(runtime, 1_001L, emptyList())
         val highlights = world.entities.filterIsInstance<BlockDisplay>()
         val targets = runtime.state.objective!!.targets.toList()
         targets.size shouldBe 4
-        highlights.size shouldBe targets.count { it.status != ru.ruscrafting.farms.domain.worksite.ObjectiveTargetStatus.COMPLETED }
+        highlights.size shouldBe 4
         highlights.all { display ->
-            display.isGlowing && display.block.material == Material.AMETHYST_CLUSTER
+            display.isGlowing && display.block.material == Material.AMETHYST_BLOCK &&
+                display.transformation.scale.x == .12f && display.transformation.translation.y > 1f
         } shouldBe true
+        crystals.all { it.type == Material.AMETHYST_CLUSTER } shouldBe true
         world.entities.filterIsInstance<ItemDisplay>().shouldBeEmpty()
         world.entities.filterIsInstance<Interaction>().shouldBeEmpty()
 
-        targets.take(2).forEachIndexed { index, target ->
+        targets.forEachIndexed { index, target ->
+            player.teleport(Location(world, target.position.x + .5, target.position.y.toDouble(), target.position.z + .5))
             graph.incidentSet.onInteract(
                 org.bukkit.event.player.PlayerInteractEvent(
                     player, org.bukkit.event.block.Action.RIGHT_CLICK_BLOCK, null,
@@ -247,19 +247,17 @@ class MineEntityIncidentsMockBukkitTest : FunSpec({
                     org.bukkit.block.BlockFace.UP, EquipmentSlot.HAND,
                 ),
             ) shouldBe true
-            if (index == 0) {
-                runtime.state.phase shouldBe MinePhase.INCIDENT
-                world.entities.filterIsInstance<BlockDisplay>().size shouldBe 3
-            }
+            runtime.state.phase shouldBe MinePhase.INCIDENT
+            world.entities.filterIsInstance<BlockDisplay>().size shouldBe 3 - index
         }
-        runtime.state.phase shouldBe MinePhase.MINING
+        runtime.state.incident!!.progress shouldBe 4
+        runtime.state.incident!!.crystal!!.phase shouldBe ru.ruscrafting.farms.domain.mine.crystal.MineCrystalPhase.CONVERGING
         world.entities.filterIsInstance<BlockDisplay>().shouldBeEmpty()
     }
 
     test("crystal resonance refuses a target that is no longer a real cluster") {
         val world = paper.server.addSimpleWorld("world")
         val player = paper.server.addPlayer("CrystalTamper")
-        val crystals = (1..3).map { x -> world.getBlockAt(x, 64, 5).also { it.type = Material.AMETHYST_CLUSTER } }
         val graph = testMineComponentGraph(
             paper.createSimplePlugin("MineCrystalMaterialGuard"), CuboidRegionGateway(), immediateMinePort(),
             clock = { 1_000L }, journal = ImmediateMineJournal(),
@@ -270,8 +268,8 @@ class MineEntityIncidentsMockBukkitTest : FunSpec({
             5_000L,
         )
         val runtime = graph.registry.byId("old_shafts")!!
-        replaceEntityIndex(graph, runtime, crystals, MineAnchorRole.CRYSTAL)
-        graph.crystalResonance.start(runtime, required = 1, now = 1_000L) shouldBe true
+        installCrystalTestScene(graph, runtime)
+        graph.crystalResonance.start(runtime, required = 4, now = 1_000L) shouldBe true
         val target = runtime.state.objective!!.targets.first()
         val changed = world.getBlockAt(target.position.x, target.position.y, target.position.z).also {
             it.type = Material.AMETHYST_BLOCK

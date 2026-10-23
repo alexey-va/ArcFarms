@@ -7,6 +7,7 @@ import io.mockk.mockk
 import io.mockk.verify
 import org.bukkit.Location
 import org.bukkit.Material
+import ru.ruscrafting.farms.paper.mine.incident.crystal.installCrystalTestScene
 import org.bukkit.Sound
 import org.bukkit.entity.Player
 import ru.arc.paper.testing.MockBukkitTestRuntime
@@ -62,13 +63,19 @@ class MineSequenceIncidentsMockBukkitTest : FunSpec({
         graph.gasLeak.useVent(runtime, gasTargets[0].id, player) shouldBe true
         runtime.state.phase shouldBe MinePhase.MINING
 
-        graph.crystalResonance.start(runtime, required = 2, now = 2_000L) shouldBe true
+        installCrystalTestScene(graph, runtime)
+        graph.crystalResonance.start(runtime, required = 4, now = 2_000L) shouldBe true
         val crystalTargets = runtime.state.objective!!.targets
-        graph.crystalResonance.hit(runtime, crystalTargets[1].id, feedback, insideForgivingWindow = true) shouldBe true
-        verify(exactly = 1) { feedback.playSound(any<Location>(), Sound.BLOCK_AMETHYST_BLOCK_CHIME, 0.75f, 1.0f) }
-        runtime.state.incident!!.progress shouldBe 1
-        graph.crystalResonance.hit(runtime, crystalTargets[0].id, player, insideForgivingWindow = true) shouldBe true
-        runtime.state.phase shouldBe MinePhase.MINING
+        crystalTargets.size shouldBe 4
+        crystalTargets.reversed().forEachIndexed { index, target ->
+            player.teleport(Location(world, target.position.x + .5, target.position.y.toDouble(), target.position.z + .5))
+            graph.crystalResonance.hit(runtime, target.id, player, insideForgivingWindow = true) shouldBe true
+            graph.crystalResonance.hit(runtime, target.id, player, insideForgivingWindow = true) shouldBe false
+            runtime.state.phase shouldBe MinePhase.INCIDENT
+            runtime.state.incident!!.progress shouldBe index + 1
+        }
+        runtime.state.incident!!.crystal!!.phase shouldBe ru.ruscrafting.farms.domain.mine.crystal.MineCrystalPhase.CONVERGING
+
     }
 
     test("crystal incident rejects a fully enclosed cluster without a direct click face") {

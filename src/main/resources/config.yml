@@ -906,7 +906,7 @@ mine-zones:
           COAL: 32
           IRON: 24
         phases: {prospecting-required: 3, mining-required: 56, loading-required: 4}
-        incidents: [CREATURE_NEST, CAVE_IN, FLOODING, GAS_LEAK, TRACK_DAMAGE, TUNNEL_DRIVE, RAIL_EXTENSION, ORE_WORKSHOP, LAST_DESCENT, DRILLING_ARK, DEAD_FACTORY]
+        incidents: [CREATURE_NEST, CAVE_IN, FLOODING, GAS_LEAK, TRACK_DAMAGE, TUNNEL_DRIVE, RAIL_EXTENSION, ORE_WORKSHOP, LAST_DESCENT, DRILLING_ARK, DEAD_FACTORY, CRYSTAL_RESONANCE, FREIGHT_WINCH, DRAINAGE_PUMP]
       foundry_order:
         mining-resources: [COPPER, IRON, GOLD]
         resource-requirements:
@@ -914,7 +914,7 @@ mine-zones:
           IRON: 24
           GOLD: 16
         phases: {prospecting-required: 3, mining-required: 64, loading-required: 4}
-        incidents: [CREATURE_NEST, CAVE_IN, FLOODING, GAS_LEAK, TRACK_DAMAGE, TUNNEL_DRIVE, RAIL_EXTENSION, ORE_WORKSHOP, LAST_DESCENT, DRILLING_ARK, DEAD_FACTORY]
+        incidents: [CREATURE_NEST, CAVE_IN, FLOODING, GAS_LEAK, TRACK_DAMAGE, TUNNEL_DRIVE, RAIL_EXTENSION, ORE_WORKSHOP, LAST_DESCENT, DRILLING_ARK, DEAD_FACTORY, CRYSTAL_RESONANCE, FREIGHT_WINCH, DRAINAGE_PUMP]
       deep_alloy:
         mining-resources: [IRON, REDSTONE, DIAMOND]
         resource-requirements:
@@ -922,7 +922,7 @@ mine-zones:
           REDSTONE: 20
           DIAMOND: 6
         phases: {prospecting-required: 3, mining-required: 50, loading-required: 4}
-        incidents: [CREATURE_NEST, CAVE_IN, FLOODING, GAS_LEAK, TRACK_DAMAGE, TUNNEL_DRIVE, RAIL_EXTENSION, ORE_WORKSHOP, LAST_DESCENT, DRILLING_ARK, DEAD_FACTORY]
+        incidents: [CREATURE_NEST, CAVE_IN, FLOODING, GAS_LEAK, TRACK_DAMAGE, TUNNEL_DRIVE, RAIL_EXTENSION, ORE_WORKSHOP, LAST_DESCENT, DRILLING_ARK, DEAD_FACTORY, CRYSTAL_RESONANCE, FREIGHT_WINCH, DRAINAGE_PUMP]
       crystal_order:
         mining-resources: [GOLD, QUARTZ, DIAMOND]
         resource-requirements:
@@ -930,7 +930,7 @@ mine-zones:
           QUARTZ: 24
           DIAMOND: 8
         phases: {prospecting-required: 3, mining-required: 48, loading-required: 4}
-        incidents: [CREATURE_NEST, CAVE_IN, FLOODING, GAS_LEAK, TRACK_DAMAGE, TUNNEL_DRIVE, RAIL_EXTENSION, ORE_WORKSHOP, LAST_DESCENT, DRILLING_ARK, DEAD_FACTORY]
+        incidents: [CREATURE_NEST, CAVE_IN, FLOODING, GAS_LEAK, TRACK_DAMAGE, TUNNEL_DRIVE, RAIL_EXTENSION, ORE_WORKSHOP, LAST_DESCENT, DRILLING_ARK, DEAD_FACTORY, CRYSTAL_RESONANCE, FREIGHT_WINCH, DRAINAGE_PUMP]
   sand_quarry:
     enabled: true
     engine-version: 2

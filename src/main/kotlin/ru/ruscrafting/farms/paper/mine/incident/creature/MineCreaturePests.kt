@@ -21,6 +21,8 @@ internal class MineCreaturePests(
     private class Session {
         val initialized = hashSetOf<UUID>()
         val pending = hashSetOf<WorksitePosition>()
+        val nextRoam = hashMapOf<UUID, Long>()
+        val roamSteps = hashMapOf<UUID, Long>()
         var nextDamage = 0L
         var nextAttack = 0L
         var ordinal = -1
@@ -33,8 +35,15 @@ internal class MineCreaturePests(
             if (session.initialized.add(mob.uniqueId)) navigation.initialize(mob)
             val target = players.asSequence().filter { eligible(runtime, anchor, mob, it) }
                 .minByOrNull { it.location.distanceSquared(mob.location) }
-            if (target == null) { navigation.stop(mob); return@forEach }
-            navigation.chase(mob, target.location, runtime, anchor.y)
+            val chasing = target != null && navigation.chase(mob, target.location, runtime, anchor.y)
+            if (chasing) session.nextRoam.remove(mob.uniqueId)
+            else if (now >= session.nextRoam.getOrDefault(mob.uniqueId, 0L)) {
+                val step = session.roamSteps.getOrDefault(mob.uniqueId, 0L)
+                session.roamSteps[mob.uniqueId] = step + 1
+                session.nextRoam[mob.uniqueId] = now + 4_000L
+                if (!navigation.roam(mob, anchor, runtime, step)) navigation.stop(mob)
+            }
+            if (target == null) return@forEach
             if (now >= session.nextAttack && target.gameMode != GameMode.CREATIVE &&
                 target.location.distanceSquared(mob.location) <= 2.6 && mob.hasLineOfSight(target)) {
                 mob.swingMainHand()

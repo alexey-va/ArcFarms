@@ -5,7 +5,7 @@ import kotlin.math.floor
 
 /** Names accepted by the mine point editor and persisted in mine-locations.json. */
 object MineLocationKeys {
-    val workshop = listOf("ore_input", "ore_crusher", "ore_furnace", "ore_output", "ore_shipping")
+    val workshop = listOf("ore_input", "ore_crusher", "ore_furnace", "ore_output", "ore_shipping", "freight_winch", "drainage_pump")
     val workings = (1..12).map { "working_$it" }
     val expeditions = listOf("expedition_gate")
     val all = workshop + workings + expeditions

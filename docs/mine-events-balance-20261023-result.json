@@ -1,0 +1,277 @@
+{
+  "title": "ArcFarms mine events and workshop throughput economy 2026-10-23",
+  "evaluation": {
+    "script": "balance-ruscrafting-economy/scripts/evaluate.py",
+    "exit_code": 0,
+    "status": "PASS"
+  },
+  "scenario_order": [
+    "low",
+    "base",
+    "high"
+  ],
+  "currencies": {
+    "vault": {
+      "unit": "Vault",
+      "before_player_day_mint": [
+        "205.875",
+        "1647.0",
+        "5490.0"
+      ],
+      "after_player_day_mint": [
+        "219.60",
+        "1784.25",
+        "6039.0"
+      ],
+      "before_network_week_mint": [
+        "7205.625",
+        "115290.0",
+        "768600.0"
+      ],
+      "after_network_week_mint": [
+        "7686.00",
+        "124897.50",
+        "845460.0"
+      ],
+      "network_weekly_net_delta": [
+        "480.375",
+        "9607.50",
+        "76860.0"
+      ]
+    },
+    "tokens": {
+      "unit": "tokens",
+      "before_player_day_mint": [
+        "0.00",
+        "0",
+        "0"
+      ],
+      "after_player_day_mint": [
+        "0.0",
+        "0.0",
+        "0"
+      ],
+      "before_network_week_mint": [
+        "0.00",
+        "0",
+        "0"
+      ],
+      "after_network_week_mint": [
+        "0.0",
+        "0.0",
+        "0"
+      ]
+    },
+    "vanilla_xp": {
+      "unit": "vanilla XP points",
+      "before_player_day_mint": [
+        "308.8125",
+        "2470.50",
+        "8235.00"
+      ],
+      "after_player_day_mint": [
+        "329.400",
+        "2676.375",
+        "9058.50"
+      ],
+      "before_network_week_mint": [
+        "10808.4375",
+        "172935.00",
+        "1152900.00"
+      ],
+      "after_network_week_mint": [
+        "11529.000",
+        "187346.250",
+        "1268190.00"
+      ]
+    },
+    "item_iron_ingot": {
+      "unit": "one item of this material",
+      "before_player_day_units": [
+        "3.00",
+        "24",
+        "80"
+      ],
+      "after_player_day_units": [
+        "3.2",
+        "26.0",
+        "88"
+      ],
+      "before_network_week_units": [
+        "105.00",
+        "1680",
+        "11200"
+      ],
+      "after_network_week_units": [
+        "112.0",
+        "1820.0",
+        "12320"
+      ]
+    },
+    "item_coal": {
+      "unit": "one item of this material",
+      "before_player_day_units": [
+        "6.09375",
+        "48.750",
+        "162.500"
+      ],
+      "after_player_day_units": [
+        "6.5000",
+        "52.8125",
+        "178.750"
+      ],
+      "before_network_week_units": [
+        "213.28125",
+        "3412.500",
+        "22750.000"
+      ],
+      "after_network_week_units": [
+        "227.5000",
+        "3696.8750",
+        "25025.000"
+      ]
+    },
+    "item_gold_ingot": {
+      "unit": "one item of this material",
+      "before_player_day_units": [
+        "1.425",
+        "11.4",
+        "38.0"
+      ],
+      "after_player_day_units": [
+        "1.52",
+        "12.35",
+        "41.8"
+      ],
+      "before_network_week_units": [
+        "49.875",
+        "798.0",
+        "5320.0"
+      ],
+      "after_network_week_units": [
+        "53.20",
+        "864.50",
+        "5852.0"
+      ]
+    },
+    "item_redstone": {
+      "unit": "one item of this material",
+      "before_player_day_units": [
+        "3.65625",
+        "29.250",
+        "97.500"
+      ],
+      "after_player_day_units": [
+        "3.9000",
+        "31.6875",
+        "107.250"
+      ],
+      "before_network_week_units": [
+        "127.96875",
+        "2047.500",
+        "13650.000"
+      ],
+      "after_network_week_units": [
+        "136.5000",
+        "2218.1250",
+        "15015.000"
+      ]
+    },
+    "item_diamond": {
+      "unit": "one item of this material",
+      "before_player_day_units": [
+        "0.4125",
+        "3.30",
+        "11.00"
+      ],
+      "after_player_day_units": [
+        "0.440",
+        "3.575",
+        "12.10"
+      ],
+      "before_network_week_units": [
+        "14.4375",
+        "231.00",
+        "1540.00"
+      ],
+      "after_network_week_units": [
+        "15.400",
+        "250.250",
+        "1694.00"
+      ]
+    },
+    "item_lapis_lazuli": {
+      "unit": "one item of this material",
+      "before_player_day_units": [
+        "1.18125",
+        "9.450",
+        "31.500"
+      ],
+      "after_player_day_units": [
+        "1.2600",
+        "10.2375",
+        "34.650"
+      ],
+      "before_network_week_units": [
+        "41.34375",
+        "661.500",
+        "4410.000"
+      ],
+      "after_network_week_units": [
+        "44.1000",
+        "716.6250",
+        "4851.000"
+      ]
+    }
+  },
+  "vault_progression_days_to_save": {
+    "pig_L1": {
+      "before": [
+        "151.7911353976927747419550698",
+        "18.97389192471159684274438373",
+        "5.692167577413479052823315118"
+      ],
+      "after": [
+        "142.3041894353369763205828780",
+        "17.51436177665685862407173883",
+        "5.174697797648617320748468289"
+      ]
+    },
+    "pig_L1_to_L3": {
+      "before": [
+        "1244.687310261080752884031573",
+        "155.5859137826350941105039466",
+        "46.67577413479052823315118397"
+      ],
+      "after": [
+        "1166.894353369763205828779599",
+        "143.6177665685862407173882584",
+        "42.43252194071866203013743997"
+      ]
+    },
+    "horse_L1": {
+      "before": [
+        "303.5822707953855494839101396",
+        "37.94778384942319368548876746",
+        "11.38433515482695810564663024"
+      ],
+      "after": [
+        "284.6083788706739526411657559",
+        "35.02872355331371724814347765",
+        "10.34939559529723464149693658"
+      ]
+    },
+    "horse_L1_to_L3": {
+      "before": [
+        "2550.091074681238615664845173",
+        "318.7613843351548269581056466",
+        "95.62841530054644808743169399"
+      ],
+      "after": [
+        "2390.710382513661202185792350",
+        "294.2412778478352248844052123",
+        "86.93492300049677098857426726"
+      ]
+    }
+  }
+}

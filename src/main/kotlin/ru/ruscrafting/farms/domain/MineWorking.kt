@@ -51,7 +51,8 @@ data class MineWorkingState(
         placement.validate()
         drive?.validate(placement.geometryVersion)
         require(completed.size <= 256 && completed.all { it in 0..255 })
-        require(batch in 0 until MineWorkingEngine.BATCHES)
+        // Retain the final batch of an already accepted three-batch workshop.
+        require(batch in 0 until MineWorkingEngine.LEGACY_BATCHES)
         require(heatStartedAt >= 0)
         require(stage == MineWorkingStage.HEAT || heatStartedAt == 0L)
     }
@@ -87,7 +88,8 @@ data class MineWorkingStep(val state: MineWorkingState, val accepted: Boolean, v
 
 /** Monotonic physical actions; retries and duplicate clicks never count twice. */
 object MineWorkingEngine {
-    const val BATCHES = 3
+    const val BATCHES = 2
+    const val LEGACY_BATCHES = 3
     const val CRUSH_STROKES = 3
     const val HEAT_MILLIS = 4_000L
     const val HEAT_WINDOW_MILLIS = 4_000L
@@ -103,16 +105,18 @@ object MineWorkingEngine {
         },
     )
 
-    fun completeTarget(current: MineWorkingState, target: Int, total: Int, now: Long): MineWorkingStep =
-        complete(current, target, total, now, controlledHeat = false)
+    fun workshopBatchCount(required: Int): Int = if (required == LEGACY_BATCHES * (CRUSH_STROKES + 3)) LEGACY_BATCHES else BATCHES
+
+    fun completeTarget(current: MineWorkingState, target: Int, total: Int, now: Long, batches: Int = BATCHES): MineWorkingStep =
+        complete(current, target, total, now, controlledHeat = false, batches = batches)
 
     /** The fixed workshop has an air-control furnace rather than the legacy timed quench window. */
-    fun completeWorkshopHeat(current: MineWorkingState, heat: MineWorkshopHeat, now: Long): MineWorkingStep =
-        if (current.stage == MineWorkingStage.HEAT && heat.ready) complete(current, 0, 1, now, controlledHeat = true)
+    fun completeWorkshopHeat(current: MineWorkingState, heat: MineWorkshopHeat, now: Long, batches: Int = BATCHES): MineWorkingStep =
+        if (current.stage == MineWorkingStage.HEAT && heat.ready) complete(current, 0, 1, now, controlledHeat = true, batches = batches)
         else MineWorkingStep(current, false)
 
-    private fun complete(current: MineWorkingState, target: Int, total: Int, now: Long, controlledHeat: Boolean): MineWorkingStep {
-        require(total in 1..256 && now >= 0L)
+    private fun complete(current: MineWorkingState, target: Int, total: Int, now: Long, controlledHeat: Boolean, batches: Int): MineWorkingStep {
+        require(total in 1..256 && now >= 0L && batches in BATCHES..LEGACY_BATCHES)
         if (target !in 0 until total || target in current.completed) return MineWorkingStep(current, false)
         // Rails and the test cart advance along one continuous path.
         if (current.stage in setOf(MineWorkingStage.LAY_TRACK, MineWorkingStage.TEST_TRACK) &&
@@ -127,7 +131,7 @@ object MineWorkingEngine {
             MineWorkingStage.LOAD -> MineWorkingStage.CRUSH
             MineWorkingStage.CRUSH -> MineWorkingStage.HEAT
             MineWorkingStage.HEAT -> MineWorkingStage.SHIP
-            MineWorkingStage.SHIP -> if (current.batch + 1 < BATCHES) MineWorkingStage.LOAD else null
+            MineWorkingStage.SHIP -> if (current.batch + 1 < batches) MineWorkingStage.LOAD else null
             MineWorkingStage.SUPPORT, MineWorkingStage.TEST_TRACK -> null
         }
         if (nextStage == null) return MineWorkingStep(next, true, finished = true)

@@ -105,10 +105,11 @@ class MineConfigTest : FunSpec({
             mine.rewards.commands shouldBe emptyList()
             mine.orders.forEach { order ->
                 order.miningRequired shouldBe order.normalizedRequirements.values.sum()
-                order.incidentTypes.size shouldBe 11
+                order.incidentTypes.size shouldBe 14
                 order.incidentTypes.containsAll(listOf(
                     MineIncidentType.TRACK_DAMAGE, MineIncidentType.LAST_DESCENT,
                     MineIncidentType.DRILLING_ARK, MineIncidentType.DEAD_FACTORY,
+                    MineIncidentType.CRYSTAL_RESONANCE, MineIncidentType.FREIGHT_WINCH, MineIncidentType.DRAINAGE_PUMP,
                 )) shouldBe true
                 val reward = FarmRewardPlanner.plan(
                     mine.rewards, "mine_${mine.id}", 1,
