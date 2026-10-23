@@ -82,8 +82,23 @@ internal interface MineIncidentEntityEffects {
         chunk: Chunk,
         kind: MineIncidentEntityKind,
         expected: Map<String, WorksitePosition>,
+        loadedEntities: List<Entity>? = null,
     ): Map<String, UUID>
     fun cleanup(runtime: MineRuntime, kind: MineIncidentEntityKind)
+
+    /** Retires every sequence of these owned kinds in this chunk, including late-loaded orphans. */
+    fun cleanupChunk(runtime: MineRuntime, chunk: Chunk, kinds: Set<MineIncidentEntityKind>) {
+        if (chunk.world !== runtime.region.world || !chunk.isLoaded || !chunk.isEntitiesLoaded) return
+        cleanupEntities(runtime, chunk.entities.asList(), kinds)
+    }
+
+    /** Uses already supplied entities without forcing chunk or entity data to load. */
+    fun cleanupEntities(runtime: MineRuntime, entities: Iterable<Entity>, kinds: Set<MineIncidentEntityKind>) {
+        entities.forEach { entity ->
+            val identity = identity(entity) ?: return@forEach
+            if (identity.zoneId == runtime.settings.id && identity.kind in kinds) remove(entity.uniqueId)
+        }
+    }
 }
 
 /** PDC-owned entities; only chunk reconcile and cleanup scan loaded entities. */
@@ -221,18 +236,31 @@ internal class PaperMineIncidentEntityEffects(plugin: Plugin) : MineIncidentEnti
         chunk: Chunk,
         kind: MineIncidentEntityKind,
         expected: Map<String, WorksitePosition>,
+        loadedEntities: List<Entity>?,
     ): Map<String, UUID> {
         if (chunk.world !== runtime.region.world) return emptyMap()
+        val objectiveMarker = kind in OBJECTIVE_MARKER_KINDS || kind in OBJECTIVE_MARKER_HITBOX_KINDS
+        // Objective marker scenes resume from EntitiesLoadEvent; other incidents retain their chunk-load contract.
+        if (objectiveMarker && (!chunk.isLoaded || loadedEntities == null && !chunk.isEntitiesLoaded)) return emptyMap()
+        val entities = loadedEntities ?: chunk.entities.asList()
         val canonical = linkedMapOf<String, UUID>()
         if (kind == MineIncidentEntityKind.CREATURE) expected.keys.forEach { target ->
             roaming[roamingKey(runtime, target)]?.let { id ->
                 Bukkit.getEntity(id)?.takeIf { it.isValid && !it.isDead }?.let { canonical[target] = id }
             }
         }
-        chunk.entities.forEach { entity ->
+        entities.forEach { entity ->
             val identity = identity(entity) ?: return@forEach
             if (identity.zoneId != runtime.settings.id || identity.sequence != runtime.state.sequence || identity.kind != kind) return@forEach
-            val expectedLocation = expected[identity.targetId]?.let { position ->
+            val expectedPosition = expected[identity.targetId]
+            if (objectiveMarker && kind in ADJACENT_ENTITY_KINDS && expectedPosition != null && expectedPosition.world == chunk.world.name &&
+                !chunk.world.isChunkLoaded(expectedPosition.x shr 4, expectedPosition.z shr 4)
+            ) {
+                val previous = canonical.putIfAbsent(identity.targetId, entity.uniqueId)
+                if (previous != null && previous != entity.uniqueId) remove(entity.uniqueId)
+                return@forEach // An unloaded target is unknown, not proof that its adjacent marker is stale.
+            }
+            val expectedLocation = expectedPosition?.let { position ->
                 when {
                     kind in ADJACENT_ENTITY_KINDS -> objectiveMarkerLocation(kind, position)
                     else -> entityLocation(position, kind)
@@ -268,9 +296,7 @@ internal class PaperMineIncidentEntityEffects(plugin: Plugin) : MineIncidentEnti
 
     override fun cleanup(runtime: MineRuntime, kind: MineIncidentEntityKind) {
         runtime.region.world.loadedChunks.forEach { chunk ->
-            chunk.entities.filter { entity ->
-                identity(entity)?.let { it.zoneId == runtime.settings.id && it.kind == kind } == true
-            }.forEach { remove(it.uniqueId) }
+            cleanupEntities(runtime, chunk.entities.asList(), setOf(kind))
         }
     }
 
@@ -393,6 +419,9 @@ internal class PaperMineIncidentEntityEffects(plugin: Plugin) : MineIncidentEnti
 
     private fun objectiveMarkerLocation(kind: MineIncidentEntityKind, position: WorksitePosition): Location? {
         val world = Bukkit.getWorld(position.world) ?: return null
+        if ((kind in OBJECTIVE_MARKER_KINDS || kind in OBJECTIVE_MARKER_HITBOX_KINDS) &&
+            !world.isChunkLoaded(position.x shr 4, position.z shr 4)
+        ) return null
         val placement = objectiveMarkerPlacement(world.getBlockAt(position.x, position.y, position.z)) ?: return null
         val offset = if (kind in INTERACTION_HITBOX_KINDS) placement.hitbox else placement.display
         return Location(world, position.x + offset.first, position.y + offset.second, position.z + offset.third)

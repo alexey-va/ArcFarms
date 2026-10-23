@@ -45,12 +45,32 @@ internal class MineObjectiveMarkerScene(private val effects: MineIncidentEntityE
         val kind = activeKind(runtime)
         if (kind == null) {
             idleCleanupZones.add(runtime.settings.id)
-            cleanupEntities(runtime)
+            effects.cleanupChunk(runtime, chunk, OWNED_KINDS)
             return
         }
         val expected = expected(runtime)
         reconcileChunks(runtime, kind, expected, chunksAround(chunk))
         if (kind !in setOf(MineIncidentEntityKind.CRYSTAL_MARKER, MineIncidentEntityKind.FLOOD_MARKER)) reconcileChunks(runtime, requireNotNull(kind.objectiveMarkerHitboxKind), expected, chunksAround(chunk))
+    }
+
+    fun onEntitiesLoad(runtime: MineRuntime, chunk: Chunk, entities: List<Entity>) {
+        if (chunk.world !== runtime.region.world) return
+        val kind = activeKind(runtime)
+        if (kind == null) {
+            idleCleanupZones.add(runtime.settings.id)
+            effects.cleanupEntities(runtime, entities, OWNED_KINDS)
+            return
+        }
+        val kinds = if (kind in setOf(MineIncidentEntityKind.CRYSTAL_MARKER, MineIncidentEntityKind.FLOOD_MARKER)) {
+            setOf(kind)
+        } else setOf(kind, requireNotNull(kind.objectiveMarkerHitboxKind))
+        effects.cleanupEntities(runtime, entities.filter { entity ->
+            effects.identity(entity)?.let { it.sequence != runtime.state.sequence || it.kind !in kinds } == true
+        }, OWNED_KINDS)
+        // EntitiesLoadEvent may precede the full block chunk. ChunkLoadEvent will finish its scene later.
+        if (!chunk.isLoaded) return
+        val expected = expected(runtime)
+        kinds.forEach { activeKind -> effects.reconcileChunk(runtime, chunk, activeKind, expected, entities) }
     }
 
     fun cleanup(runtime: MineRuntime) {

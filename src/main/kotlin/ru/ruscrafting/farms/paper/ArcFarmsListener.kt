@@ -38,6 +38,7 @@ import org.bukkit.event.player.PlayerQuitEvent
 import org.bukkit.event.player.PlayerTeleportEvent
 import org.bukkit.event.vehicle.VehicleEnterEvent
 import org.bukkit.event.world.ChunkLoadEvent
+import org.bukkit.event.world.EntitiesLoadEvent
 
 class ArcFarmsListener(
     private val service: ArcFarmsService,
@@ -72,6 +73,9 @@ class ArcFarmsListener(
 
     @EventHandler(priority = EventPriority.LOWEST)
     fun onChunkLoad(event: ChunkLoadEvent) = service.onChunkLoad(event.chunk)
+
+    @EventHandler(priority = EventPriority.LOWEST)
+    fun onEntitiesLoad(event: EntitiesLoadEvent) = service.onEntitiesLoad(event.chunk, event.entities)
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     fun onChunkUnload(event: org.bukkit.event.world.ChunkUnloadEvent) = service.onChunkUnload(event.chunk)

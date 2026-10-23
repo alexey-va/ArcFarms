@@ -391,6 +391,7 @@ private class RecordingIncidentEntities : MineIncidentEntityEffects {
         chunk: Chunk,
         kind: MineIncidentEntityKind,
         expected: Map<String, WorksitePosition>,
+        loadedEntities: List<Entity>?,
     ): Map<String, UUID> {
         val canonical = linkedMapOf<String, UUID>()
         expected.forEach { (targetId, position) -> canonical[targetId] = spawn(runtime, kind, targetId, position) }

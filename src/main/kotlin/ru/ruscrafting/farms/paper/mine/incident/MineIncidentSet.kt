@@ -240,6 +240,9 @@ internal class MineIncidentSet(
         if (!abortBlockedObjective(runtime)) objectiveMarkers.reconcileChunk(runtime, chunk)
     }
 
+    fun onEntitiesLoad(runtime: MineRuntime, chunk: Chunk, entities: List<org.bukkit.entity.Entity>) =
+        objectiveMarkers.onEntitiesLoad(runtime, chunk, entities)
+
     fun reconcileRecovery(chunk: Chunk? = null): Int {
         if (chunk == null) {
             registry.snapshot().forEach(::abortIncompatibleObjective)

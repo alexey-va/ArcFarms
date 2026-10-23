@@ -296,6 +296,12 @@ internal class MineModule(
         }
     }
 
+    fun onEntitiesLoad(chunk: Chunk, entities: List<org.bukkit.entity.Entity>) {
+        registry.snapshot().filter { it.region.world === chunk.world }.forEach { runtime ->
+            incidents.onEntitiesLoad(runtime, chunk, entities)
+        }
+    }
+
     override fun beforeReload(reason: String) {
         incidents.beforeReload()
         veins.clear()

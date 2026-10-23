@@ -607,9 +607,10 @@ private class RecordingIncidentEntities : MineIncidentEntityEffects {
         chunk: Chunk,
         kind: MineIncidentEntityKind,
         expected: Map<String, WorksitePosition>,
+        loadedEntities: List<Entity>?,
     ): Map<String, UUID> {
         val canonical = linkedMapOf<String, UUID>()
-        entities.toMap().forEach { (id, entity) ->
+        (loadedEntities?.associateBy { it.uniqueId } ?: entities.toMap()).forEach { (id, entity) ->
             if ((entity.location.blockX shr 4) != chunk.x || (entity.location.blockZ shr 4) != chunk.z) return@forEach
             val identity = identities[id] ?: return@forEach
             if (identity.zoneId != runtime.settings.id || identity.sequence != runtime.state.sequence || identity.kind != kind) return@forEach

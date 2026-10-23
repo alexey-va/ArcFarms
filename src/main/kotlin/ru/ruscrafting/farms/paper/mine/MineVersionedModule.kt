@@ -160,6 +160,9 @@ internal class MineVersionedModule(
     override fun canAccess(player: Player): Boolean = delegate.canAccess(player)
     override fun activateLoadedState() = delegate.activateLoadedState()
     override fun reconcileChunk(chunk: Chunk) = delegate.reconcileChunk(chunk)
+    fun onEntitiesLoad(chunk: Chunk, entities: List<org.bukkit.entity.Entity>) {
+        (delegate as? MineModule)?.onEntitiesLoad(chunk, entities)
+    }
     override fun beforeChunkUnload(chunk: Chunk) = delegate.beforeChunkUnload(chunk)
     override fun beforeReload(reason: String) = delegate.beforeReload(reason)
     override fun cleanup(reason: String) = delegate.cleanup(reason)
