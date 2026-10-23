@@ -8,6 +8,8 @@ import org.bukkit.entity.Player
 import org.bukkit.event.player.PlayerInteractEntityEvent
 import org.bukkit.inventory.EquipmentSlot
 import org.bukkit.plugin.Plugin
+import ru.arc.paper.display.PaperPacketDisplays
+import ru.arc.paper.particle.PaperViewerParticles
 import ru.ruscrafting.farms.config.ArcFarmsConfig
 import ru.ruscrafting.farms.config.ArcFarmsLocale
 import ru.ruscrafting.farms.config.MessageKey
@@ -48,11 +50,16 @@ internal class FarmHellGreenhouseIncident(
     text: FarmTextDisplayRenderer = PaperFarmTextDisplayRenderer,
     private val rooms: FarmMoleBurrowWorld,
     private val tasks: WorksiteTaskPort,
+    private val displays: PaperPacketDisplays,
+    private val viewerParticles: PaperViewerParticles,
 ) {
     private data class Clock(val sequence: Long, val placement: Long, var ticks: Int = 0, var room: FarmMoleBurrowScene? = null)
     private val pendingInitializations = mutableMapOf<String, CompletableFuture<Boolean>>()
     private val clocks = mutableMapOf<String, Clock>()
-    private val scene = FarmHellGreenhouseScene(plugin, locale, text)
+    private val scene = FarmHellGreenhouseScene(plugin, locale, text,
+        displays = displays,
+        viewerParticles = viewerParticles,
+    )
     private val expedition = FarmUndergroundExpedition(plugin, tasks, access, audience, state, FarmUndergroundVariant.HELL_RIFT,
         settings, locale, text)
     private val entrances = mutableMapOf<String, List<Entity>>()

@@ -126,9 +126,9 @@ class FarmFoodDeliveryRecoveryMockBukkitTest : FunSpec({
             every { fixture.port.players(any()) } returns emptyList()
             mockkObject(FarmPortalRenderer)
             try {
-                every { FarmPortalRenderer.render(any(), any()) } just Runs
+                every { FarmPortalRenderer.render(any(), any(), any()) } just Runs
                 delivery.updateVisuals(listOf(runtime))
-                verify(exactly = 1) { FarmPortalRenderer.render(any(), match { player in it }) }
+                verify(exactly = 1) { FarmPortalRenderer.render(any(), match { player in it }, any()) }
             } finally {
                 unmockkObject(FarmPortalRenderer)
             }

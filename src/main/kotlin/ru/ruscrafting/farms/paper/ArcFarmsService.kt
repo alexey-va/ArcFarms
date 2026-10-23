@@ -34,6 +34,8 @@ import org.bukkit.event.player.PlayerPortalEvent
 import org.bukkit.event.player.PlayerTeleportEvent
 import org.bukkit.event.vehicle.VehicleEnterEvent
 import org.bukkit.plugin.Plugin
+import ru.arc.paper.display.PaperPacketDisplays
+import ru.arc.paper.particle.PaperViewerParticles
 import ru.ruscrafting.farms.config.ArcFarmsConfig
 import ru.ruscrafting.farms.config.ArcFarmsLocale
 import ru.ruscrafting.farms.config.MessageKey
@@ -105,6 +107,8 @@ class ArcFarmsService(
         action(); CompletableFuture.completedFuture(Unit)
     },
     private val retainStorage: (() -> CompletableFuture<Unit>) -> Unit = {},
+    private val displays: PaperPacketDisplays,
+    private val viewerParticles: PaperViewerParticles,
 ) : AutoCloseable {
     @Volatile
     private var settings: ArcFarmsConfig = initialSettings
@@ -171,6 +175,8 @@ class ArcFarmsService(
         persistAsync = ::persistAsync,
         enterprise = enterprise.farm,
         menus = menus,
+        displays = displays,
+        viewerParticles = viewerParticles,
     )
     private val worksiteRewards = WorksiteRewardGrantService(farm.rewards)
     private val lumbermillModule = LumbermillVersionedModule()

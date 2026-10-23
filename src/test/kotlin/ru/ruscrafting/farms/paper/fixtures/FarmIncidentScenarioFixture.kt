@@ -156,6 +156,7 @@ internal class FarmIncidentScenarioFixture private constructor(
         transitions = transitionSink,
         blockPassability = MockBukkitFarmBlockPassability,
         textDisplays = MockBukkitFarmTextDisplays,
+        displays = io.mockk.mockk(relaxed = true),
     )
 
     fun barnFire(): FarmBarnFireIncident = FarmBarnFireIncident(
@@ -290,6 +291,8 @@ internal class FarmIncidentScenarioFixture private constructor(
             nightShift = night,
             debrisVisuals = raidDebrisVisuals,
             random = random,
+            displays = io.mockk.mockk(relaxed = true),
+            viewerParticles = io.mockk.mockk(relaxed = true),
         )
         return controller
     }
@@ -333,6 +336,8 @@ internal class FarmIncidentScenarioFixture private constructor(
             mobDespawns = MockBukkitFarmMobDespawns,
             vehiclePassengers = MockBukkitFarmVehiclePassengers,
             textDisplays = MockBukkitFarmTextDisplays,
+            displays = io.mockk.mockk(relaxed = true),
+            viewerParticles = io.mockk.mockk(relaxed = true),
         )
     }
 

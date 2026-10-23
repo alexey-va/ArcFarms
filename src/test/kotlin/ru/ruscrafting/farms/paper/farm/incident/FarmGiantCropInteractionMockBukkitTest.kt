@@ -134,6 +134,7 @@ class FarmGiantCropInteractionMockBukkitTest : FunSpec({
                 fixture.locale,
                 ArcFarmsDebug({ false }) {},
                 { fixture.settings },
+                displays = io.mockk.mockk(relaxed = true),
             )
             supplies.give(runtime, FarmSupplyKind.FIRE, player) shouldBe true
             player.teleport(fixture.location(fixture.barnPoint).add(0.0, 0.0, 15.0))
@@ -172,6 +173,7 @@ class FarmGiantCropInteractionMockBukkitTest : FunSpec({
                 fixture.locale,
                 ArcFarmsDebug({ false }) {},
                 { fixture.settings },
+                displays = io.mockk.mockk(relaxed = true),
             )
             supplies.give(runtime, FarmSupplyKind.FIRE, player) shouldBe true
             val equipment = player.inventory.itemInMainHand

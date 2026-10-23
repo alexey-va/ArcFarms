@@ -21,6 +21,9 @@ import org.bukkit.plugin.Plugin
 import org.bukkit.util.Transformation
 import org.joml.AxisAngle4f
 import org.joml.Vector3f
+import ru.arc.paper.display.PacketItemDisplay
+import ru.arc.paper.display.PacketTextDisplay
+import ru.arc.paper.display.PaperPacketDisplays
 import ru.ruscrafting.farms.config.ArcFarmsConfig
 import ru.ruscrafting.farms.config.ArcFarmsLocale
 import ru.ruscrafting.farms.config.MessageKey
@@ -39,6 +42,9 @@ internal enum class FarmSupplyKind { TOOL, SEEDS, WATER, ARCHERY, FIRE }
 internal data class FarmSupplyInteraction(val zoneId: String, val kind: FarmSupplyKind)
 
 private data class SupplyKey(val zoneId: String, val kind: FarmSupplyKind)
+private data class SupplyVisuals(val item: PacketItemDisplay, val label: PacketTextDisplay) {
+    fun remove() { item.remove(); label.remove() }
+}
 
 /** Owns farm supply displays and tagged temporary player items. */
 internal class FarmSupplyController(
@@ -47,11 +53,13 @@ internal class FarmSupplyController(
     private val debug: ArcFarmsDebug,
     private val settings: () -> ArcFarmsConfig,
     private val entityLookup: FarmEntityLookup = BukkitFarmEntityLookup,
+    private val displays: PaperPacketDisplays,
 ) {
     private val zoneKey = NamespacedKey(plugin, "farm_supply_zone")
     private val kindKey = NamespacedKey(plugin, "farm_supply_kind")
     private val serviceItemKey = NamespacedKey(plugin, "farm_service_item")
     private val entities = mutableMapOf<SupplyKey, MutableSet<UUID>>()
+    private val visuals = mutableMapOf<SupplyKey, SupplyVisuals>()
     private val visualMaterials = mutableMapOf<SupplyKey, Material>()
     private val reconciledZones = mutableSetOf<String>()
 
@@ -68,7 +76,7 @@ internal class FarmSupplyController(
         val loadedByKind = if (reconciledZones.add(runtime.settings.id)) {
             entityLookup.inWorld(runtime.region.world).asSequence().filter(::owns).mapNotNull { entity ->
                 val identity = interaction(entity)
-                if (identity?.zoneId == runtime.settings.id) identity.kind to entity
+                if (identity?.zoneId == runtime.settings.id && entity is Interaction) identity.kind to entity
                 else {
                     if (entity.persistentDataContainer.get(zoneKey, PersistentDataType.STRING) == runtime.settings.id) {
                         entity.remove()
@@ -99,42 +107,36 @@ internal class FarmSupplyController(
             }
             val active = (entities[key].orEmpty().mapNotNull(Bukkit::getEntity) + loadedByKind[kind].orEmpty())
                 .distinctBy(Entity::getUniqueId)
-                .filter { entity -> entity.isValid && interaction(entity) == FarmSupplyInteraction(runtime.settings.id, kind) }
+                .filter { entity -> entity.isValid && entity is Interaction && interaction(entity) == FarmSupplyInteraction(runtime.settings.id, kind) }
             entities[key] = active.mapTo(mutableSetOf(), Entity::getUniqueId)
-            if (active.size == EXPECTED_ENTITY_COUNT && visualMaterials[key] == visual && matchesLocation(active, location)) {
-                active.filterIsInstance<ItemDisplay>().forEach { entity ->
-                    entity.setItemStack(serviceItem(runtime, kind))
-                    entity.uniformScale(runtime.settings.supplies.itemScale)
-                    entity.viewRange = viewRange
-                    entity.isGlowing = true
-                }
-                active.filterIsInstance<TextDisplay>().forEach { entity ->
-                    entity.text(label(runtime, kind, visual))
-                    entity.viewRange = viewRange
-                }
+            val current = visuals[key]
+            if (active.size == 1 && current != null && current.item.isValid && current.label.isValid &&
+                visualMaterials[key] == visual && matchesLocation(active, current, location)
+            ) {
+                current.item.itemStack = serviceItem(runtime, kind)
+                current.item.uniformScale(runtime.settings.supplies.itemScale)
+                current.item.viewRange = viewRange
+                current.item.isGlowing = true
+                current.label.text(label(runtime, kind, visual))
+                current.label.viewRange = viewRange
                 return@forEach
             }
             removeEntities(key, "refresh")
-            val item = world.spawn(location.clone().add(0.0, ITEM_Y_OFFSET, 0.0), ItemDisplay::class.java) { entity ->
-                entity.setItemStack(serviceItem(runtime, kind))
+            val item = displays.spawnItem(location.clone().add(0.0, ITEM_Y_OFFSET, 0.0), serviceItem(runtime, kind)).also { entity ->
                 entity.itemDisplayTransform = ItemDisplay.ItemDisplayTransform.FIXED
                 entity.uniformScale(runtime.settings.supplies.itemScale)
                 entity.viewRange = viewRange
                 entity.isGlowing = true
-                entity.isPersistent = false
-                mark(entity, runtime.settings.id, kind)
             }
-            val label = world.spawn(location.clone().add(0.0, LABEL_Y_OFFSET, 0.0), TextDisplay::class.java) { entity ->
-                entity.text(label(runtime, kind, visual))
+            val label = displays.spawnText(location.clone().add(0.0, LABEL_Y_OFFSET, 0.0), label(runtime, kind, visual)).also { entity ->
                 entity.billboard = Display.Billboard.VERTICAL
                 entity.alignment = TextDisplay.TextAlignment.CENTER
                 entity.lineWidth = 180
                 entity.backgroundColor = Color.fromARGB(128, 16, 16, 16)
                 entity.isShadowed = true
                 entity.viewRange = viewRange
-                entity.isPersistent = false
-                mark(entity, runtime.settings.id, kind)
             }
+            visuals[key] = SupplyVisuals(item, label)
             val interaction = world.spawn(
                 location.clone().add(0.0, INTERACTION_Y_OFFSET, 0.0),
                 Interaction::class.java,
@@ -145,7 +147,7 @@ internal class FarmSupplyController(
                 entity.isPersistent = false
                 mark(entity, runtime.settings.id, kind)
             }
-            entities[key] = mutableSetOf(item.uniqueId, label.uniqueId, interaction.uniqueId)
+            entities[key] = mutableSetOf(interaction.uniqueId)
             visualMaterials[key] = visual
             debug.event("farm_supply_spawned", "zone" to runtime.settings.id, "kind" to kind, "material" to visual)
         }
@@ -264,6 +266,8 @@ internal class FarmSupplyController(
             entity.remove()
             removed++
         }
+        visuals.values.forEach(SupplyVisuals::remove)
+        visuals.clear()
         entities.clear()
         visualMaterials.clear()
         reconciledZones.clear()
@@ -272,6 +276,7 @@ internal class FarmSupplyController(
     }
 
     private fun removeEntities(key: SupplyKey, reason: String) {
+        visuals.remove(key)?.remove()
         val ids = entities.remove(key).orEmpty()
         ids.forEach { id -> Bukkit.getEntity(id)?.remove() }
         visualMaterials.remove(key)
@@ -370,12 +375,11 @@ internal class FarmSupplyController(
         entity.persistentDataContainer.set(kindKey, PersistentDataType.STRING, kind.name)
     }
 
-    private fun matchesLocation(owned: Collection<Entity>, base: Location): Boolean {
-        fun Entity.near(yOffset: Double): Boolean = world == base.world &&
-            location.distanceSquared(base.clone().add(0.0, yOffset, 0.0)) <= 0.04
-        return owned.count { it is ItemDisplay && it.near(ITEM_Y_OFFSET) } == 1 &&
-            owned.count { it is TextDisplay && it.near(LABEL_Y_OFFSET) } == 1 &&
-            owned.count { it is Interaction && it.near(INTERACTION_Y_OFFSET) } == 1
+    private fun matchesLocation(owned: Collection<Entity>, visuals: SupplyVisuals, base: Location): Boolean {
+        fun Location.near(yOffset: Double): Boolean = world == base.world &&
+            distanceSquared(base.clone().add(0.0, yOffset, 0.0)) <= 0.04
+        return visuals.item.location.near(ITEM_Y_OFFSET) && visuals.label.location.near(LABEL_Y_OFFSET) &&
+            owned.count { it is Interaction && it.location.near(INTERACTION_Y_OFFSET) } == 1
     }
 
     private fun taggedValue(item: ItemStack?): String? = item?.itemMeta?.persistentDataContainer
@@ -385,7 +389,7 @@ internal class FarmSupplyController(
         (zoneId == null || value.substringBefore(':') == zoneId) &&
             (kind == null || value.substringAfter(':') == kind.name)
 
-    private fun ItemDisplay.uniformScale(scale: Float) {
+    private fun PacketItemDisplay.uniformScale(scale: Float) {
         transformation = Transformation(
             Vector3f(),
             AxisAngle4f(),
@@ -395,7 +399,6 @@ internal class FarmSupplyController(
     }
 
     private companion object {
-        const val EXPECTED_ENTITY_COUNT = 3
         const val ITEM_Y_OFFSET = 0.25
         const val LABEL_Y_OFFSET = 1.15
         const val INTERACTION_Y_OFFSET = 0.25

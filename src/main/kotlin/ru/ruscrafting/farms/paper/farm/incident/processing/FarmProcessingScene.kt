@@ -9,13 +9,16 @@ import org.bukkit.entity.Display
 import org.bukkit.entity.Entity
 import org.bukkit.entity.Interaction
 import org.bukkit.entity.ItemDisplay
-import org.bukkit.entity.TextDisplay
 import org.bukkit.inventory.ItemStack
 import org.bukkit.persistence.PersistentDataType
 import org.bukkit.plugin.Plugin
 import org.bukkit.util.Transformation
 import org.joml.AxisAngle4f
 import org.joml.Vector3f
+import ru.arc.paper.display.PacketDisplay
+import ru.arc.paper.display.PacketItemDisplay
+import ru.arc.paper.display.PacketTextDisplay
+import ru.arc.paper.display.PaperPacketDisplays
 import ru.ruscrafting.farms.config.FarmItemDisplayTransform
 import ru.ruscrafting.farms.paper.ArcFarmsDebug
 import ru.ruscrafting.farms.paper.BukkitFarmEntityLookup
@@ -103,6 +106,7 @@ internal class FarmProcessingScene(
     private val debug: ArcFarmsDebug,
     private val textDisplays: FarmTextDisplayRenderer,
     private val entityLookup: FarmEntityLookup = BukkitFarmEntityLookup,
+    private val displays: PaperPacketDisplays,
 ) {
     private val zoneKey = NamespacedKey(plugin, "farm_processing_zone")
     private val sequenceKey = NamespacedKey(plugin, "farm_processing_sequence")
@@ -111,13 +115,14 @@ internal class FarmProcessingScene(
     private val desired = mutableMapOf<String, FarmProcessingSceneSpec>()
     private val desiredTargets = mutableMapOf<String, Map<FarmProcessingSceneIdentity, FarmProcessingSceneObject>>()
     private val tracked = mutableMapOf<FarmProcessingSceneIdentity, UUID>()
+    private val visuals = mutableMapOf<FarmProcessingSceneIdentity, PacketDisplay>()
     private val reconciled = mutableMapOf<String, Long>()
 
     fun owns(entity: Entity): Boolean = entity.persistentDataContainer.has(zoneKey, PersistentDataType.STRING)
 
     fun identity(entity: Entity): FarmProcessingSceneIdentity? = decode(entity)
 
-    fun hasZone(zoneId: String): Boolean = desired.containsKey(zoneId) || tracked.keys.any { it.zoneId == zoneId }
+    fun hasZone(zoneId: String): Boolean = desired.containsKey(zoneId) || tracked.keys.any { it.zoneId == zoneId } || visuals.keys.any { it.zoneId == zoneId }
 
     fun ensure(spec: FarmProcessingSceneSpec) {
         val previous = desired[spec.zoneId]
@@ -132,30 +137,39 @@ internal class FarmProcessingScene(
         }
         reconcileSequence(activeSpec)
         if (changed) {
-            tracked.keys.filter { it.zoneId == spec.zoneId && it !in targets }.toList().forEach(::remove)
+            (tracked.keys + visuals.keys).filter { it.zoneId == spec.zoneId && it !in targets }.toList().forEach(::remove)
         }
 
         var spawned = 0
         targets.forEach { (identity, target) ->
-            val existing = tracked[identity]?.let(Bukkit::getEntity)
-            if (existing != null && existing.isValid && matches(existing, identity.role)) {
-                if (changed) normalize(existing, activeSpec, target, identity)
-                return@forEach
+            if (isInteraction(identity.role)) {
+                val existing = tracked[identity]?.let(Bukkit::getEntity) as? Interaction
+                if (existing?.isValid == true) {
+                    if (changed) normalize(existing, target, identity)
+                    return@forEach
+                }
+                tracked.remove(identity)
+            } else {
+                val existing = visuals[identity]
+                if (existing?.isValid == true) {
+                    if (changed) normalize(existing, activeSpec, target)
+                    return@forEach
+                }
+                visuals.remove(identity)?.remove()
             }
-            tracked.remove(identity)
             if (spawned >= activeSpec.spawnPerTick || !chunkLoaded(target.location)) return@forEach
-            tracked[identity] = spawn(activeSpec, target, identity).uniqueId
+            spawn(activeSpec, target, identity)
             spawned++
         }
     }
 
-    fun item(zoneId: String, role: FarmProcessingSceneRole): ItemDisplay? = tracked.entries.firstOrNull { (identity, _) ->
+    fun item(zoneId: String, role: FarmProcessingSceneRole): PacketItemDisplay? = visuals.entries.firstOrNull { (identity, _) ->
         identity.zoneId == zoneId && identity.role == role
-    }?.value?.let(Bukkit::getEntity) as? ItemDisplay
+    }?.value?.takeIf { it.isValid } as? PacketItemDisplay
 
     fun onChunkLoad(chunk: Chunk) {
         chunk.entities.filter(::owns).forEach { entity ->
-            decode(entity)?.let { tracked.remove(it) }
+            decode(entity)?.let { tracked.remove(it, entity.uniqueId) }
             entity.remove()
         }
     }
@@ -164,7 +178,7 @@ internal class FarmProcessingScene(
         desired.remove(zoneId)
         desiredTargets.remove(zoneId)
         reconciled.remove(zoneId)
-        val identities = tracked.keys.filter { it.zoneId == zoneId }.toList()
+        val identities = (tracked.keys + visuals.keys).filter { it.zoneId == zoneId }.toList()
         identities.forEach(::remove)
         if (identities.isNotEmpty()) {
             debug.event("farm_processing_scene_cleared", "zone" to zoneId, "count" to identities.size, "reason" to reason)
@@ -174,6 +188,8 @@ internal class FarmProcessingScene(
     fun cleanup(reason: String) {
         val entities = entityLookup.inAllWorlds().filter(::owns)
         entities.forEach(Entity::remove)
+        visuals.values.forEach { it.remove() }
+        visuals.clear()
         desired.clear()
         desiredTargets.clear()
         tracked.clear()
@@ -183,13 +199,14 @@ internal class FarmProcessingScene(
 
     private fun reconcileSequence(spec: FarmProcessingSceneSpec) {
         if (reconciled[spec.zoneId] == spec.sequence) return
+        visuals.keys.filter { it.zoneId == spec.zoneId }.toList().forEach(::remove)
         tracked.keys.removeIf { it.zoneId == spec.zoneId }
         val retained = mutableMapOf<FarmProcessingSceneIdentity, Entity>()
         entityLookup.inWorld(requireNotNull(spec.objects.firstOrNull()?.location?.world)).filter(::owns).forEach { entity ->
             val identity = decode(entity)
             if (
                 identity == null || identity.zoneId != spec.zoneId || identity.sequence != spec.sequence ||
-                !matches(entity, identity.role) || identity in retained
+                !(isInteraction(identity.role) && entity is Interaction) || identity in retained
             ) {
                 if (identity?.zoneId == spec.zoneId) entity.remove()
                 return@forEach
@@ -210,20 +227,20 @@ internal class FarmProcessingScene(
         spec: FarmProcessingSceneSpec,
         target: FarmProcessingSceneObject,
         identity: FarmProcessingSceneIdentity,
-    ): Entity {
-        val world = requireNotNull(target.location.world)
-        val entity = when (target.role) {
-            FarmProcessingSceneRole.RAW_INTERACTION,
-            FarmProcessingSceneRole.PRODUCT_INTERACTION,
-            FarmProcessingSceneRole.MACHINE_INTERACTION,
-            FarmProcessingSceneRole.OUTPUT_INTERACTION,
-            -> world.spawn(target.location, Interaction::class.java)
-            FarmProcessingSceneRole.LABEL,
-            FarmProcessingSceneRole.CRANK_TRACK,
-            -> world.spawn(target.location, TextDisplay::class.java)
-            else -> world.spawn(target.location, ItemDisplay::class.java)
+    ) {
+        if (isInteraction(target.role)) {
+            val entity = requireNotNull(target.location.world).spawn(target.location, Interaction::class.java)
+            normalize(entity, target, identity)
+            tracked[identity] = entity.uniqueId
+        } else {
+            val display = when (target.role) {
+                FarmProcessingSceneRole.LABEL, FarmProcessingSceneRole.CRANK_TRACK ->
+                    displays.spawnText(target.location, requireNotNull(target.text))
+                else -> displays.spawnItem(target.location, requireNotNull(target.item))
+            }
+            visuals[identity] = display
+            normalize(display, spec, target)
         }
-        normalize(entity, spec, target, identity)
         debug.event(
             "farm_processing_scene_spawned",
             "zone" to identity.zoneId,
@@ -231,12 +248,10 @@ internal class FarmProcessingScene(
             "role" to identity.role,
             "index" to identity.index,
         )
-        return entity
     }
 
     private fun normalize(
-        entity: Entity,
-        spec: FarmProcessingSceneSpec,
+        entity: Interaction,
         target: FarmProcessingSceneObject,
         identity: FarmProcessingSceneIdentity,
     ) {
@@ -247,9 +262,18 @@ internal class FarmProcessingScene(
             entity.teleport(target.location)
         }
         mark(entity, identity)
+        entity.interactionWidth = target.interactionWidth
+        entity.interactionHeight = target.interactionHeight
+        entity.isResponsive = true
+    }
+
+    private fun normalize(entity: PacketDisplay, spec: FarmProcessingSceneSpec, target: FarmProcessingSceneObject) {
+        if (entity.location.world !== target.location.world || entity.location.distanceSquared(target.location) > 0.0004) {
+            entity.teleport(target.location)
+        }
         when (entity) {
-            is ItemDisplay -> {
-                entity.setItemStack(requireNotNull(target.item).clone())
+            is PacketItemDisplay -> {
+                entity.itemStack = requireNotNull(target.item).clone()
                 entity.itemDisplayTransform = target.transform.bukkit
                 entity.transformation = Transformation(
                     Vector3f(),
@@ -264,13 +288,8 @@ internal class FarmProcessingScene(
                 entity.teleportDuration = 1
                 entity.interpolationDuration = 2
             }
-            is Interaction -> {
-                entity.interactionWidth = target.interactionWidth
-                entity.interactionHeight = target.interactionHeight
-                entity.isResponsive = true
-            }
-            is TextDisplay -> {
-                textDisplays.render(
+            is PacketTextDisplay -> {
+                textDisplays.renderPacket(
                     entity,
                     requireNotNull(target.text),
                     FarmTextDisplayStyle(billboard = target.billboard, viewRange = spec.viewRange),
@@ -282,11 +301,13 @@ internal class FarmProcessingScene(
                     AxisAngle4f(),
                 )
             }
+            else -> error("Unexpected processing display type")
         }
     }
 
     private fun remove(identity: FarmProcessingSceneIdentity) {
         tracked.remove(identity)?.let(Bukkit::getEntity)?.remove()
+        visuals.remove(identity)?.remove()
     }
 
     private fun mark(entity: Entity, identity: FarmProcessingSceneIdentity) {
@@ -309,16 +330,13 @@ internal class FarmProcessingScene(
     private fun identity(spec: FarmProcessingSceneSpec, target: FarmProcessingSceneObject) =
         FarmProcessingSceneIdentity(spec.zoneId, spec.sequence, target.role, target.index)
 
-    private fun matches(entity: Entity, role: FarmProcessingSceneRole): Boolean = when (role) {
+    private fun isInteraction(role: FarmProcessingSceneRole): Boolean = when (role) {
         FarmProcessingSceneRole.RAW_INTERACTION,
         FarmProcessingSceneRole.PRODUCT_INTERACTION,
         FarmProcessingSceneRole.MACHINE_INTERACTION,
         FarmProcessingSceneRole.OUTPUT_INTERACTION,
-        -> entity is Interaction
-        FarmProcessingSceneRole.LABEL,
-        FarmProcessingSceneRole.CRANK_TRACK,
-        -> entity is TextDisplay
-        else -> entity is ItemDisplay
+        -> true
+        else -> false
     }
 
     private fun chunkLoaded(location: Location): Boolean = location.world?.isChunkLoaded(location.blockX shr 4, location.blockZ shr 4) == true

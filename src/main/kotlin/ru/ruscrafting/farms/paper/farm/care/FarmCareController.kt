@@ -2,6 +2,7 @@ package ru.ruscrafting.farms.paper.farm.care
 
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.CancellationException
+import ru.arc.paper.display.PaperPacketDisplays
 import ru.ruscrafting.farms.paper.worksite.WorksiteTaskPort
 import org.bukkit.Bukkit
 import org.bukkit.Color
@@ -83,6 +84,7 @@ internal class FarmCareController(
     private val clock: () -> Long,
     private val entityLookup: FarmEntityLookup = BukkitFarmEntityLookup,
     private val tasks: WorksiteTaskPort? = null,
+    private val displays: PaperPacketDisplays,
 ) {
     private val presentation = FarmCarePresentation(settings)
     private val disease = FarmDiseaseController(
@@ -105,6 +107,7 @@ internal class FarmCareController(
         transitions = transitions,
         runtimes = runtimes,
         supplyPoint = { runtime -> plans.fixturePoint(runtime, FarmPointKind.PEN) },
+        displays = displays,
     )
     private val irrigation = FarmIrrigationController(settings, debug, audience, transitions)
     private val seederRig = FarmSeederRigManager(plugin)

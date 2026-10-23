@@ -101,11 +101,11 @@ class FarmActionIncidentMockBukkitIntegrationTest : FunSpec({
             fixture.world.fullTime = 1L
             mockkObject(FarmPortalRenderer)
             try {
-                every { FarmPortalRenderer.render(any(), any()) } just Runs
+                every { FarmPortalRenderer.render(any(), any(), any()) } just Runs
 
                 controller.update(runtime)
 
-                verify(exactly = 1) { FarmPortalRenderer.render(any(), any()) }
+                verify(exactly = 1) { FarmPortalRenderer.render(any(), any(), any()) }
             } finally {
                 unmockkObject(FarmPortalRenderer)
             }

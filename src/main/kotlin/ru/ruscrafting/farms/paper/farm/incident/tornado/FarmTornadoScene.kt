@@ -6,23 +6,30 @@ import org.bukkit.Location
 import org.bukkit.Material
 import org.bukkit.NamespacedKey
 import org.bukkit.Particle
-import org.bukkit.entity.BlockDisplay
 import org.bukkit.entity.Entity
 import org.bukkit.entity.Player
 import org.bukkit.persistence.PersistentDataType
 import org.bukkit.plugin.Plugin
-import org.joml.Matrix4f
+import org.bukkit.util.Transformation
+import org.joml.Quaternionf
+import org.joml.Vector3f
+import ru.arc.paper.display.PacketBlockDisplay
+import ru.arc.paper.display.PaperPacketDisplays
+import ru.arc.paper.particle.PaperViewerParticles
 import ru.ruscrafting.farms.config.FarmTornadoSettings
 import ru.ruscrafting.farms.domain.FarmTornadoShape
-import java.util.UUID
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
 
 /** Only visual entities: no falling-block physics, item drops or terrain writes. */
-internal class FarmTornadoScene(plugin: Plugin) {
+internal class FarmTornadoScene(
+    plugin: Plugin,
+    private val displays: PaperPacketDisplays,
+    private val viewerParticles: PaperViewerParticles,
+) {
     private val key = NamespacedKey(plugin, "farm_tornado_zone")
-    private val debris = mutableMapOf<String, MutableMap<Int, UUID>>()
+    private val debris = mutableMapOf<String, MutableMap<Int, PacketBlockDisplay>>()
     private val dark = Particle.DustOptions(Color.fromRGB(77, 87, 96), 2.8f)
     private val silver = Particle.DustOptions(Color.fromRGB(174, 190, 195), 2.1f)
     private val earth = Particle.DustOptions(Color.fromRGB(155, 119, 78), 2.6f)
@@ -52,9 +59,9 @@ internal class FarmTornadoScene(plugin: Plugin) {
                     val offset = FarmTornadoShape.funnel(fraction, angle, time, height, radius)
                     point.set(center.x + offset.x, center.y + offset.y, center.z + offset.z)
                     val dust = if (level < 6) earth else if (strand % 3 == 0) silver else dark
-                    particleViewers.forEach { it.spawnParticle(Particle.DUST, point, 1, 0.10, 0.16, 0.10, 0.0, dust) }
+                    particleViewers.forEach { viewerParticles.emit(it, point, Particle.DUST, 1, 0.10, 0.16, 0.10, 0.0, dust) }
                     if (strand == 0 && level % 3 == 0) {
-                        particleViewers.forEach { it.spawnParticle(Particle.CLOUD, point, 1, 0.3, 0.15, 0.3, 0.005) }
+                        particleViewers.forEach { viewerParticles.emit(it, point, Particle.CLOUD, 1, 0.3, 0.15, 0.3, 0.005) }
                     }
                 }
             }
@@ -62,15 +69,16 @@ internal class FarmTornadoScene(plugin: Plugin) {
                 val angle = index * PI / 16 + time * 2.1
                 val ring = radius * (0.72 + (index % 3) * 0.16)
                 point.set(center.x + cos(angle) * ring, center.y + 0.15, center.z + sin(angle) * ring)
-                particleViewers.forEach { it.spawnParticle(Particle.DUST, point, 1, 0.22, 0.12, 0.22, 0.0, earth) }
+                particleViewers.forEach { viewerParticles.emit(it, point, Particle.DUST, 1, 0.22, 0.12, 0.22, 0.0, earth) }
                 if (index % 2 == 0) {
                     point.set(center.x + cos(-angle) * radius, center.y + height, center.z + sin(-angle) * radius)
-                    particleViewers.forEach { it.spawnParticle(Particle.CLOUD, point, 1, 0.55, 0.2, 0.55, 0.005) }
+                    particleViewers.forEach { viewerParticles.emit(it, point, Particle.CLOUD, 1, 0.55, 0.2, 0.55, 0.005) }
                 }
             }
             if (strength < 1.0) repeat(32) { index ->
                 val angle = index * PI / 16
                 point.set(center.x + cos(angle) * 4.5, center.y + 0.12, center.z + sin(angle) * 4.5)
+                // This ring warns of impending player damage, so it retains reliable native delivery.
                 particleViewers.forEach { it.spawnParticle(Particle.DUST, point, 1, 0.0, 0.0, 0.0, 0.0, warning) }
             }
         }
@@ -79,26 +87,18 @@ internal class FarmTornadoScene(plugin: Plugin) {
             val offset = FarmTornadoShape.debris(index, options.debrisCount, time, height, radius)
             point.set(center.x + offset.x, center.y + offset.y + 0.5, center.z + offset.z)
             if (!point.world.isChunkLoaded(point.blockX shr 4, point.blockZ shr 4)) {
-                owned.remove(index)?.let { Bukkit.getEntity(it)?.remove() }
+                owned.remove(index)?.remove()
                 return@repeat
             }
-            val display = (owned[index]?.let(Bukkit::getEntity) as? BlockDisplay)?.takeIf(Entity::isValid)
-                ?: center.world.spawn(point, BlockDisplay::class.java) { entity ->
-                    entity.isPersistent = false
-                    entity.setGravity(false)
-                    entity.isInvulnerable = true
-                    entity.block = materials[index % materials.size].createBlockData()
+            val display = owned[index]?.takeIf { it.isValid }
+                ?: displays.spawnBlock(point, materials[index % materials.size].createBlockData()).also { entity ->
                     entity.teleportDuration = FRAME_TICKS
                     entity.interpolationDuration = FRAME_TICKS
                     entity.viewRange = 1.5f
-                    entity.persistentDataContainer.set(key, PersistentDataType.STRING, zone)
-                    owned[index] = entity.uniqueId
+                    owned[index] = entity
                 }
             display.teleport(point)
-            val size = (0.35 + (index % 5) * 0.14).toFloat()
-            display.setTransformationMatrix(Matrix4f()
-                .rotateXYZ((time * 1.8 + index).toFloat(), (time * 2.3).toFloat(), (time + index).toFloat())
-                .scale(size).translate(-0.5f, -0.5f, -0.5f))
+            display.transformation = debrisTransformation(time, index)
             display.interpolationDelay = 0
         }
     }
@@ -106,7 +106,7 @@ internal class FarmTornadoScene(plugin: Plugin) {
     fun owns(entity: Entity): Boolean = entity.persistentDataContainer.has(key, PersistentDataType.STRING)
 
     fun clear(zone: String) {
-        debris.remove(zone)?.values?.forEach { Bukkit.getEntity(it)?.remove() }
+        debris.remove(zone)?.values?.forEach { it.remove() }
     }
 
     fun cleanup() {
@@ -115,6 +115,18 @@ internal class FarmTornadoScene(plugin: Plugin) {
     }
 
     companion object {
+        /** Equivalent to the original rotateXYZ * scale * translate(-0.5) matrix. */
+        internal fun debrisTransformation(time: Double, index: Int): Transformation {
+            val size = (0.35 + (index % 5) * 0.14).toFloat()
+            val rotation = Quaternionf().rotationXYZ(
+                (time * 1.8 + index).toFloat(), (time * 2.3).toFloat(), (time + index).toFloat(),
+            )
+            return Transformation(
+                Vector3f(-0.5f, -0.5f, -0.5f).mul(size).rotate(rotation),
+                rotation, Vector3f(size), Quaternionf(),
+            )
+        }
+
         const val FRAME_TICKS = 3
         const val MAX_PARTICLE_VIEWERS = 8
     }

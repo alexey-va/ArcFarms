@@ -116,6 +116,7 @@ class FarmDitchRescueWorldMockBukkitTest : FunSpec({
                 ledger = ledger, serviceItems = mockk(relaxed = true), registry = mockk(relaxed = true),
                 plans = mockk(relaxed = true), points = mockk(relaxed = true), moles = mockk(relaxed = true),
                 transitions = FarmTransitionSink(coordinator::apply), runtimes = { listOf(runtime) }, clock = { 0L },
+                displays = io.mockk.mockk(relaxed = true),
             )
 
             retryOwner.ensure(runtime)

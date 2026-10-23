@@ -7,6 +7,8 @@ import org.bukkit.entity.Entity
 import org.bukkit.entity.Player
 import org.bukkit.plugin.Plugin
 import org.bukkit.util.Vector
+import ru.arc.paper.display.PaperPacketDisplays
+import ru.arc.paper.particle.PaperViewerParticles
 import ru.ruscrafting.farms.config.ArcFarmsConfig
 import ru.ruscrafting.farms.domain.FarmIncidentPlanner
 import ru.ruscrafting.farms.domain.FarmPointPosition
@@ -37,6 +39,8 @@ internal class FarmTornadoIncident(
     private val transitions: FarmTransitionSink,
     ledger: FarmBlockLedger,
     private val atmosphere: FarmNightShiftController,
+    private val displays: PaperPacketDisplays,
+    private val viewerParticles: PaperViewerParticles,
 ) {
     private data class Session(
         val sequence: Long,
@@ -47,7 +51,10 @@ internal class FarmTornadoIncident(
     )
 
     private val sessions = mutableMapOf<String, Session>()
-    private val scene = FarmTornadoScene(plugin)
+    private val scene = FarmTornadoScene(plugin,
+        displays = displays,
+        viewerParticles = viewerParticles,
+    )
     private val terrain = FarmTornadoTerrain(plugin, ledger, beds)
 
     fun initialize(runtime: FarmRuntime): Boolean {

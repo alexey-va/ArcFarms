@@ -1,5 +1,7 @@
 package ru.ruscrafting.farms.paper.farm.incident.action
 
+import ru.arc.paper.display.PaperPacketDisplays
+import ru.arc.paper.particle.PaperViewerParticles
 import ru.ruscrafting.farms.paper.platform.FarmBlastDebrisVisuals
 import ru.ruscrafting.farms.paper.farm.presentation.FarmBlastDebris
 import org.bukkit.Bukkit
@@ -115,6 +117,8 @@ internal class FarmRivalRaidController(
     private val textDisplays: FarmTextDisplayRenderer,
     private val nightShift: FarmNightShiftController,
     debrisVisuals: FarmBlastDebrisVisuals,
+    private val displays: PaperPacketDisplays,
+    private val viewerParticles: PaperViewerParticles,
 ) {
     private data class RaidSession(
         val sequence: Long,
@@ -142,7 +146,10 @@ internal class FarmRivalRaidController(
     private val ownerKey = NamespacedKey(plugin, "farm_raid_owner")
     private val spawnedAtKey = NamespacedKey(plugin, "farm_raid_spawned_at")
     private val raids = mutableMapOf<String, RaidSession>()
-    private val portals = FarmActivityPortal(plugin, locale, access, audience, tasks, textDisplays, "farm_raid", rolePrefix = "raid_")
+    private val portals = FarmActivityPortal(plugin, locale, access, audience, tasks, textDisplays, "farm_raid", rolePrefix = "raid_",
+        displays = displays,
+        viewerParticles = viewerParticles,
+    )
     private val damageGate = FarmRaidDamageGate()
     private val logger = plugin.logger
     private val workers = FarmRivalRaidWorkers(plugin, locale, beds, mobDespawns, mobNavigation, nightShift)

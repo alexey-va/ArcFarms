@@ -20,6 +20,7 @@ import org.bukkit.plugin.Plugin
 import org.bukkit.util.Transformation
 import org.joml.AxisAngle4f
 import org.joml.Vector3f
+import ru.arc.paper.display.PaperPacketDisplays
 import ru.ruscrafting.farms.config.ArcFarmsConfig
 import ru.ruscrafting.farms.config.ArcFarmsLocale
 import ru.ruscrafting.farms.config.FarmProcessingVisualRole
@@ -88,8 +89,11 @@ internal class FarmProcessingIncident(
     private val blockPassability: FarmBlockPassability,
     textDisplays: FarmTextDisplayRenderer,
     private val entityLookup: FarmEntityLookup = BukkitFarmEntityLookup,
+    private val displays: PaperPacketDisplays,
 ) {
-    private val scene = FarmProcessingScene(plugin, debug, textDisplays, entityLookup)
+    private val scene = FarmProcessingScene(plugin, debug, textDisplays, entityLookup,
+        displays = displays,
+    )
     private val crank = FarmProcessingCrankController(plugin, settings, debug, access, audience, state, transitions, entityLookup)
     private val carriedZoneKey = NamespacedKey(plugin, "farm_processing_carried_zone")
     private val carriedSequenceKey = NamespacedKey(plugin, "farm_processing_carried_sequence")

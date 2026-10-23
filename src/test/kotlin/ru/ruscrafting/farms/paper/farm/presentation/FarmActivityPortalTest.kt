@@ -14,7 +14,10 @@ class FarmActivityPortalTest : FunSpec({
             val runtime = fixture.runtime(FarmShiftState(phase = FarmPhase.INCIDENT,
                 sequence = 903, orderId = "bakery_supply", incidentType = FarmIncidentType.FOOD_DELIVERY))
             val portals = FarmActivityPortal(fixture.plugin, fixture.locale, fixture.port,
-                fixture.port, fixture.port, MockBukkitFarmTextDisplays, "test_portal")
+                fixture.port, fixture.port, MockBukkitFarmTextDisplays, "test_portal",
+                displays = io.mockk.mockk(relaxed = true),
+                viewerParticles = io.mockk.mockk(relaxed = true),
+            )
             val point = FarmPointPosition(fixture.world.name, 12.5, 65.0, 12.5)
             var available = false
             var attempts = 0
@@ -63,12 +66,12 @@ class FarmActivityPortalTest : FunSpec({
 
             mockkObject(FarmPortalRenderer)
             try {
-                every { FarmPortalRenderer.render(any(), any()) } just Runs
+                every { FarmPortalRenderer.render(any(), any(), any()) } just Runs
                 fixture.paper.performTicks(1)
                 portals.update(true)
                 fixture.paper.performTicks(5)
                 portals.update(true)
-                verify(exactly = 2) { FarmPortalRenderer.render(any(), match { player in it }) }
+                verify(exactly = 2) { FarmPortalRenderer.render(any(), match { player in it }, any()) }
             } finally { unmockkObject(FarmPortalRenderer) }
             portals.enter(player, inside) shouldBe true
             portals.clear(runtime.settings.id)

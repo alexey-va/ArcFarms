@@ -39,7 +39,10 @@ class FarmHellGreenhouseIncidentTest : FunSpec({
             val owner = FarmHellGreenhouseIncident(f.plugin, { visuals }, f.locale,
                 f.port, f.port, f.port, FarmIncidentBedProvider { setOf(FarmPlotPosition(f.world.name, 24, 64, 24)) },
                 FarmTransitionSink { target, result, _ -> target.state = result.state }, FarmBlockLedger(f.plugin),
-                MockBukkitFarmTextDisplays, rooms, f.port)
+                MockBukkitFarmTextDisplays, rooms, f.port,
+                displays = io.mockk.mockk(relaxed = true),
+                viewerParticles = io.mockk.mockk(relaxed = true),
+            )
             val player = f.paper.addPlayer("GreenhouseExplorer")
             player.gameMode = GameMode.SURVIVAL
             player.teleport(Location(f.world, 24.5, 65.0, 24.5))
@@ -104,7 +107,10 @@ class FarmHellGreenhouseIncidentTest : FunSpec({
                 MockBukkitMoleBurrowChunkRetention(), MockBukkitFarmBlockDataDecoder, "farm_greenhouse")
             val owner = FarmHellGreenhouseIncident(f.plugin, { f.settings }, f.locale, f.port, f.port, f.port,
                 FarmIncidentBedProvider { setOf(FarmPlotPosition(f.world.name, 24, 64, 24)) }, FarmTransitionSink { target, result, _ -> target.state = result.state },
-                FarmBlockLedger(f.plugin), MockBukkitFarmTextDisplays, rooms, f.port)
+                FarmBlockLedger(f.plugin), MockBukkitFarmTextDisplays, rooms, f.port,
+                displays = io.mockk.mockk(relaxed = true),
+                viewerParticles = io.mockk.mockk(relaxed = true),
+            )
             owner.initialize(runtime) shouldBe true
             runtime.state.incidentProgress shouldBe 1
             runtime.state.hellGreenhouse!!.cooled shouldBe 1

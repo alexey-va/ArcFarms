@@ -6,9 +6,9 @@ import org.bukkit.NamespacedKey
 import org.bukkit.Particle
 import org.bukkit.Sound
 import org.bukkit.entity.Entity
-import org.bukkit.entity.ItemDisplay
 import org.bukkit.entity.Player
 import org.bukkit.plugin.Plugin
+import ru.arc.paper.display.PacketItemDisplay
 import ru.ruscrafting.farms.config.ArcFarmsConfig
 import ru.ruscrafting.farms.domain.FarmProcessingCrankSampleStatus
 import ru.ruscrafting.farms.domain.FarmProcessingCrankState
@@ -57,7 +57,7 @@ internal class FarmProcessingCrankController(
         states.keys.filter { it.second == player.uniqueId }.toList().forEach { key -> removeParticipant(key, reason) }
     }
 
-    fun update(runtime: FarmRuntime, tick: Long, machine: Location, machineDisplay: ItemDisplay?) {
+    fun update(runtime: FarmRuntime, tick: Long, machine: Location, machineDisplay: PacketItemDisplay?) {
         val processingState = runtime.state.processing
         if (processingState?.stage != FarmProcessingStage.OPERATING) {
             machineDisplay?.isGlowing = false
@@ -226,7 +226,7 @@ internal class FarmProcessingCrankController(
         runtime: FarmRuntime,
         tick: Long,
         machine: Location,
-        machineDisplay: ItemDisplay?,
+        machineDisplay: PacketItemDisplay?,
         viewers: Collection<Player>,
     ) {
         val activePlayers = participantCount(runtime.settings.id)

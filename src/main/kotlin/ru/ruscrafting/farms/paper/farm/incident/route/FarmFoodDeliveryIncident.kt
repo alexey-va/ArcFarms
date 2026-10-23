@@ -25,6 +25,8 @@ import org.bukkit.plugin.Plugin
 import org.bukkit.util.Transformation
 import org.bukkit.util.Vector
 import org.joml.Vector3f
+import ru.arc.paper.display.PaperPacketDisplays
+import ru.arc.paper.particle.PaperViewerParticles
 import ru.ruscrafting.farms.config.ArcFarmsConfig
 import ru.ruscrafting.farms.config.ArcFarmsLocale
 import ru.ruscrafting.farms.config.MessageKey
@@ -75,6 +77,8 @@ internal class FarmFoodDeliveryIncident(
     private val vehiclePassengers: FarmVehiclePassengerControl,
     private val textDisplays: FarmTextDisplayRenderer,
     private val chunkLoader: FarmRouteChunkLoader,
+    private val displays: PaperPacketDisplays,
+    private val viewerParticles: PaperViewerParticles,
 ) {
     private val zoneKey = NamespacedKey(plugin, "farm_food_route_zone")
     private val sequenceKey = NamespacedKey(plugin, "farm_food_route_sequence")
@@ -85,7 +89,10 @@ internal class FarmFoodDeliveryIncident(
     private val deliveryNight = FarmFoodDeliveryNight(plugin)
     private val sessions = mutableMapOf<String, FarmFoodDeliverySession>()
     private val lastRouteNames = mutableMapOf<String, String>()
-    private val portals = FarmActivityPortal(plugin, locale, access, audience, tasks, textDisplays, "farm_food_route")
+    private val portals = FarmActivityPortal(plugin, locale, access, audience, tasks, textDisplays, "farm_food_route",
+        displays = displays,
+        viewerParticles = viewerParticles,
+    )
     fun owns(entity: Entity): Boolean = entity.persistentDataContainer.has(zoneKey, PersistentDataType.STRING)
 
     fun ownsServiceItem(item: ItemStack?): Boolean = gunner.owns(item)
@@ -287,7 +294,7 @@ internal class FarmFoodDeliveryIncident(
             gunner.render(runtime, session, behind)
             if (settings().particles && horse.world.gameTime % TRAIL_INTERVAL_TICKS == 0L) {
                 participants(runtime).filter { it.world == horse.world && !access.isAdminEditing(it) }
-                    .forEach { viewer -> FarmFoodDeliveryRouteVisual.render(runtime, viewer, route.points) }
+                    .forEach { viewer -> FarmFoodDeliveryRouteVisual.render(runtime, viewer, route.points, viewerParticles) }
             }
         }
     }

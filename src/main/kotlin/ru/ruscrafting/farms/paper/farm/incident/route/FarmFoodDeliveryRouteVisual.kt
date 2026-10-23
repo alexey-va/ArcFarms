@@ -4,6 +4,7 @@ import org.bukkit.Color
 import org.bukkit.Location
 import org.bukkit.Particle
 import org.bukkit.entity.Player
+import ru.arc.paper.particle.PaperViewerParticles
 import ru.ruscrafting.farms.domain.FarmPointPosition
 import ru.ruscrafting.farms.paper.FarmRuntime
 import kotlin.math.PI
@@ -18,7 +19,7 @@ internal object FarmFoodDeliveryRouteVisual {
     private val nextColor = Color.fromRGB(255, 200, 87)
     private val finishColor = Color.fromRGB(74, 232, 126)
 
-    fun render(runtime: FarmRuntime, rider: Player, points: List<FarmPointPosition>) {
+    fun render(runtime: FarmRuntime, rider: Player, points: List<FarmPointPosition>, particles: PaperViewerParticles) {
         val config = runtime.settings.routeDelivery
         val current = runtime.state.incidentProgress.coerceIn(1, points.size)
         val start = (current - 1).coerceAtLeast(0)
@@ -36,16 +37,16 @@ internal object FarmFoodDeliveryRouteVisual {
             val cursor = origin.clone()
             repeat(ceil(distance / config.trailSpacing).toInt()) {
                 if (emitted++ >= MAX_TRAIL_PARTICLES) return@repeat
-                rider.spawnParticle(Particle.DUST, cursor, 1, 0.035, 0.025, 0.035, 0.0, dust)
+                particles.emit(rider, cursor, Particle.DUST, 1, 0.035, 0.025, 0.035, 0.0, dust)
                 cursor.add(step)
             }
         }
         val next = points[(start + NEXT_MARKER_OFFSET).coerceAtMost(points.lastIndex)]
-        renderColumn(rider, location(rider, next).add(0.0, config.trailHeight, 0.0), nextColor, 7, config.trailParticleSize + 0.2f)
-        renderDestination(runtime, rider, points.last())
+        renderColumn(rider, location(rider, next).add(0.0, config.trailHeight, 0.0), nextColor, 7, config.trailParticleSize + 0.2f, particles)
+        renderDestination(runtime, rider, points.last(), particles)
     }
 
-    private fun renderDestination(runtime: FarmRuntime, rider: Player, point: FarmPointPosition) {
+    private fun renderDestination(runtime: FarmRuntime, rider: Player, point: FarmPointPosition, particles: PaperViewerParticles) {
         if (rider.world.name != point.world) return
         val config = runtime.settings.routeDelivery
         val center = location(rider, point).add(0.0, config.trailHeight, 0.0)
@@ -53,18 +54,9 @@ internal object FarmFoodDeliveryRouteVisual {
         val ring = Particle.DustOptions(finishColor, config.trailParticleSize + 0.25f)
         repeat(samples) { index ->
             val angle = index.toDouble() / samples * PI * 2.0
-            rider.spawnParticle(
-                Particle.DUST,
-                center.clone().add(cos(angle) * config.checkpointRadius, 0.0, sin(angle) * config.checkpointRadius),
-                1,
-                0.03,
-                0.03,
-                0.03,
-                0.0,
-                ring,
-            )
+            particles.emit(rider, center.clone().add(cos(angle) * config.checkpointRadius, 0.0, sin(angle) * config.checkpointRadius), Particle.DUST, 1, 0.03, 0.03, 0.03, 0.0, ring)
         }
-        renderColumn(rider, center, finishColor, 10, config.trailParticleSize + 0.35f)
+        renderColumn(rider, center, finishColor, 10, config.trailParticleSize + 0.35f, particles)
     }
 
     private fun renderColumn(
@@ -73,19 +65,11 @@ internal object FarmFoodDeliveryRouteVisual {
         color: Color,
         layers: Int,
         size: Float,
+        particles: PaperViewerParticles,
     ) {
         val dust = Particle.DustOptions(color, size)
         repeat(layers) { layer ->
-            rider.spawnParticle(
-                Particle.DUST,
-                base.clone().add(0.0, 0.55 + layer * 0.55, 0.0),
-                1,
-                0.04,
-                0.04,
-                0.04,
-                0.0,
-                dust,
-            )
+            particles.emit(rider, base.clone().add(0.0, 0.55 + layer * 0.55, 0.0), Particle.DUST, 1, 0.04, 0.04, 0.04, 0.0, dust)
         }
     }
 

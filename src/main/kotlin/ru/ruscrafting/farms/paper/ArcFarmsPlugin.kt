@@ -12,6 +12,8 @@ import ru.arc.paper.api.ArcRedisService
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
+import ru.arc.paper.display.PaperPacketDisplays
+import ru.arc.paper.particle.PaperViewerParticles
 import ru.ruscrafting.farms.persistence.MineLocationRepository
 import ru.ruscrafting.farms.paper.mine.lift.MineLiftRuntimeManager
 import ru.arc.observability.RuntimeHealthContribution
@@ -65,6 +67,7 @@ open class ArcFarmsPlugin : JavaPlugin() {
     private lateinit var lifecycleTasks: LifecycleTaskScope
     private var reloading = false
     private var shutdownDrain = CompletableFuture.completedFuture(Unit)
+    private var nativeDisplayDrain: CompletableFuture<Void> = CompletableFuture.completedFuture(null)
     private var lifecycleOpen = false
     private var preparedResources: Prepared? = null
     private val nestedStorage = ConcurrentHashMap.newKeySet<() -> CompletableFuture<Unit>>()
@@ -75,10 +78,11 @@ open class ArcFarmsPlugin : JavaPlugin() {
     override fun onEnable() {
         check(!lifecycleOpen) { "Plugin lifecycle is already open" }
         try {
-            check(shutdownDrain.isDone) { "Previous storage cleanup is still pending" }
+            check(shutdownDrain.isDone) { "Previous runtime cleanup is still pending" }
             shutdownDrain.getNow(Unit)
             lifecycleOpen = true
             shutdownDrain = CompletableFuture()
+            nativeDisplayDrain = CompletableFuture.completedFuture(null)
             startGeneration()
         } catch (failure: Throwable) {
             logger.log(Level.SEVERE, "ArcFarms startup failed closed", failure)
@@ -222,7 +226,15 @@ open class ArcFarmsPlugin : JavaPlugin() {
             MineAuraSkillsGuard.install(this) {
                 settings.mines.filter { it.engineVersion == 2 }.mapTo(hashSetOf()) { it.reference.world }
             }?.let(lifecycle::own)
+            val displays = PaperPacketDisplays(this, "farm-visuals")
+            lifecycle.own(AutoCloseable {
+                nativeDisplayDrain = runCatching(displays::closeAsync)
+                    .getOrElse { CompletableFuture.failedFuture(it) }
+            })
+            val viewerParticles = lifecycle.own(PaperViewerParticles(this, "farm-visuals"))
             val activeService = lifecycle.own(ArcFarmsService(
+                displays = displays,
+                viewerParticles = viewerParticles,
                 plugin = this,
                 initialSettings = settings,
                 locale = locale,
@@ -310,13 +322,19 @@ open class ArcFarmsPlugin : JavaPlugin() {
     override fun onDisable() {
         if (!lifecycleOpen) return
         lifecycleOpen = false
-        try {
-            // Native owners are detached first; independent journals then finish accepted IO.
-            closeGeneration().join()
-            shutdownDrain.complete(Unit)
-        } catch (failure: Throwable) {
-            shutdownDrain.completeExceptionally(failure)
-            logger.log(Level.SEVERE, "Could not close ArcFarms storage", failure)
+        // Only accepted storage IO is joined here. Native retirement needs future server ticks.
+        val storageFailure = runCatching { closeGeneration().join() }.exceptionOrNull()
+        val generationDrain = shutdownDrain
+        nativeDisplayDrain.whenComplete { _, nativeFailure ->
+            val failure = storageFailure ?: nativeFailure
+            if (failure == null) generationDrain.complete(Unit)
+            else {
+                if (storageFailure != null && nativeFailure != null && storageFailure !== nativeFailure) {
+                    storageFailure.addSuppressed(nativeFailure)
+                }
+                generationDrain.completeExceptionally(failure)
+                logger.log(Level.SEVERE, "Could not finish ArcFarms cleanup", failure)
+            }
         }
     }
 

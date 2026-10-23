@@ -1,6 +1,8 @@
 package ru.ruscrafting.farms.paper.farm
 
 import org.bukkit.plugin.Plugin
+import ru.arc.paper.display.PaperPacketDisplays
+import ru.arc.paper.particle.PaperViewerParticles
 import ru.ruscrafting.farms.config.ArcFarmsConfig
 import ru.ruscrafting.farms.config.ArcFarmsLocale
 import ru.ruscrafting.farms.domain.FarmPointKind
@@ -89,6 +91,8 @@ internal class FarmComponentGraph(
     persistAsync: () -> CompletableFuture<Unit>,
     enterprise: FarmEnterprisePort,
     menus: ArcFarmsMenuPlatform,
+    private val displays: PaperPacketDisplays,
+    private val viewerParticles: PaperViewerParticles,
 ) {
     val runtimes = FarmRuntimeRegistry()
     private val blockPassability = PaperFarmBlockPassability
@@ -200,6 +204,7 @@ internal class FarmComponentGraph(
         transitions = transitions,
         runtimes = runtimes::snapshot,
         clock = clock,
+        displays = displays,
     )
     private val incidentBeds = object : FarmIncidentBedProvider {
         override fun discover(runtime: FarmRuntime) = field.incidentBeds(runtime)
@@ -209,11 +214,15 @@ internal class FarmComponentGraph(
     private val tornado = ru.ruscrafting.farms.paper.farm.incident.tornado.FarmTornadoIncident(
         plugin, settings, ports.access, ports.audience, ports.state, incidentBeds, transitions,
         ledger, nightShift,
+        displays = displays,
+        viewerParticles = viewerParticles,
     )
     private val greenhouse = ru.ruscrafting.farms.paper.farm.incident.greenhouse.FarmHellGreenhouseIncident(
         plugin, settings, locale, ports.access, ports.audience, ports.state, incidentBeds, transitions, ledger,
         rooms = FarmMoleBurrowWorld(plugin, debug, moleChunkRetention, blockDataDecoder, "farm_greenhouse", ports.tasks),
         tasks = ports.tasks,
+        displays = displays,
+        viewerParticles = viewerParticles,
     )
     private val frost = FarmFrostIncident(
         plugin = plugin,
@@ -264,6 +273,8 @@ internal class FarmComponentGraph(
         mobDespawns = mobDespawns,
         vehiclePassengers = vehiclePassengers,
         textDisplays = textDisplays,
+        displays = displays,
+        viewerParticles = viewerParticles,
     )
     val perks = FarmPerkController(
         plugin = plugin,
@@ -295,7 +306,9 @@ internal class FarmComponentGraph(
             perks.rewardMultiplier(playerId, runtime.settings.perks.rewardBonusPercent)
         },
     )
-    val supplies = FarmSupplyController(plugin, locale, debug, settings)
+    val supplies = FarmSupplyController(plugin, locale, debug, settings,
+        displays = displays,
+    )
     private val delivery = FarmDeliveryController(
         plugin = plugin,
         settings = settings,
@@ -382,6 +395,8 @@ internal class FarmComponentGraph(
         textDisplays = textDisplays,
         nightShift = nightShift,
         random = random,
+        displays = displays,
+        viewerParticles = viewerParticles,
     )
     private val processing = FarmProcessingIncident(
         plugin = plugin,
@@ -395,6 +410,7 @@ internal class FarmComponentGraph(
         transitions = transitions,
         blockPassability = blockPassability,
         textDisplays = textDisplays,
+        displays = displays,
     )
     private val barnFire = FarmBarnFireIncident(
         settings = settings,

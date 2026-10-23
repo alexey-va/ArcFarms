@@ -3,10 +3,14 @@ package ru.ruscrafting.farms.paper.farm.incident.tornado
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
 import io.mockk.every
+import io.mockk.mockk
+import io.mockk.verify
+import io.mockk.clearMocks
+import ru.arc.paper.display.PaperPacketDisplays
+import ru.arc.paper.display.PacketBlockDisplay
 import org.bukkit.GameMode
 import org.bukkit.Location
 import org.bukkit.Material
-import org.bukkit.entity.BlockDisplay
 import org.bukkit.WeatherType
 import ru.ruscrafting.farms.config.FarmTornadoSettings
 import ru.ruscrafting.farms.domain.FarmTornadoState
@@ -22,6 +26,10 @@ import ru.ruscrafting.farms.paper.FarmBlockLedger
 class FarmTornadoIncidentMockBukkitTest : FunSpec({
     test("warning is harmless, debris stays bounded, empty farm pauses and resumed survival finishes with cleanup") {
         FarmIncidentScenarioFixture.open().use { fixture ->
+            val displays = mockk<PaperPacketDisplays>(relaxed = true)
+            every { displays.spawnBlock(any(), any()) } answers {
+                mockk<PacketBlockDisplay>(relaxed = true) { every { isValid } returns true }
+            }
             val runtime = fixture.runtime(FarmShiftState(
                 phase = FarmPhase.HARVESTING, tornado = FarmTornadoState(),
                 sequence = 7, placementSequence = 2, orderId = "bakery_supply",
@@ -36,6 +44,8 @@ class FarmTornadoIncidentMockBukkitTest : FunSpec({
                 FarmIncidentBedProvider { setOf(plot) },
                 FarmTransitionSink { target, result, _ -> target.state = result.state },
                 FarmBlockLedger(fixture.plugin), fixture.night,
+                displays = displays,
+                viewerParticles = io.mockk.mockk(relaxed = true),
             )
             controller.initialize(runtime) shouldBe true
             val player = fixture.paper.addPlayer("StormRunner")
@@ -47,8 +57,8 @@ class FarmTornadoIncidentMockBukkitTest : FunSpec({
             runtime.state.tornado!!.elapsedSeconds shouldBe 0
             player.playerTime shouldBe 13_000L
             player.playerWeather shouldBe WeatherType.DOWNFALL
-            fixture.world.entities.count(controller::owns) shouldBe 8
-            fixture.world.entities.filter(controller::owns).all { it is BlockDisplay && !it.isPersistent } shouldBe true
+            verify(exactly = 8) { displays.spawnBlock(any(), any()) }
+            fixture.world.entities.count(controller::owns) shouldBe 0
             controller.update(runtime)
             (player.health < initialHealth) shouldBe true
             player.velocity.y shouldBe 1.1
@@ -88,6 +98,10 @@ class FarmTornadoIncidentMockBukkitTest : FunSpec({
 
     test("roofed beds reject placement while creative participates and spectator or admin editing pauses") {
         FarmIncidentScenarioFixture.open().use { fixture ->
+            val displays = mockk<PaperPacketDisplays>(relaxed = true)
+            every { displays.spawnBlock(any(), any()) } answers {
+                mockk<PacketBlockDisplay>(relaxed = true) { every { isValid } returns true }
+            }
             val runtime = fixture.runtime(FarmShiftState(
                 phase = FarmPhase.HARVESTING, tornado = FarmTornadoState(),
                 sequence = 8, placementSequence = 3,
@@ -100,6 +114,8 @@ class FarmTornadoIncidentMockBukkitTest : FunSpec({
                 FarmIncidentBedProvider { setOf(plot) },
                 FarmTransitionSink { target, result, _ -> target.state = result.state },
                 FarmBlockLedger(fixture.plugin), fixture.night,
+                displays = displays,
+                viewerParticles = io.mockk.mockk(relaxed = true),
             )
             controller.initialize(runtime) shouldBe false
             fixture.world.getBlockAt(24, 70, 24).type = Material.AIR
@@ -119,15 +135,20 @@ class FarmTornadoIncidentMockBukkitTest : FunSpec({
             runtime.state = runtime.state.copy(tornado = runtime.state.tornado!!.copy(points = emptyList()))
             player.gameMode = GameMode.SURVIVAL
             repeat(6) { controller.update(runtime) }
-            (fixture.world.entities.count(controller::owns) > 0) shouldBe true
+            verify(atLeast = 1) { displays.spawnBlock(any(), any()) }
             every { fixture.port.isAdminEditing(player) } returns true
             controller.update(runtime)
             fixture.world.entities.count(controller::owns) shouldBe 0
             controller.cleanup()
-            val scene = FarmTornadoScene(fixture.plugin)
+            clearMocks(displays, answers = false)
+            val scene = FarmTornadoScene(fixture.plugin,
+                displays = displays,
+                viewerParticles = io.mockk.mockk(relaxed = true),
+            )
             val center = Location(fixture.world, 24.5, 65.0, 24.5)
             scene.render("test", center, FarmTornadoSettings(debrisCount = 8), 3, 1.0, listOf(player), false)
-            fixture.world.entities.count(scene::owns) shouldBe 8
+            verify(exactly = 8) { displays.spawnBlock(any(), any()) }
+            fixture.world.entities.count(scene::owns) shouldBe 0
             scene.render("test", center, FarmTornadoSettings(debrisCount = 8), 6, 1.0, emptyList(), false)
             fixture.world.entities.count(scene::owns) shouldBe 0
             scene.cleanup()
@@ -136,6 +157,10 @@ class FarmTornadoIncidentMockBukkitTest : FunSpec({
 
     test("persisted tornado anchors survive while their chunks are unloaded") {
         FarmIncidentScenarioFixture.open().use { fixture ->
+            val displays = mockk<PaperPacketDisplays>(relaxed = true)
+            every { displays.spawnBlock(any(), any()) } answers {
+                mockk<PacketBlockDisplay>(relaxed = true) { every { isValid } returns true }
+            }
             val point = ru.ruscrafting.farms.domain.FarmPointPosition(fixture.world.name, 40.5, 65.0, 40.5)
             val runtime = fixture.runtime(FarmShiftState(
                 phase = FarmPhase.HARVESTING,
@@ -147,6 +172,8 @@ class FarmTornadoIncidentMockBukkitTest : FunSpec({
                 FarmIncidentBedProvider { emptySet() },
                 FarmTransitionSink { target, result, _ -> target.state = result.state },
                 FarmBlockLedger(fixture.plugin), fixture.night,
+                displays = displays,
+                viewerParticles = io.mockk.mockk(relaxed = true),
             )
             val player = fixture.paper.addPlayer("StormWitness")
             player.teleport(Location(fixture.world, 2.5, 65.0, 2.5))

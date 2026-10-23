@@ -6,9 +6,11 @@ import org.bukkit.NamespacedKey
 import org.bukkit.entity.Entity
 import org.bukkit.entity.Interaction
 import org.bukkit.entity.Player
-import org.bukkit.entity.TextDisplay
 import org.bukkit.persistence.PersistentDataType
 import org.bukkit.plugin.Plugin
+import ru.arc.paper.display.PacketTextDisplay
+import ru.arc.paper.display.PaperPacketDisplays
+import ru.arc.paper.particle.PaperViewerParticles
 import ru.ruscrafting.farms.config.ArcFarmsLocale
 import ru.ruscrafting.farms.config.MessageKey
 import ru.ruscrafting.farms.domain.FarmIncidentType
@@ -47,6 +49,8 @@ internal class FarmActivityPortal(
     private val textDisplays: FarmTextDisplayRenderer,
     namespace: String,
     private val rolePrefix: String = "",
+    private val displays: PaperPacketDisplays,
+    private val viewerParticles: PaperViewerParticles,
 ) {
     private val zoneKey = NamespacedKey(plugin, "${namespace}_zone")
     private val sequenceKey = NamespacedKey(plugin, "${namespace}_sequence")
@@ -90,10 +94,10 @@ internal class FarmActivityPortal(
         mark(portal, runtime, "portal")
 
         val labelAt = at.clone().add(0.0, style.labelHeight, 0.0).apply { yaw = 0f; pitch = 0f }
-        val display = (entry.labelId?.let(Bukkit::getEntity) as? TextDisplay)?.takeIf(Entity::isValid)
-            ?: world.spawn(labelAt, TextDisplay::class.java).also { entry.labelId = it.uniqueId }
+        val display = entry.label?.takeIf { it.isValid }
+            ?: displays.spawnText(labelAt, net.kyori.adventure.text.Component.empty()).also { entry.label = it }
         display.teleport(labelAt)
-        textDisplays.render(
+        textDisplays.renderPacket(
             display,
             locale.render(label, Bukkit.getConsoleSender(), mapOf("seconds" to locale.text(style.activationSeconds))),
             FarmTextDisplayStyle(viewRange = style.viewRange),
@@ -105,7 +109,6 @@ internal class FarmActivityPortal(
             org.joml.Vector3f(style.labelScale, style.labelScale, style.labelScale),
             transform.rightRotation,
         )
-        mark(display, runtime, "portal_label")
     }
 
     fun update(particles: Boolean) {
@@ -125,7 +128,7 @@ internal class FarmActivityPortal(
                 player.world === portal.world && !access.isAdminEditing(player) &&
                     player.location.distanceSquared(portal.location) <= VIEW_RADIUS * VIEW_RADIUS
             }
-            FarmPortalRenderer.render(portal, viewers)
+            FarmPortalRenderer.render(portal, viewers, viewerParticles)
         }
     }
 
@@ -166,7 +169,7 @@ internal class FarmActivityPortal(
         }
         entries.remove(zoneId)?.let { entry ->
             entry.portalId?.let(Bukkit::getEntity)?.remove()
-            entry.labelId?.let(Bukkit::getEntity)?.remove()
+            entry.label?.remove()
         }
     }
 
@@ -260,7 +263,7 @@ internal class FarmActivityPortal(
         var style: FarmPortalStyle,
         var destination: FarmPortalDestination,
         var portalId: UUID? = null,
-        var labelId: UUID? = null,
+        var label: PacketTextDisplay? = null,
     )
 
     private data class PendingEntry(val entry: PortalEntry, var remainingSeconds: Int)

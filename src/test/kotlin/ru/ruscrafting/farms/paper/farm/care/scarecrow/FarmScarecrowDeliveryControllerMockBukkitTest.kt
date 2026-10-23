@@ -4,10 +4,12 @@ import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.verify
+import ru.arc.paper.display.PaperPacketDisplays
+import ru.arc.paper.display.PacketItemDisplay
 import net.kyori.adventure.text.Component
 import org.bukkit.Location
 import org.bukkit.entity.Interaction
-import org.bukkit.entity.ItemDisplay
 import org.bukkit.event.player.PlayerMoveEvent
 import org.mockbukkit.mockbukkit.ServerMock
 import org.mockbukkit.mockbukkit.world.WorldMock
@@ -81,6 +83,17 @@ class FarmScarecrowDeliveryControllerMockBukkitTest : FunSpec({
         val locale = mockk<ru.ruscrafting.farms.config.ArcFarmsLocale>(relaxed = true) {
             every { render(any(), any(), any()) } returns Component.text("Пугало")
         }
+        val locations = mutableListOf<Location>()
+        val handles = mutableListOf<PacketItemDisplay>()
+        val displays = mockk<PaperPacketDisplays>(relaxed = true)
+        every { displays.spawnItem(any(), any()) } answers {
+            val at = firstArg<Location>().clone()
+            locations += at
+            mockk<PacketItemDisplay>(relaxed = true) {
+                every { isValid } returns true
+                every { location } returns at
+            }.also(handles::add)
+        }
         val controller = FarmScarecrowDeliveryController(
             plugin = paper.createSimplePlugin("ScarecrowDeliveryTest"),
             settings = { mockk<ArcFarmsConfig>(relaxed = true) },
@@ -91,6 +104,7 @@ class FarmScarecrowDeliveryControllerMockBukkitTest : FunSpec({
             points = FarmPointProvider { _, _ -> FarmPointPosition(world.name, 2.5, 65.0, 2.5) },
             transitions = FarmTransitionSink { target, result, _ -> target.state = result.state },
             runtimes = { listOf(runtime) },
+            displays = displays,
         )
 
         controller.ensure(runtime)
@@ -99,9 +113,8 @@ class FarmScarecrowDeliveryControllerMockBukkitTest : FunSpec({
         controller.onMove(
             PlayerMoveEvent(player, player.location, supply.location.clone().apply { yaw = -90f }),
         )
-        world.entities.filterIsInstance<ItemDisplay>().count { controller.owns(it) } shouldBe 2
-        world.entities.filterIsInstance<ItemDisplay>().filter(controller::owns)
-            .minBy { it.location.x }.location.x.let { carriedX -> (carriedX < player.location.x) shouldBe true }
+        handles.size shouldBe 2
+        (locations[1].x < player.location.x) shouldBe true
 
         // Pickup reserves target 0 internally, but any free nearby marker must accept the carried scarecrow.
         controller.onMove(
@@ -111,9 +124,7 @@ class FarmScarecrowDeliveryControllerMockBukkitTest : FunSpec({
         runtime.state.careTargets.single { it.id == 1 }.complete shouldBe true
 
         controller.ensure(runtime)
-        world.entities.filterIsInstance<ItemDisplay>().any { display ->
-            controller.owns(display) && display.location.distanceSquared(Location(world, 14.5, 65.0, 10.5)) < 0.1
-        } shouldBe true
+        locations.any { it.distanceSquared(Location(world, 14.5, 65.0, 10.5)) < 0.1 } shouldBe true
 
         val replenished = world.entities.filterIsInstance<Interaction>().single { controller.owns(it) }
         controller.interact(player, replenished) shouldBe true
@@ -124,5 +135,6 @@ class FarmScarecrowDeliveryControllerMockBukkitTest : FunSpec({
 
         controller.ensure(runtime)
         world.entities.none(controller::owns) shouldBe true
+        handles.forEach { handle -> verify(exactly = 1) { handle.remove() } }
     }
 })

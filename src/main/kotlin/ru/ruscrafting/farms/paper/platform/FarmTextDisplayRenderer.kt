@@ -4,6 +4,7 @@ import net.kyori.adventure.text.Component
 import org.bukkit.Color
 import org.bukkit.entity.Display
 import org.bukkit.entity.TextDisplay
+import ru.arc.paper.display.PacketTextDisplay
 
 internal data class FarmTextDisplayStyle(
     val billboard: Display.Billboard = Display.Billboard.VERTICAL,
@@ -18,6 +19,16 @@ internal data class FarmTextDisplayStyle(
 /** Applies the complete visual contract of one farm TextDisplay. */
 internal fun interface FarmTextDisplayRenderer {
     fun render(entity: TextDisplay, text: Component, style: FarmTextDisplayStyle)
+
+    fun renderPacket(entity: PacketTextDisplay, text: Component, style: FarmTextDisplayStyle) {
+        entity.text(text)
+        entity.billboard = style.billboard
+        entity.alignment = style.alignment
+        entity.lineWidth = style.lineWidth
+        entity.backgroundColor = style.backgroundColor
+        entity.isShadowed = style.shadowed
+        entity.viewRange = style.viewRange
+    }
 }
 
 internal object PaperFarmTextDisplayRenderer : FarmTextDisplayRenderer {

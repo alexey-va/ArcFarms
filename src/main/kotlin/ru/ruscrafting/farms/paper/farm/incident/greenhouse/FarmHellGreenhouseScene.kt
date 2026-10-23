@@ -6,13 +6,16 @@ import org.bukkit.Material
 import org.bukkit.NamespacedKey
 import org.bukkit.block.data.Ageable
 import org.bukkit.Particle
-import org.bukkit.entity.BlockDisplay
 import org.bukkit.entity.Entity
 import org.bukkit.entity.Interaction
 import org.bukkit.entity.Player
-import org.bukkit.entity.TextDisplay
 import org.bukkit.persistence.PersistentDataType
 import org.bukkit.plugin.Plugin
+import ru.arc.paper.display.PacketBlockDisplay
+import ru.arc.paper.display.PacketDisplay
+import ru.arc.paper.display.PacketTextDisplay
+import ru.arc.paper.display.PaperPacketDisplays
+import ru.arc.paper.particle.PaperViewerParticles
 import ru.ruscrafting.farms.config.ArcFarmsLocale
 import ru.ruscrafting.farms.config.MessageKey
 import ru.ruscrafting.farms.domain.*
@@ -29,15 +32,17 @@ internal class FarmHellGreenhouseScene(
     plugin: Plugin,
     private val locale: ArcFarmsLocale,
     private val text: FarmTextDisplayRenderer,
+    private val displays: PaperPacketDisplays,
+    private val viewerParticles: PaperViewerParticles,
 ) {
     private val zoneKey = NamespacedKey(plugin, "hell_greenhouse_zone")
     private val sequenceKey = NamespacedKey(plugin, "hell_greenhouse_sequence")
     private val placementKey = NamespacedKey(plugin, "hell_greenhouse_placement")
     private val roleKey = NamespacedKey(plugin, "hell_greenhouse_role")
     private val indexKey = NamespacedKey(plugin, "hell_greenhouse_index")
-    private data class PlotScene(val crops: List<UUID>, val valve: UUID, val label: UUID, val channel: List<UUID>)
+    private data class PlotScene(val crops: List<PacketBlockDisplay>, val valve: PacketBlockDisplay, val label: PacketTextDisplay, val channel: List<PacketBlockDisplay>)
     private data class Scene(val identity: HellGreenhouseIdentity, val entities: MutableSet<UUID>,
-        val plots: List<PlotScene>, var signature: String = "")
+        val visuals: MutableSet<PacketDisplay>, val plots: List<PlotScene>, var signature: String = "")
     private val scenes = mutableMapOf<String, Scene>()
 
     fun owns(entity: Entity): Boolean = entity.persistentDataContainer.has(zoneKey, PersistentDataType.STRING)
@@ -60,7 +65,7 @@ internal class FarmHellGreenhouseScene(
         val plantation = runtime.state.hellGreenhouse ?: return
         val identity = stamp(runtime)
         var active = scenes[runtime.settings.id]
-        if (active == null || active.identity != identity || active.entities.any { Bukkit.getEntity(it)?.isValid != true }) {
+        if (active == null || active.identity != identity || active.entities.any { Bukkit.getEntity(it)?.isValid != true } || active.visuals.any { !it.isValid }) {
             clear(runtime.settings.id)
             active = build(runtime, plantation, identity)
             scenes[runtime.settings.id] = active
@@ -70,24 +75,24 @@ internal class FarmHellGreenhouseScene(
             active.plots.forEachIndexed { index, plotScene ->
                 val plot = plantation.plots[index]
                 val age = (plot.growthSeconds * 3 / FarmHellGreenhouseEngine.GROWTH_TARGET_SECONDS).coerceIn(0, 3)
-                plotScene.crops.forEach { uuid ->
-                    (Bukkit.getEntity(uuid) as? BlockDisplay)?.block = Material.NETHER_WART.createBlockData().apply {
+                plotScene.crops.forEach { display ->
+                    display.block = Material.NETHER_WART.createBlockData().apply {
                         (this as Ageable).age = age
                     }
                 }
-                (Bukkit.getEntity(plotScene.valve) as? BlockDisplay)?.block = Bukkit.createBlockData(
+                plotScene.valve.block = Bukkit.createBlockData(
                     "minecraft:lever[face=floor,facing=north,powered=${plot.heating}]")
-                (Bukkit.getEntity(plotScene.label) as? TextDisplay)?.let {
+                plotScene.label.let {
                     val status = locale.render(statusKey(plot), values = statusValues(locale, index, plot))
                     val action = locale.render(if (plot.heating) MessageKey.FARM_HELL_PLANTATION_CLOSE else MessageKey.FARM_HELL_PLANTATION_OPEN)
                     val phase = FarmHellGreenhouseEngine.phase(plot)
                     val message = if (phase == FarmHellPlantationPhase.READY || phase == FarmHellPlantationPhase.COOLING) status
                         else status.append(net.kyori.adventure.text.Component.newline()).append(action)
-                    text.render(it, message,
+                    text.renderPacket(it, message,
                         FarmTextDisplayStyle(lineWidth = 260, viewRange = 0.8f))
                 }
-                plotScene.channel.forEach { uuid ->
-                    (Bukkit.getEntity(uuid) as? BlockDisplay)?.block =
+                plotScene.channel.forEach { display ->
+                    display.block =
                         (if (plot.heating) Material.MAGMA_BLOCK else Material.POLISHED_BLACKSTONE_BRICKS).createBlockData()
                 }
             }
@@ -104,8 +109,7 @@ internal class FarmHellGreenhouseScene(
                     else -> return@forEachIndexed
                 }
                 players.forEach { player ->
-                    player.spawnParticle(particle, Location(player.world, point.x, point.y + 1.5, point.z),
-                        5, 1.0, 0.2, 1.0, 0.01)
+                    viewerParticles.emit(player, Location(player.world, point.x, point.y + 1.5, point.z), particle, 5, 1.0, 0.2, 1.0, 0.01)
                 }
             }
         }
@@ -114,33 +118,35 @@ internal class FarmHellGreenhouseScene(
     private fun build(runtime: FarmRuntime, state: FarmHellGreenhouseState, stamp: HellGreenhouseIdentity): Scene {
         val center = center(runtime, state)
         val entities = linkedSetOf<UUID>()
+        val visuals = linkedSetOf<PacketDisplay>()
         try {
             val plots = state.points.mapIndexed { index, point ->
                 val at = Location(center.world, point.x, point.y, point.z)
                 val crops = (-2..2).flatMap { x -> (-2..2).map { z ->
-                    block(at.clone().add(x - 0.5, 1.0, z - 0.5), Material.NETHER_WART, stamp, entities).uniqueId
+                    block(at.clone().add(x - 0.5, 1.0, z - 0.5), Material.NETHER_WART, visuals)
                 } }
                 interaction(at.clone().add(0.0, 1.0, 0.0), stamp.copy(role = HellGreenhouseRole.CROP, index = index), entities, 5f, 1.3f)
                 val side = if (point.x < center.x) -1 else 1
                 val valveAt = Location(center.world, center.x + side * 2.0, center.y, point.z)
-                val valve = block(valveAt.clone().add(-0.5, 0.0, -0.5), Material.LEVER, stamp, entities)
+                val valve = block(valveAt.clone().add(-0.5, 0.0, -0.5), Material.LEVER, visuals)
                 interaction(valveAt, stamp.copy(role = HellGreenhouseRole.VALVE, index = index), entities, 1.0f, 1.5f)
-                label(valveAt.clone().add(0.0, 1.3, 0.0), MessageKey.FARM_HELL_PLANTATION_VALVE, stamp, entities,
+                label(valveAt.clone().add(0.0, 1.3, 0.0), MessageKey.FARM_HELL_PLANTATION_VALVE, visuals,
                     mapOf("point" to locale.text(index + 1)))
-                val label = label(at.clone().add(0.0, 2.7, 0.0), MessageKey.FARM_HELL_PLANTATION_COLD, stamp, entities,
+                val label = label(at.clone().add(0.0, 2.7, 0.0), MessageKey.FARM_HELL_PLANTATION_COLD, visuals,
                     mapOf("point" to locale.text(index + 1)))
                 val channel = (2..3).map { distance ->
                     block(Location(center.world, center.x + side * distance - 0.5, center.y - 0.98, point.z - 0.5),
-                        Material.POLISHED_BLACKSTONE_BRICKS, stamp, entities).uniqueId
+                        Material.POLISHED_BLACKSTONE_BRICKS, visuals)
                 }
-                PlotScene(crops, valve.uniqueId, label.uniqueId, channel)
+                PlotScene(crops, valve, label, channel)
             }
             val exit = center.clone().add(0.0, 0.0, 10.0)
             interaction(exit, stamp.copy(role = HellGreenhouseRole.EXIT), entities, 1.8f, 2.5f)
-            label(exit.clone().add(0.0, 2.5, 0.0), MessageKey.FARM_HELL_GREENHOUSE_EXIT, stamp, entities)
-            label(center.clone().add(0.0, 3.0, -9.0), MessageKey.FARM_HELL_PLANTATION_GUIDE, stamp, entities)
-            return Scene(stamp, entities, plots)
+            label(exit.clone().add(0.0, 2.5, 0.0), MessageKey.FARM_HELL_GREENHOUSE_EXIT, visuals)
+            label(center.clone().add(0.0, 3.0, -9.0), MessageKey.FARM_HELL_PLANTATION_GUIDE, visuals)
+            return Scene(stamp, entities, visuals, plots)
         } catch (failure: Exception) {
+            visuals.forEach { it.remove() }
             entities.forEach { Bukkit.getEntity(it)?.remove() }
             throw failure
         }
@@ -178,21 +184,25 @@ internal class FarmHellGreenhouseScene(
         entities?.add(entity.uniqueId)
     }
 
-    private fun block(at: Location, material: Material, identity: HellGreenhouseIdentity, entities: MutableSet<UUID>): BlockDisplay =
-        at.world.spawn(at, BlockDisplay::class.java) { entity ->
-            mark(entity, identity, entities)
-            entity.block = material.createBlockData()
+    private fun block(at: Location, material: Material, visuals: MutableSet<PacketDisplay>): PacketBlockDisplay =
+        displays.spawnBlock(at, material.createBlockData()).also { entity ->
+            visuals.add(entity)
             entity.viewRange = 1.0f
         }
 
-    private fun label(at: Location, message: MessageKey, identity: HellGreenhouseIdentity, entities: MutableSet<UUID>,
-        values: Map<String, net.kyori.adventure.text.Component> = emptyMap()): TextDisplay =
-        at.world.spawn(at, TextDisplay::class.java) { entity ->
-            mark(entity, identity, entities)
-            text.render(entity, locale.render(message, values = values), FarmTextDisplayStyle(lineWidth = 220, viewRange = 0.8f))
+    private fun label(at: Location, message: MessageKey, visuals: MutableSet<PacketDisplay>,
+        values: Map<String, net.kyori.adventure.text.Component> = emptyMap()): PacketTextDisplay =
+        displays.spawnText(at, locale.render(message, values = values)).also { entity ->
+            visuals.add(entity)
+            text.renderPacket(entity, locale.render(message, values = values), FarmTextDisplayStyle(lineWidth = 220, viewRange = 0.8f))
         }
 
-    fun clear(zone: String) { scenes.remove(zone)?.entities?.forEach { Bukkit.getEntity(it)?.remove() } }
+    fun clear(zone: String) {
+        scenes.remove(zone)?.let { scene ->
+            scene.visuals.forEach { it.remove() }
+            scene.entities.forEach { Bukkit.getEntity(it)?.remove() }
+        }
+    }
     fun cleanup() {
         scenes.keys.toList().forEach(::clear)
         Bukkit.getWorlds().forEach { world -> world.entities.filter(::owns).forEach(Entity::remove) }

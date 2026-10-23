@@ -30,7 +30,9 @@ class FarmCareStartResultTest : FunSpec({
                 ArcFarmsDebug({ false }) {}, mockk(relaxed = true), mockk(relaxed = true),
                 mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), selection,
                 mockk(relaxed = true), moles, FarmTransitionSink { active, result, _ -> active.state = result.state },
-                { listOf(runtime) }, { 0L }, tasks = h.tasks)
+                { listOf(runtime) }, { 0L }, tasks = h.tasks,
+                displays = io.mockk.mockk(relaxed = true),
+            )
             val source = runtime.state
             fun <T> await(future: CompletableFuture<T>): T {
                 h.until { future.isDone }

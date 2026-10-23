@@ -7,7 +7,6 @@ import org.bukkit.Particle
 import org.bukkit.Sound
 import org.bukkit.entity.Entity
 import org.bukkit.entity.Interaction
-import org.bukkit.entity.ItemDisplay
 import org.bukkit.entity.Player
 import org.bukkit.event.player.PlayerMoveEvent
 import org.bukkit.inventory.ItemStack
@@ -16,6 +15,8 @@ import org.bukkit.plugin.Plugin
 import org.bukkit.util.Transformation
 import org.joml.AxisAngle4f
 import org.joml.Vector3f
+import ru.arc.paper.display.PacketItemDisplay
+import ru.arc.paper.display.PaperPacketDisplays
 import ru.ruscrafting.farms.config.ArcFarmsConfig
 import ru.ruscrafting.farms.config.ArcFarmsLocale
 import ru.ruscrafting.farms.config.MessageKey
@@ -57,15 +58,17 @@ internal class FarmScarecrowDeliveryController(
     private val runtimes: () -> Collection<FarmRuntime>,
     private val entityLookup: FarmEntityLookup = BukkitFarmEntityLookup,
     private val supplyPoint: ((FarmRuntime) -> FarmPointPosition?)? = null,
+    private val displays: PaperPacketDisplays,
 ) {
     private val zoneKey = NamespacedKey(plugin, "farm_scarecrow_zone")
     private val sequenceKey = NamespacedKey(plugin, "farm_scarecrow_sequence")
     private val targetKey = NamespacedKey(plugin, "farm_scarecrow_target")
     private val roleKey = NamespacedKey(plugin, "farm_scarecrow_role")
     private val supplyEntities = mutableMapOf<String, MutableSet<UUID>>()
+    private val supplyDisplays = mutableMapOf<String, PacketItemDisplay>()
     private val carriers = mutableMapOf<ScarecrowKey, UUID>()
-    private val carriedDisplays = mutableMapOf<ScarecrowKey, UUID>()
-    private val placedDisplays = mutableMapOf<ScarecrowKey, UUID>()
+    private val carriedDisplays = mutableMapOf<ScarecrowKey, PacketItemDisplay>()
+    private val placedDisplays = mutableMapOf<ScarecrowKey, PacketItemDisplay>()
     private val reconciledSequences = mutableMapOf<String, Long>()
 
     fun owns(entity: Entity): Boolean = entity.persistentDataContainer.has(zoneKey, PersistentDataType.STRING)
@@ -104,7 +107,7 @@ internal class FarmScarecrowDeliveryController(
         val key = ScarecrowKey(zoneId, target.id)
         carriers[key] = player.uniqueId
         carriedDisplays[key] = spawnDisplay(runtime, carriedLocation(runtime, player), target.id, ScarecrowEntityRole.CARRIED_DISPLAY)
-            ?.uniqueId ?: run {
+            ?: run {
             carriers.remove(key)
             return
         }
@@ -163,8 +166,8 @@ internal class FarmScarecrowDeliveryController(
         carriers.toList().forEach { (key, playerId) ->
             val runtime = runtimes().firstOrNull { it.settings.id == key.zoneId } ?: return@forEach
             val player = Bukkit.getPlayer(playerId)?.takeIf(Player::isOnline) ?: return@forEach
-            val display = carriedDisplays[key]?.let(Bukkit::getEntity) as? ItemDisplay ?: return@forEach
-            if (display.world == player.world) display.teleport(carriedLocation(runtime, player))
+            val display = carriedDisplays[key]?.takeIf { it.isValid } ?: return@forEach
+            if (display.location.world == player.world) display.teleport(carriedLocation(runtime, player))
             move(runtime, key, player, player.location)
         }
     }
@@ -193,6 +196,10 @@ internal class FarmScarecrowDeliveryController(
     fun cleanup(reason: String) {
         val owned = entityLookup.inAllWorlds().filter(::owns)
         owned.forEach(Entity::remove)
+        supplyDisplays.values.forEach { it.remove() }
+        carriedDisplays.values.forEach { it.remove() }
+        placedDisplays.values.forEach { it.remove() }
+        supplyDisplays.clear()
         supplyEntities.clear()
         carriers.clear()
         carriedDisplays.clear()
@@ -242,17 +249,14 @@ internal class FarmScarecrowDeliveryController(
             return null
         }
         carriers[next] = playerId
-        carriedDisplays.remove(previous)?.let { displayId ->
-            carriedDisplays[next] = displayId
-            Bukkit.getEntity(displayId)?.persistentDataContainer?.set(targetKey, PersistentDataType.INTEGER, targetId)
-        }
+        carriedDisplays.remove(previous)?.let { display -> carriedDisplays[next] = display }
         return next
     }
 
     private fun ensureSupply(runtime: FarmRuntime) {
         val active = supplyEntities[runtime.settings.id].orEmpty().mapNotNull(Bukkit::getEntity).filter(Entity::isValid)
-        if (active.count { role(it) == ScarecrowEntityRole.SUPPLY_DISPLAY } == 1 &&
-            active.count { role(it) == ScarecrowEntityRole.SUPPLY_INTERACTION } == 1 && active.size == 2
+        if (supplyDisplays[runtime.settings.id]?.isValid == true &&
+            active.count { role(it) == ScarecrowEntityRole.SUPPLY_INTERACTION } == 1 && active.size == 1
         ) {
             supplyEntities[runtime.settings.id] = active.mapTo(mutableSetOf(), Entity::getUniqueId)
             return
@@ -271,12 +275,13 @@ internal class FarmScarecrowDeliveryController(
             entity.isPersistent = false
             mark(entity, runtime, -1, ScarecrowEntityRole.SUPPLY_INTERACTION)
         }
-        supplyEntities[runtime.settings.id] = mutableSetOf(display.uniqueId, interaction.uniqueId)
+        supplyDisplays[runtime.settings.id] = display
+        supplyEntities[runtime.settings.id] = mutableSetOf(interaction.uniqueId)
     }
 
     private fun ensurePlaced(runtime: FarmRuntime, target: FarmCareTarget) {
         val key = ScarecrowKey(runtime.settings.id, target.id)
-        val existing = placedDisplays[key]?.let(Bukkit::getEntity) as? ItemDisplay
+        val existing = placedDisplays[key]
         if (existing?.isValid == true) return
         val world = Bukkit.getWorld(target.position.world) ?: return
         if (!world.isChunkLoaded(target.position.x.toInt() shr 4, target.position.z.toInt() shr 4)) return
@@ -285,7 +290,7 @@ internal class FarmScarecrowDeliveryController(
             Location(world, target.position.x, target.position.y, target.position.z),
             target.id,
             ScarecrowEntityRole.PLACED_DISPLAY,
-        )?.let { placedDisplays[key] = it.uniqueId }
+        )?.let { placedDisplays[key] = it }
     }
 
     private fun spawnDisplay(
@@ -293,14 +298,13 @@ internal class FarmScarecrowDeliveryController(
         location: Location,
         targetId: Int,
         role: ScarecrowEntityRole,
-    ): ItemDisplay? {
+    ): PacketItemDisplay? {
         val visual = runtime.settings.careVisuals.getValue(FarmCareRole.SCARECROW)
         val stack = ItemStack(MaterialRules.material(visual.material)).also { item ->
             if (visual.customModelData > 0) item.itemMeta = item.itemMeta.also { it.setCustomModelData(visual.customModelData) }
         }
         val yOffset = if (role == ScarecrowEntityRole.CARRIED_DISPLAY) 0.0 else visual.displayYOffset
-        return location.world.spawn(location.clone().add(0.0, yOffset, 0.0), ItemDisplay::class.java) { entity ->
-            entity.setItemStack(stack)
+        return displays.spawnItem(location.clone().add(0.0, yOffset, 0.0), stack).also { entity ->
             entity.itemDisplayTransform = visual.displayTransform.bukkit
             entity.transformation = Transformation(
                 Vector3f(),
@@ -313,8 +317,6 @@ internal class FarmScarecrowDeliveryController(
             } else FarmFieldPoiVisibility.fullField(runtime.settings.displayViewRange)
             entity.teleportDuration = 1
             entity.isGlowing = role != ScarecrowEntityRole.PLACED_DISPLAY
-            entity.isPersistent = false
-            mark(entity, runtime, targetId, role)
         }
     }
 
@@ -324,10 +326,10 @@ internal class FarmScarecrowDeliveryController(
         entityLookup.inWorld(runtime.region.world).filter { entity ->
             entity.persistentDataContainer.get(zoneKey, PersistentDataType.STRING) == zoneId
         }.forEach(Entity::remove)
-        supplyEntities.remove(zoneId)
+        removeSupply(zoneId)
         carriers.keys.filter { it.zoneId == zoneId }.toList().forEach(carriers::remove)
-        carriedDisplays.keys.filter { it.zoneId == zoneId }.toList().forEach(carriedDisplays::remove)
-        placedDisplays.keys.filter { it.zoneId == zoneId }.toList().forEach(placedDisplays::remove)
+        carriedDisplays.keys.filter { it.zoneId == zoneId }.toList().forEach(::removeCarried)
+        placedDisplays.keys.filter { it.zoneId == zoneId }.toList().forEach(::removePlaced)
         reconciledSequences[zoneId] = runtime.state.sequence
     }
 
@@ -339,15 +341,16 @@ internal class FarmScarecrowDeliveryController(
     }
 
     private fun removeSupply(zoneId: String) {
+        supplyDisplays.remove(zoneId)?.remove()
         supplyEntities.remove(zoneId).orEmpty().forEach { id -> Bukkit.getEntity(id)?.remove() }
     }
 
     private fun removeCarried(key: ScarecrowKey) {
-        carriedDisplays.remove(key)?.let(Bukkit::getEntity)?.remove()
+        carriedDisplays.remove(key)?.remove()
     }
 
     private fun removePlaced(key: ScarecrowKey) {
-        placedDisplays.remove(key)?.let(Bukkit::getEntity)?.remove()
+        placedDisplays.remove(key)?.remove()
     }
 
     private fun carriedLocation(runtime: FarmRuntime, player: Player): Location {

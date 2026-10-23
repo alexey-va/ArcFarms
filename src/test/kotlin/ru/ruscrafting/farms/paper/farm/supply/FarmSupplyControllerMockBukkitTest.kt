@@ -6,9 +6,13 @@ import io.kotest.matchers.ints.shouldBeGreaterThan
 import io.kotest.matchers.shouldBe
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.verify
+import ru.arc.paper.display.PaperPacketDisplays
+import ru.arc.paper.display.PacketItemDisplay
+import ru.arc.paper.display.PacketTextDisplay
+import org.bukkit.Location
 import net.kyori.adventure.text.Component
 import org.bukkit.Material
-import org.bukkit.entity.ItemDisplay
 import org.bukkit.entity.Player
 import org.bukkit.inventory.ItemStack
 import org.bukkit.plugin.Plugin
@@ -162,7 +166,7 @@ class FarmSupplyControllerMockBukkitTest : FunSpec({
         val runtime = runtime(world)
         val controller = controller(plugin)
         controller.ensure(runtime, supplyPoints(world)::getValue)
-        world.entities.filter(controller::owns) shouldHaveSize 15
+        world.entities.filter(controller::owns) shouldHaveSize 5
         every { runtime.settings.supplyPointsVisible } returns false
         val restarted = controller(plugin)
         restarted.ensure(runtime, supplyPoints(world)::getValue)
@@ -178,33 +182,51 @@ class FarmSupplyControllerMockBukkitTest : FunSpec({
 
         first.ensure(runtime, points::getValue)
         val firstOwned = world.entities.filter(first::owns)
-        firstOwned shouldHaveSize 15
-        firstOwned.map { it.uniqueId }.distinct() shouldHaveSize 15
+        firstOwned shouldHaveSize 5
+        firstOwned.map { it.uniqueId }.distinct() shouldHaveSize 5
 
         val afterRestart = controller(plugin)
         afterRestart.ensure(runtime, points::getValue)
         val reconciled = world.entities.filter(afterRestart::owns)
-        reconciled shouldHaveSize 15
-        reconciled.map { it.uniqueId }.distinct() shouldHaveSize 15
-        reconciled.count { afterRestart.interaction(it)?.zoneId == runtime.settings.id } shouldBe 15
+        reconciled shouldHaveSize 5
+        reconciled.map { it.uniqueId }.distinct() shouldHaveSize 5
+        reconciled.count { afterRestart.interaction(it)?.zoneId == runtime.settings.id } shouldBe 5
     }
 
     test("supply scene promotes only the currently required point to full-field visibility") {
-        val controller = controller(plugin)
+        val handles = mutableListOf<PacketItemDisplay>()
+        val displays = mockk<PaperPacketDisplays>(relaxed = true)
+        every { displays.spawnItem(any(), any()) } answers {
+            val at = firstArg<Location>().clone()
+            mockk<PacketItemDisplay>(relaxed = true) {
+                every { isValid } returns true
+                every { location } returns at
+            }.also(handles::add)
+        }
+        every { displays.spawnText(any(), any()) } answers {
+            val at = firstArg<Location>().clone()
+            mockk<PacketTextDisplay>(relaxed = true) {
+                every { isValid } returns true
+                every { location } returns at
+            }
+        }
+        val controller = controller(plugin, displays = displays)
         val runtime = runtime(world)
         controller.ensure(runtime, supplyPoints(world)::getValue)
-
-        fun display(kind: FarmSupplyKind) = world.entities.filterIsInstance<ItemDisplay>()
-            .single { controller.interaction(it)?.kind == kind }
-
-        FarmSupplyKind.entries.forEach { display(it).viewRange shouldBe FarmFieldPoiVisibility.nearby(30.0f) }
-
+        handles shouldHaveSize FarmSupplyKind.entries.size
+        handles.forEach { handle ->
+            verify { handle.viewRange = FarmFieldPoiVisibility.nearby(30.0f) }
+        }
+        val interactionIds = world.entities.filter(controller::owns).map { it.uniqueId }.toSet()
         runtime.state = runtime.state.copy(phase = FarmPhase.INCIDENT, incidentType = FarmIncidentType.BIRDS)
         controller.ensure(runtime, supplyPoints(world)::getValue)
-
-        display(FarmSupplyKind.ARCHERY).viewRange shouldBe 3.0f
-        FarmSupplyKind.entries.filterNot { it == FarmSupplyKind.ARCHERY }
-            .forEach { display(it).viewRange shouldBe FarmFieldPoiVisibility.nearby(30.0f) }
+        handles shouldHaveSize FarmSupplyKind.entries.size
+        world.entities.filter(controller::owns).map { it.uniqueId }.toSet() shouldBe interactionIds
+        FarmSupplyKind.entries.forEachIndexed { index, kind ->
+            val handle = handles[index]
+            if (kind == FarmSupplyKind.ARCHERY) verify { handle.viewRange = 3.0f }
+            else verify(exactly = 2) { handle.viewRange = FarmFieldPoiVisibility.nearby(30.0f) }
+        }
     }
 
     test("fire equipment is bound to the farm that issued it") {
@@ -258,7 +280,11 @@ class FarmSupplyControllerMockBukkitTest : FunSpec({
     }
 })
 
-private fun controller(plugin: Plugin, entityLookup: CountingFarmEntityLookup = CountingFarmEntityLookup()): FarmSupplyController {
+private fun controller(
+    plugin: Plugin,
+    entityLookup: CountingFarmEntityLookup = CountingFarmEntityLookup(),
+    displays: PaperPacketDisplays = mockk(relaxed = true),
+): FarmSupplyController {
     val config = mockk<ArcFarmsConfig> { every { sounds } returns false }
     val locale = mockk<ArcFarmsLocale>(relaxed = true) {
         every { render(any(), any(), any()) } answers { Component.text(firstArg<MessageKey>().path) }
@@ -269,6 +295,7 @@ private fun controller(plugin: Plugin, entityLookup: CountingFarmEntityLookup = 
         debug = ArcFarmsDebug({ false }) {},
         settings = { config },
         entityLookup = entityLookup,
+        displays = displays,
     )
 }
 
