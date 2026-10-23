@@ -1203,6 +1203,7 @@ scoreboard:
     barn-fire: '<color:#b8c8c0>ПКМ — выстрел</color>'
     frost: '<color:#b8c8c0>Голубой — костёр; золото — дровница</color>'
 mine:
+  break-preparing: '<gray>Подготавливаем руду… Ударьте ещё раз.</gray>'
   flood-bucket: '<aqua>Ведро для откачки воды</aqua>'
   rescue-miner-label: '<gold>Потерявшийся шахтёр</gold> <yellow>• ПКМ — помочь</yellow>'
   resources:

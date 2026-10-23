@@ -7,7 +7,7 @@ plugins {
     jacoco
 }
 group = "ru.ruscrafting"
-version = "0.45.50"
+version = "0.45.51"
 description = "Shared farm, lumbermill, and mine activities for RusCrafting"
 
 val integrationTestSourceSet = sourceSets.create("integrationTest") {
@@ -49,6 +49,7 @@ dependencies {
     compileOnly("com.sk89q.worldedit:worldedit-bukkit:7.3.18")
     compileOnly("me.clip:placeholderapi:2.12.3")
     compileOnly("net.luckperms:api:5.5")
+    compileOnly("dev.aurelium:auraskills-api-bukkit:2.3.12")
     compileOnly("com.github.retrooper:packetevents-spigot:2.12.1") {
         exclude(group = "io.netty")
     }
@@ -67,6 +68,7 @@ dependencies {
         exclude(group = "io.netty")
     }
     testImplementation("net.luckperms:api:5.5")
+    testImplementation("dev.aurelium:auraskills-api-bukkit:2.3.12")
     testImplementation("com.github.MilkBowl:VaultAPI:1.7") {
         exclude(group = "org.bukkit", module = "bukkit")
     }

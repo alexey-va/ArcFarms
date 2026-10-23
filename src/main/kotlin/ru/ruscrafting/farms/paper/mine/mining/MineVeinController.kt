@@ -187,7 +187,11 @@ internal class MineVeinController(
         } }
         val available = connectedMatching.size
         val materialNames = materials.mapTo(linkedSetOf(), Material::name)
-        val pendingRecords = recovery.records(runtime.settings.id).filter { it.nextMaterial in materialNames }
+        val pendingRecords = recovery.records(runtime.settings.id).filter {
+            // A native-break intent can already be durable while its ore is still visible.
+            // That same block must not count as both current and future order supply.
+            it.nextMaterial in materialNames && WorksitePosition(it.world, it.x, it.y, it.z) !in matching
+        }
         val pending = pendingRecords.size
         val shortageByResource = if (order.normalizedRequirements.isEmpty()) emptyMap() else generationByResource.mapValues { (resource, generatedVariants) ->
             val required = order.normalizedRequirements[resource] ?: 0

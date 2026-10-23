@@ -47,20 +47,29 @@ internal object MineCrystalGeometry {
         }
         // A bright closed perimeter links every charged node without the visual clutter of diagonals.
         // Spend the fixed sample budget on four continuous edges instead of six sparse dotted ones.
-        if ((phase == MineCrystalPhase.CHARGING || phase == MineCrystalPhase.CONVERGING) && active.size >= 2) {
+        val gathering = phase == MineCrystalPhase.CONVERGING
+        val perimeterFade = if (gathering) (1.0 - phaseAge / 350.0).coerceIn(0.0, 1.0) else 1.0
+        if ((phase == MineCrystalPhase.CHARGING || gathering && perimeterFade > 0) && active.size >= 2) {
             val edges = active.zipWithNext() + if (active.size > 2) listOf(active.last() to active.first()) else emptyList()
             edges.forEach { (a, b) ->
-            line(nodes[a], nodes[b], .35, if (phase == MineCrystalPhase.CHARGING) 48 else 36) { p, u ->
+            line(nodes[a], nodes[b], .35, if (gathering) 12 else 48) { p, u ->
                 val crest = sin(u * PI) * .3
-                add(Mote(p.add(0.0, crest, 0.0), 0xD9A1FF, 2.0f))
+                add(Mote(p.add(0.0, crest, 0.0), if (gathering) 0xB483D5 else 0xD9A1FF,
+                    if (gathering) (.35 + 1.65 * perimeterFade).toFloat() else 2.0f))
             }
         } }
         if (phase == MineCrystalPhase.CHARGING) return@buildList
-        val convergence = if (phase == MineCrystalPhase.CONVERGING)
+        val convergence = if (gathering)
             (phaseAge.toDouble() / CONVERGE_MILLIS).coerceIn(0.0, 1.0) else 1.0
         nodes.forEach { node ->
             val end = Vector3d(node).lerp(centre, convergence)
-            line(node, end, .4, 10) { p, u -> add(Mote(p, if (u > .8) 0xF5EFFF else 0xD9A1FF, 1.25f)) }
+            // While converging, the four inward-moving arms own the light budget. Their pale
+            // bodies and bright heads separate from the native purple machinery without moving the hub.
+            line(node, end, if (gathering) .28 else .4, if (gathering) 36 else 10) { p, u ->
+                add(Mote(p, if (gathering) 0xF0DEFF else if (u > .8) 0xF5EFFF else 0xD9A1FF,
+                    if (gathering) 3.1f else 1.25f))
+            }
+            if (gathering) add(Mote(Vector3d(end), 0xFFF8ED, 3.8f))
         }
         if (phase == MineCrystalPhase.CONVERGING) return@buildList
         val extract = phase == MineCrystalPhase.EXTRACTING

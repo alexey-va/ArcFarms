@@ -253,7 +253,7 @@ internal class MineCrystalResonanceIncident(
     }
 
     fun hint(runtime: MineRuntime, player: Player): Component? {
-        if (!active(runtime)) return null
+        if (!active(runtime) || locale == null) return null
         val phase = runtime.state.incident?.crystal?.phase ?: MineCrystalPhase.CHARGING
         return render("mine.crystal.${phase.name.lowercase()}", player,
             mapOf("done" to Component.text(runtime.state.objective?.completed ?: 0)))

@@ -1203,6 +1203,7 @@ scoreboard:
     barn-fire: '<color:#b8c8c0>Aim, then right-click</color>'
     frost: '<color:#b8c8c0>Blue: fires; gold: woodpile</color>'
 mine:
+  break-preparing: '<gray>Preparing the ore… Try again.</gray>'
   flood-bucket: '<aqua>Flood bucket</aqua>'
   rescue-miner-label: '<gold>Lost miner</gold> <yellow>• Right-click to help</yellow>'
   resources:

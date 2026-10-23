@@ -74,7 +74,7 @@ class MineV2FullFlowMockBukkitIntegrationTest : FunSpec({
 
         runtime.state.objective!!.targets.take(2).forEach { target ->
             val block = world.getBlockAt(target.position.x, target.position.y, target.position.z)
-            graph.mining.onBreakHigh(BlockBreakEvent(block, player)) shouldBe true
+            graph.breakManagedOre(block, player).isCancelled shouldBe false
         }
         runtime.state.phase shouldBe MinePhase.LOADING
 

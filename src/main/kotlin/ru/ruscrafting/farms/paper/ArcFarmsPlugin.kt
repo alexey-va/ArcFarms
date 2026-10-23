@@ -39,6 +39,7 @@ import ru.ruscrafting.farms.persistence.FarmRouteRepository
 import ru.ruscrafting.farms.persistence.FixedFarmCropJournal
 import ru.ruscrafting.farms.persistence.MineBlockJournal
 import ru.ruscrafting.farms.paper.mine.expedition.MineExpeditionWorldGenerator
+import ru.ruscrafting.farms.paper.integration.MineAuraSkillsGuard
 import java.nio.file.Files
 import java.util.logging.Level
 
@@ -218,6 +219,9 @@ open class ArcFarmsPlugin : JavaPlugin() {
                 logger.log(Level.SEVERE, "Mine lift unavailable; inspect its recovery journal", failure)
                 null
             }
+            MineAuraSkillsGuard.install(this) {
+                settings.mines.filter { it.engineVersion == 2 }.mapTo(hashSetOf()) { it.reference.world }
+            }?.let(lifecycle::own)
             val activeService = lifecycle.own(ArcFarmsService(
                 plugin = this,
                 initialSettings = settings,

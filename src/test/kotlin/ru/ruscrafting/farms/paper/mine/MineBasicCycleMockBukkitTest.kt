@@ -91,16 +91,16 @@ class MineBasicCycleMockBukkitTest : FunSpec({
         runtime.state.phase shouldBe MinePhase.MINING
         runtime.state.objective shouldBe null
         graph.guidance.view(player.uniqueId)!!.targets.isEmpty() shouldBe true
-        graph.mining.onBreakHigh(BlockBreakEvent(stone, player))
+        graph.breakManagedOre(stone, player)
         runtime.state.mined shouldBe 0
-        graph.mining.onBreakHigh(BlockBreakEvent(ore, player))
+        graph.breakManagedOre(ore, player)
         runtime.state.mined shouldBe 1
-        graph.mining.onBreakHigh(BlockBreakEvent(ore, player))
+        graph.breakManagedOre(ore, player)
         runtime.state.mined shouldBe 1
         graph.recovery.processDue(4_000L)
         // The journal restored the position; either weighted material may have been selected.
         ore.type = Material.IRON_ORE
-        graph.mining.onBreakHigh(BlockBreakEvent(ore, player))
+        graph.breakManagedOre(ore, player)
         runtime.state.mined shouldBe 2
         val saved = graph.module.states()
         graph.module.rebuild(listOf(settings), saved, 5_000L)
@@ -137,8 +137,8 @@ class MineBasicCycleMockBukkitTest : FunSpec({
         )
 
         graph.module.tick(1_000L)
-        graph.mining.onBreakHigh(BlockBreakEvent(ordinary, player)) shouldBe true
-        graph.mining.onBreakHigh(BlockBreakEvent(deepslate, player)) shouldBe true
+        graph.breakManagedOre(ordinary, player).isCancelled shouldBe false
+        graph.breakManagedOre(deepslate, player).isCancelled shouldBe false
         ordinary.type shouldBe Material.AIR
         deepslate.type shouldBe Material.AIR
 
@@ -182,7 +182,14 @@ class MineBasicCycleMockBukkitTest : FunSpec({
         runtime.state.mined shouldBe 0
 
         val event = BlockBreakEvent(ore, player).also { it.expToDrop = 7 }
-        graph.mining.onBreakHigh(event) shouldBe true
+        graph.module.onBreakLowest(event) shouldBe true
+        graph.module.onBreakHigh(event) shouldBe true
+        event.isCancelled shouldBe false
+        // MockBukkit does not execute ServerPlayerGameMode's post-event native mutation.
+        ore.type shouldBe Material.COAL_ORE
+        runtime.state.mined shouldBe 0
+        graph.module.onBreakMonitor(event) shouldBe true
+        ore.setType(Material.AIR, false)
 
         runtime.state.mined shouldBe 1
         event.isDropItems shouldBe false
@@ -215,6 +222,35 @@ class MineBasicCycleMockBukkitTest : FunSpec({
         graph.veins.tick(runtime, 6_000L)
         wall.count { it.type == Material.IRON_ORE } shouldBe 16
         wall.forEach { graph.index.contains(settings.id, it, MineAnchorRole.MINEABLE) shouldBe true }
+        runtime.state.mined shouldBe 0
+    }
+
+    test("prearmed visible ore is not counted twice when supplying the remaining quota") {
+        val world = paper.server.addSimpleWorld("world")
+        val player = paper.server.addPlayer("WarmSupplyMiner")
+        player.teleport(Location(world, 5.5, 64.0, 5.5))
+        player.inventory.setItemInMainHand(ItemStack(Material.IRON_PICKAXE))
+        val original = miningOnlySettings()
+        val settings = original.copy(orders = original.orders.map {
+            it.copy(miningRequired = 6, miningMaterials = setOf("IRON_ORE"))
+        })
+        val graph = graph(paper, settings)
+        val runtime = graph.registry.byId(settings.id)!!
+        val wall = (2..5).flatMap { x -> (64..67).map { y ->
+            world.getBlockAt(x, y, 2).also { it.type = Material.STONE }
+        } }
+        wall.take(2).forEach { it.type = Material.IRON_ORE }
+        graph.index.replaceZone(MineIndexDefinition(settings.id, runtime.region, runtime.mineableMaterials),
+            listOf(world.getChunkAt(0, 0)), wall.map {
+                MineIndexedTarget(it.position(), setOf(MineAnchorRole.SUPPORT, MineAnchorRole.MINEABLE))
+            })
+        graph.module.tick(1_000L)
+        wall.take(2).forEach { graph.mining.prepareHit(player, it) shouldBe true }
+        graph.recovery.records().size shouldBe 2
+
+        graph.veins.tick(runtime, 1_000L)
+
+        wall.count { it.type == Material.IRON_ORE } shouldBe 6
         runtime.state.mined shouldBe 0
     }
 
@@ -312,7 +348,7 @@ class MineBasicCycleMockBukkitTest : FunSpec({
 
         graph.module.tick(1_000L)
         runtime.state.phase shouldBe MinePhase.MINING
-        graph.mining.onBreakHigh(BlockBreakEvent(mineable.first(), player)) shouldBe true
+        graph.breakManagedOre(mineable.first(), player).isCancelled shouldBe false
         runtime.state.mined shouldBe 1
 
         graph.module.tick(2_000L)
@@ -334,7 +370,7 @@ class MineBasicCycleMockBukkitTest : FunSpec({
         runtime.state.phase shouldBe MinePhase.MINING
         runtime.state.incident shouldBe null
         runtime.state.objective shouldBe null
-        graph.mining.onBreakHigh(BlockBreakEvent(mineable[1], player)) shouldBe true
+        graph.breakManagedOre(mineable[1], player).isCancelled shouldBe false
         runtime.state.phase shouldBe MinePhase.EXTRACTION
         graph.module.tick(3_000L)
         runtime.state.phase shouldBe MinePhase.COOLDOWN

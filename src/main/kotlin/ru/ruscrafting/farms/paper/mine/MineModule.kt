@@ -97,6 +97,7 @@ internal class MineModule(
     val pendingBlockCount: Int get() = recovery.pendingCount
 
     fun rebuild(configured: List<MineZoneSettings>, persisted: Map<String, MineShiftState>, cooldownMillis: Long) {
+        mining.clear()
         veins.clear()
         index.clear()
         extraction.clearRoutes()
@@ -104,6 +105,7 @@ internal class MineModule(
     }
 
     fun reconfigure(configured: List<MineZoneSettings>, persisted: Map<String, MineShiftState>, cooldownMillis: Long) {
+        mining.clear()
         veins.clear()
         index.clear()
         extraction.clearRoutes()
@@ -148,6 +150,8 @@ internal class MineModule(
     override fun onBreakHigh(event: BlockBreakEvent): Boolean =
         !access.isAdminEditing(event.player) && (incidents.onBreak(event) || mining.onBreakHigh(event))
 
+    override fun onBreakMonitor(event: BlockBreakEvent): Boolean = mining.onBreakMonitor(event)
+
     fun allowsTemporaryFlow(from: Location, to: Location) = incidents.allowsTemporaryFlow(from, to)
 
     override fun onBucketFill(event: org.bukkit.event.player.PlayerBucketFillEvent): Boolean = incidents.onBucketFill(event)
@@ -159,6 +163,7 @@ internal class MineModule(
             return true
         }
         val runtime = registry.at(event.block.location) ?: return false
+        if (mining.onBlockDamage(event)) return true
         if (access.hasAccess(event.player, runtime.settings.permission) && incidents.canMine(event.player, event.block)) {
             event.isCancelled = false
         }
@@ -177,9 +182,7 @@ internal class MineModule(
     override fun onBreakLowest(event: BlockBreakEvent): Boolean {
         if (access.isAdminEditing(event.player)) return false
         if (incidents.protectsTemporaryBlock(event.block.location)) { event.isCancelled = true; return true }
-        if (registry.at(event.block.location) == null) return false
-        event.isCancelled = true
-        return true
+        return mining.onBreakLowest(event)
     }
 
     override fun onBlockPlace(event: BlockPlaceEvent): Boolean {
@@ -198,7 +201,8 @@ internal class MineModule(
         if (access.isAdminEditing(player)) return false
         val runtime = registry.at(clicked.location)
         if (event.action == org.bukkit.event.block.Action.LEFT_CLICK_BLOCK &&
-            (runtime == null || access.hasAccess(player, runtime.settings.permission)) && incidents.canMine(player, clicked)) {
+            (mining.prepareHit(player, clicked) ||
+                (runtime == null || access.hasAccess(player, runtime.settings.permission)) && incidents.canMine(player, clicked))) {
             event.setUseInteractedBlock(org.bukkit.event.Event.Result.ALLOW)
             event.setUseItemInHand(org.bukkit.event.Event.Result.ALLOW)
             return true
@@ -230,6 +234,7 @@ internal class MineModule(
     override fun onEntityDamage(event: EntityDamageEvent): Boolean = incidents.onEntityDamage(event)
 
     override fun updateVisuals() {
+        mining.prewarm()
         incidents.updateVisuals(clock())
         val supplyBudget = ru.ruscrafting.farms.paper.WorksiteTickBudget(1_024)
         registry.snapshot().forEach { runtime ->
@@ -251,6 +256,7 @@ internal class MineModule(
     override fun emitGuidance() = guidance.emitParticles()
 
     override fun releasePlayer(player: Player, reason: WorksitePlayerReleaseReason) {
+        mining.releasePlayer(player)
         loading.releasePlayer(player, reason)
         incidents.releasePlayer(player, reason)
         guidance.releasePlayer(player)
@@ -303,6 +309,7 @@ internal class MineModule(
     }
 
     override fun beforeReload(reason: String) {
+        mining.clear()
         incidents.beforeReload()
         veins.clear()
         worldWarmup.cleanup()
@@ -312,6 +319,7 @@ internal class MineModule(
     }
 
     override fun cleanup(reason: String) {
+        mining.clear()
         veins.clear()
         worldWarmup.cleanup()
         recovery.cleanup(reason)

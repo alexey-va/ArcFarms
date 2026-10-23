@@ -1,6 +1,7 @@
 package ru.ruscrafting.farms.paper.mine
 
 import io.kotest.core.spec.style.FunSpec
+import io.kotest.assertions.withClue
 import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.kotest.matchers.ints.shouldBeGreaterThan
 import io.kotest.matchers.longs.shouldBeGreaterThan
@@ -54,7 +55,9 @@ class MineGuidanceAdminRewardMockBukkitTest : FunSpec({
                 resumePhase = MinePhase.MINING,
                 incident = MineIncidentState(type, required = 2),
             )
-            plain.serialize(graph.guidance.view(player, runtime).subtitle).length shouldBeGreaterThan 0
+            withClue("next action for $type without an optional locale override") {
+                plain.serialize(graph.guidance.view(player, runtime).subtitle).length shouldBeGreaterThan 0
+            }
         }
     }
 

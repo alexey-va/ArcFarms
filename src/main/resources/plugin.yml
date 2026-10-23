@@ -5,7 +5,7 @@ api-version: '1.21.11'
 authors: [RusCrafting]
 description: Shared farm, lumbermill, and mine activities
 depend: [ARC]
-softdepend: [LuckPerms, WorldEdit, WorldGuard, PlaceholderAPI, Vault, RedisEconomy, packetevents]
+softdepend: [LuckPerms, WorldEdit, WorldGuard, PlaceholderAPI, Vault, RedisEconomy, packetevents, AuraSkills]
 commands:
   minelift:
     description: Call the mine lift or choose a floor near its landing

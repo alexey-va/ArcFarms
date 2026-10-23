@@ -273,5 +273,49 @@
         "86.93492300049677098857426726"
       ]
     }
+  },
+  "native_break_compatibility": {
+    "assessment": "mine-events-balance-20261023.json#native_break_compatibility",
+    "separate_units_before_after": {
+      "vault": [
+        0,
+        0
+      ],
+      "tokens": [
+        0,
+        0
+      ],
+      "vanilla_xp": [
+        0,
+        0
+      ],
+      "miner_job_xp": [
+        0,
+        0
+      ],
+      "item_drops": [
+        0,
+        0
+      ],
+      "auraskills_mining_xp": [
+        0,
+        0
+      ],
+      "mining_luck_item_units": [
+        0,
+        0
+      ],
+      "ae_souls": [
+        0,
+        0
+      ],
+      "ae_bonus_item_units": [
+        0,
+        0
+      ]
+    },
+    "condition_validation": "PASS; shared alias and all other YAML semantics preserved; pinned Libreforge in_world/inverse verified",
+    "evaluator_rerun": "PASS exit0; completion arithmetic unchanged",
+    "mixed_combat_durability": "reforged/unbreakable preserved; native repair lifetime effect unmeasured"
   }
 }

@@ -43,5 +43,6 @@ if (recipe.floorActivityFrames) {
   }
   const buildWithFloorActivity = buildMesh;
   buildMesh = function () { buildWithFloorActivity(); pose(elapsed); };
-  buildMesh();
+  // loadScene calls this wrapper after textures and model are ready on first load.
+  if (window.atelierReady) buildMesh();
 }

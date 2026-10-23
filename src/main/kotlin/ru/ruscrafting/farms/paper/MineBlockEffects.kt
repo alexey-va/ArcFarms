@@ -14,6 +14,9 @@ import kotlin.math.ceil
 
 /** Injectable seam for Paper behavior that MockBukkit cannot model completely. */
 internal interface MineBlockEffects {
+    /** Native breaking already supplies the material fracture, sound and tool wear. */
+    fun completeNativeExtraction(player: Player, block: Block, original: Material) = Unit
+
     fun completeExtraction(
         player: Player,
         block: Block,
@@ -24,6 +27,10 @@ internal interface MineBlockEffects {
 }
 
 internal object PaperMineBlockEffects : MineBlockEffects {
+    override fun completeNativeExtraction(player: Player, block: Block, original: Material) {
+        player.playSound(block.location.toCenterLocation(), Sound.ENTITY_ITEM_PICKUP, 0.18f, 1.65f)
+    }
+
     override fun completeExtraction(
         player: Player,
         block: Block,

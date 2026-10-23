@@ -63,3 +63,16 @@ internal fun testMineComponentGraph(
 internal fun MineComponentGraph.prewarmIncidentCandidates(runtime: MineRuntime, now: Long = 1_000L) {
     repeat(100) { candidateStock.prewarm(runtime, now) }
 }
+
+/** Models Paper event ordering only; this is not native-client or platform acceptance. */
+internal fun MineComponentGraph.breakManagedOre(block: org.bukkit.block.Block, player: org.bukkit.entity.Player): org.bukkit.event.block.BlockBreakEvent {
+    mining.prepareHit(player, block)
+    val event = org.bukkit.event.block.BlockBreakEvent(block, player)
+    module.onBreakLowest(event)
+    module.onBreakHigh(event)
+    if (!event.isCancelled) {
+        module.onBreakMonitor(event)
+        block.setType(org.bukkit.Material.AIR, false)
+    }
+    return event
+}

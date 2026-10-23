@@ -32,6 +32,9 @@ internal class MineBlockRecoveryController(
     private val inFlightPositions = ConcurrentHashMap.newKeySet<String>()
     private val pendingResults = ConcurrentHashMap<String, CompletableFuture<Boolean>>()
     private val retiringRecords = ConcurrentHashMap.newKeySet<String>()
+    private val unacknowledgedMiningRecords = ConcurrentHashMap.newKeySet<String>()
+    private val admittedMiningBreaks = ConcurrentHashMap.newKeySet<String>()
+    private val miningRestoreNotBefore = ConcurrentHashMap<String, Long>()
     private val queue = WorksiteRestoreQueue<String, PendingMineBlock>(
         keyOf = PendingMineBlock::positionKey,
         restoreAtOf = PendingMineBlock::restoreAt,
@@ -50,6 +53,38 @@ internal class MineBlockRecoveryController(
 
     fun containsPosition(positionKey: String): Boolean =
         journal.containsPosition(positionKey) || positionKey in inFlightPositions
+
+    /** Only this exact, acknowledged ordinary-mining intent may authorize a native break. */
+    fun isPreparedMiningBreak(record: PendingMineBlock): Boolean =
+        record.isOrdinaryMiningBreak() && record.positionKey !in inFlightPositions &&
+            record.id !in retiringRecords && journal.recordAtPosition(record.positionKey) == record
+
+    /** Lifecycle cancellation can finish the gameplay future before its storage write acknowledges. */
+    fun isWritingMiningPreparation(record: PendingMineBlock): Boolean = record.id in unacknowledgedMiningRecords
+
+    /** Synchronous event dispatch must retain its durable permission until Paper removes the block. */
+    fun admitPreparedMiningBreak(record: PendingMineBlock): Boolean =
+        isPreparedMiningBreak(record) && admittedMiningBreaks.add(record.id)
+
+    fun isAdmittedMiningBreak(record: PendingMineBlock): Boolean =
+        record.id in admittedMiningBreaks && isPreparedMiningBreak(record)
+
+    fun cancelPreparedMiningBreak(record: PendingMineBlock) { admittedMiningBreaks.remove(record.id) }
+
+    fun deferPreparedMiningRestore(record: PendingMineBlock, restoreAt: Long): Boolean {
+        if (!isAdmittedMiningBreak(record)) return false
+        // The V1 durable deadline remains crash recovery's fallback. Normal regeneration
+        // starts at the accepted break, even when the intent was prepared beforehand.
+        miningRestoreNotBefore[record.id] = maxOf(record.restoreAt, restoreAt)
+        admittedMiningBreaks.remove(record.id)
+        return true
+    }
+
+    /** The caller still owns an unused preparation; accepted breaks leave that collection first. */
+    fun retireUnusedMiningPreparation(record: PendingMineBlock) {
+        if (!miningRestoreNotBefore.containsKey(record.id) && record.id !in admittedMiningBreaks &&
+            isPreparedMiningBreak(record)) retire(record, "unused-preparation")
+    }
 
     /** Runs recovery-owned world/state work on the Paper thread while active. */
     fun runOnMain(task: () -> Unit): Boolean =
@@ -150,7 +185,10 @@ internal class MineBlockRecoveryController(
         val token = tasks.lifecycleToken()
         val result = CompletableFuture<Boolean>()
         acquired.forEach { pendingResults[it] = result }
+        val miningIds = mutations.map(MineBlockMutation::record).filter { it.isOrdinaryMiningBreak() }.map(PendingMineBlock::id)
+        unacknowledgedMiningRecords.addAll(miningIds)
         journal.prepareAll(mutations.map(MineBlockMutation::record)).whenComplete { _, failure ->
+            unacknowledgedMiningRecords.removeAll(miningIds.toSet())
             if (failure != null) {
                 completeFailureOnMain(token, acquired, result, failure)
                 return@whenComplete
@@ -159,12 +197,15 @@ internal class MineBlockRecoveryController(
                     mutations.forEach { queue.schedule(it.record) }
                     knownJournalCount = journal.pendingCount()
                     val invalid = mutations.firstOrNull { mutation ->
-                        mutation.block.type != mutation.expectedOriginal || !access.isOperational() || !mutation.stillValid()
+                        !mutation.block.world.isChunkLoaded(mutation.block.x shr 4, mutation.block.z shr 4) ||
+                            mutation.block.type != mutation.expectedOriginal || !access.isOperational() || !mutation.stillValid()
                     }
                     if (invalid != null) {
+                        val actual = if (invalid.block.world.isChunkLoaded(invalid.block.x shr 4, invalid.block.z shr 4))
+                            invalid.block.type.name else "unloaded"
                         state.log(Level.INFO, "Mine recovery batch mutation rejected reason=validation_failed " +
                             "zone=${invalid.record.zoneId} record=${invalid.record.id} position=${invalid.record.positionKey} " +
-                            "expected=${invalid.expectedOriginal} actual=${invalid.block.type}")
+                            "expected=${invalid.expectedOriginal} actual=$actual")
                         mutations.forEach { retire(it.record, "stale-batch") }
                         result.complete(false)
                     } else {
@@ -205,6 +246,16 @@ internal class MineBlockRecoveryController(
                 queue.schedule(persisted)
                 return@forEach
             }
+            if (persisted.id in admittedMiningBreaks) {
+                retry(persisted, now)
+                return@forEach
+            }
+            val notBefore = miningRestoreNotBefore[persisted.id]
+            if (notBefore != null && now < notBefore) {
+                queue.schedule(persisted.copy(restoreAt = notBefore))
+                return@forEach
+            }
+            miningRestoreNotBefore.remove(persisted.id)
             val record = persisted.copy(restoreAt = queued.restoreAt)
             val world = Bukkit.getWorld(record.world)
             if (world == null) {
@@ -254,6 +305,7 @@ internal class MineBlockRecoveryController(
         val positionKey = "${block.world.name}:${block.x}:${block.y}:${block.z}"
         val record = journal.recordAtPosition(positionKey)
             ?: return CompletableFuture.completedFuture(false)
+        if (record.id in admittedMiningBreaks) return CompletableFuture.completedFuture(false)
         val temporary = material(record.temporaryMaterial, record)
             ?: return CompletableFuture.completedFuture(false)
         val next = material(record.nextMaterial, record) ?: return CompletableFuture.completedFuture(false)
@@ -324,6 +376,8 @@ internal class MineBlockRecoveryController(
 
     override fun beforeReload(reason: String) {
         cancelPending()
+        admittedMiningBreaks.clear()
+        // A healthy reload keeps the actual-break deadline; only process restart loses it.
         queue.clear()
         queueCapture?.cancel(false)
         queueCapture = null
@@ -338,6 +392,8 @@ internal class MineBlockRecoveryController(
         // pass may repair a few already-due loaded blocks, but shutdown must
         // not force a full-world restoration or scan tens of thousands of rows.
         val processed = processDue(clock(), CLEANUP_BUDGET)
+        admittedMiningBreaks.clear()
+        miningRestoreNotBefore.clear()
         queue.clear()
         queueCapture?.cancel(false)
         queueCapture = null
@@ -413,7 +469,9 @@ internal class MineBlockRecoveryController(
     }
 
     private fun retire(record: PendingMineBlock, reason: String) {
+        if (record.id in admittedMiningBreaks) return
         if (!retiringRecords.add(record.id)) return
+        miningRestoreNotBefore.remove(record.id)
         journal.remove(record.id).whenComplete { _, failure ->
             retiringRecords.remove(record.id)
             if (failure != null) {

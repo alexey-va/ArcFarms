@@ -40,7 +40,7 @@ class MineProspectingMiningMockBukkitTest : FunSpec({
     beforeEach { paper = MockBukkitTestRuntime.open() }
     afterEach { paper.close() }
 
-    test("prospection reveals a vein and only indexed targets mutate after journal success") {
+    test("prospection prepares a native break and a late journal never removes cancelled ore") {
         val world = paper.server.addSimpleWorld("world")
         val player = paper.server.addPlayer("Prospector").also {
             it.inventory.setItemInMainHand(ItemStack(Material.IRON_PICKAXE))
@@ -97,14 +97,21 @@ class MineProspectingMiningMockBukkitTest : FunSpec({
         unindexed.type shouldBe Material.IRON_ORE
         runtime.state.mined shouldBe 0
 
-        graph.module.onBreakHigh(BlockBreakEvent(vein.first(), player)) shouldBe true
+        val coldBreak = BlockBreakEvent(vein.first(), player)
+        graph.module.onBreakLowest(coldBreak)
+        graph.module.onBreakHigh(coldBreak) shouldBe true
+        coldBreak.isCancelled shouldBe true
         vein.first().type shouldBe Material.IRON_ORE
         effects.toolWearCalls shouldBe 0
 
         journal.completePrepare()
 
+        vein.first().type shouldBe Material.IRON_ORE
+        runtime.state.mined shouldBe 0
+        graph.breakManagedOre(vein.first(), player).isCancelled shouldBe false
         vein.first().type shouldBe Material.AIR
-        effects.toolWearCalls shouldBe 1
+        effects.toolWearCalls shouldBe 0
+        effects.nativeFeedbackCalls shouldBe 1
         runtime.state.mined shouldBe 1
     }
 
@@ -141,7 +148,7 @@ class MineProspectingMiningMockBukkitTest : FunSpec({
         graph.module.onBreakHigh(BlockBreakEvent(stone, player)) shouldBe true
         stone.type shouldBe Material.STONE
         runtime.state.mined shouldBe 0
-        graph.module.onBreakHigh(BlockBreakEvent(ore, player)) shouldBe true
+        graph.breakManagedOre(ore, player).isCancelled shouldBe false
         ore.type shouldBe Material.AIR
         runtime.state.mined shouldBe 1
 
@@ -223,6 +230,10 @@ private class DeferredMineJournal : MineRecoveryJournal {
 
 private class RecordingMineEffects : MineBlockEffects {
     var toolWearCalls = 0
+    var nativeFeedbackCalls = 0
+    override fun completeNativeExtraction(player: Player, block: org.bukkit.block.Block, original: Material) {
+        nativeFeedbackCalls++
+    }
     override fun completeExtraction(
         player: Player,
         block: org.bukkit.block.Block,

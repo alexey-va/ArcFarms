@@ -650,5 +650,67 @@
     "Read back active ArcFarms version/config and confirm the 14 candidate incident types and one scheduled incident per cycle.",
     "Confirm Crystal completion adds at most 4 credits once to shared order progress and grants no player item, drop, Vault, token or XP.",
     "Observe post-activation cycles/day and event mix before replacing these sensitivity assumptions with measured results."
-  ]
+  ],
+  "native_break_compatibility": {
+    "runtime_before": "ArcFarms 0.45.49; EcoJobs 2026.33; ArcEcoJobs 0.1.43",
+    "condition": "Spawn miner pickaxe anchor: inverse in_world rc_atelier_compact_mine",
+    "managed_block_flows_before_after": {
+      "vault": [
+        0,
+        0
+      ],
+      "tokens": [
+        0,
+        0
+      ],
+      "vanilla_xp": [
+        0,
+        0
+      ],
+      "miner_job_xp": [
+        0,
+        0
+      ],
+      "item_drops": [
+        0,
+        0
+      ]
+    },
+    "throughput": "Existing after scenarios remain unmeasured sensitivities; no asserted measured speed-up",
+    "libreforge_sha256": "50320eac38f4a71ea43a3b688a0c89cd6d9f243175e6eb641b22a25f41e8794c",
+    "live_miner_before_sha256": "255e6ac8d6388cd5c28098f7296781bc0181d2eec0484dd948fbfacad172fc02",
+    "additional_channels": {
+      "auraskills_mining_xp": [
+        0,
+        0
+      ],
+      "auraskills_mining_luck_item_units": [
+        0,
+        0
+      ]
+    },
+    "auraskills_guard": "Optional API2.3.12; active managed mine world + natural ore source Mining XP, or MINING_LUCK loot; no global skill/world disable",
+    "advanced_enchantments": {
+      "runtime_version": "9.24.15",
+      "before_config_sha256": "52a81613135ce69e2d63d0fd053ba1e17843b6867a47f631af87fe3207bea9a5",
+      "guard": "native disable-enchants map, rc_atelier_compact_mine, eleven pure MINING enchantments",
+      "vanilla_xp": [
+        0,
+        0
+      ],
+      "ae_souls": [
+        0,
+        0
+      ],
+      "bonus_item_units": [
+        0,
+        0
+      ],
+      "mixed_durability_enchants_preserved": [
+        "reforged",
+        "unbreakable"
+      ],
+      "tool_lifetime_effect": "unmeasured; native durability/repair remains, no extra combat restriction"
+    }
+  }
 }

@@ -648,6 +648,7 @@ enum class MessageKey(val path: String) {
     MINE_SERVICE_PUMP("mine.service-pump"),
     MINE_PICKAXE_INVENTORY_FULL("mine.pickaxe-inventory-full"),
     MINE_REGENERATING("mine.regenerating"),
+    MINE_BREAK_PREPARING("mine.break-preparing"),
     MINE_HAZARD_STARTED("mine.hazard-started"),
     MINE_HAZARD_STARTED_SUBTITLE("mine.hazard-started-subtitle"),
     MINE_HAZARD_HELP("mine.hazard-help"),
