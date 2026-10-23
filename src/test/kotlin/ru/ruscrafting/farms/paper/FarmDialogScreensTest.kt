@@ -49,7 +49,12 @@ class FarmDialogScreensTest : FunSpec({
             menus.open(player, ArcFarmsMenuPlatform.MAIN) {
                 FarmMenuContent(
                     title = Component.text("Activities"),
-                    summary = listOf(Component.text("Contribution: farm") to Component.text("10", NamedTextColor.GREEN)),
+                    summary = listOf(
+                        Component.text("Contribution: farm") to Component.text("10", NamedTextColor.GREEN),
+                        Component.text("Вклад в лесопилку") to Component.text("125"),
+                        Component.text("Печати смен") to Component.text("2 / 3"),
+                        Component.text("Следующая цель") to Component.text("Лесопилка", NamedTextColor.GREEN),
+                    ),
                 )
             }
             fun colors(component: Component): List<Int> = listOfNotNull(component.color()?.value()) + component.children().flatMap(::colors)
@@ -58,6 +63,15 @@ class FarmDialogScreensTest : FunSpec({
             colors(table) shouldContain 0xe8dfd2
             colors(table) shouldContain 0x55ff55
             PlainTextComponentSerializer.plainText().serialize(table) shouldContain "Contribution: farm"
+            System.getenv("DIALOGUE_HIERARCHY_PREVIEW_OUT")?.let { directory ->
+                val out = java.nio.file.Path.of(directory).resolve("farms-summary.json")
+                Files.createDirectories(out.parent)
+                Files.writeString(out, com.google.gson.GsonBuilder().disableHtmlEscaping().setPrettyPrinting().create().toJson(mapOf(
+                    "body" to capture.last!!.body.map { mapOf("width" to it.width,
+                        "text" to net.kyori.adventure.text.serializer.gson.GsonComponentSerializer.gson().serializeToTree(it.text)) },
+                    "actions" to capture.last!!.buttons.map { it.id.value },
+                )))
+            }
         } finally { paper.close() }
     }
 

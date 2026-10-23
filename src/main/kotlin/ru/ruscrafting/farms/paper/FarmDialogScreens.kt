@@ -147,10 +147,10 @@ internal object FarmDialogScreens {
         val body = mutableListOf(PaperDialogBody(restyle(text(session.player, "intro.${session.menuId.value}")), 468))
         val farmShop = session.menuId == ArcFarmsMenuPlatform.FARM_PERKS
         if (content.summary.isNotEmpty()) body += DialogTables.filledBody(
-            rows = nativeRows(content.summary).map { (label, value) -> listOf(label.append(Component.text(": ", BODY)).append(value)) },
+            rows = nativeRows(content.summary).map { (label, value) -> listOf(label, value) },
             headers = null,
             width = if (farmShop) FARM_SHOP_TABLE_WIDTH else 320,
-            columnWeights = listOf(1),
+            columnWeights = listOf(1, 1),
         )
         val catalog = rows.mapNotNull { row ->
             row.entry.catalogValue?.let { recolor(name(row.entry.item), BODY) to it.color(TRADE).decoration(TextDecoration.ITALIC, false) }
