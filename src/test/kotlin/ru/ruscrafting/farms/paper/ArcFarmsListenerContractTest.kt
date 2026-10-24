@@ -46,12 +46,11 @@ class ArcFarmsListenerContractTest : FunSpec({
         handler("onProjectileHit", ProjectileHitEvent::class.java).priority shouldBe EventPriority.HIGHEST
     }
 
-    test("ditch rescue hook collisions are resolved in the regular protected damage path") {
-        listOf(handler("onEntityDamage", EntityDamageEvent::class.java), handler("onFish", PlayerFishEvent::class.java)).forEach { handler ->
-            handler.priority shouldBe EventPriority.HIGHEST
+    test("ditch rescue collisions and catches are claimed before WorldGuard protection feedback") {
+        listOf(handler("onProjectileHitLowest", ProjectileHitEvent::class.java), handler("onFish", PlayerFishEvent::class.java)).forEach { handler ->
+            handler.priority shouldBe EventPriority.LOWEST
             handler.ignoreCancelled shouldBe false
         }
-        ArcFarmsListener::class.java.declaredMethods.none { it.name == "onRescueHookDamageMonitor" } shouldBe true
     }
 
     test("fire equipment cancels both crossbow charge and projectile release") {

@@ -2,7 +2,7 @@ package ru.ruscrafting.farms.paper.farm.care
 
 import org.bukkit.entity.FishHook
 import org.bukkit.entity.Mob
-import org.bukkit.event.entity.EntityDamageByEntityEvent
+import org.bukkit.event.entity.ProjectileHitEvent
 
 /** Narrowly-scoped platform mutation for a validated ditch-rescue hook hit. */
 internal object FarmRescueHookAttachment {
@@ -11,10 +11,11 @@ internal object FarmRescueHookAttachment {
         animal.isCollidable = enabled
     }
 
-    fun attach(event: EntityDamageByEntityEvent): Boolean {
-        val hook = event.damager as? FishHook ?: return false
+    fun attach(event: ProjectileHitEvent): Boolean {
+        val hook = event.entity as? FishHook ?: return false
+        val animal = event.hitEntity ?: return false
         event.isCancelled = true
-        hook.hookedEntity = event.entity
+        hook.hookedEntity = animal
         return true
     }
 }

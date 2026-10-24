@@ -1,7 +1,12 @@
 package ru.ruscrafting.farms.paper.farm.care
 
 import org.bukkit.Material
+import org.bukkit.NamespacedKey
+import org.bukkit.entity.FishHook
 import org.bukkit.entity.Player
+import org.bukkit.event.player.PlayerFishEvent
+import org.bukkit.persistence.PersistentDataType
+import org.bukkit.plugin.Plugin
 import ru.ruscrafting.farms.config.ArcFarmsLocale
 import ru.ruscrafting.farms.config.MessageKey
 import ru.ruscrafting.farms.domain.ActivityKind
@@ -19,12 +24,15 @@ import java.util.UUID
 
 /** Identity, issuance and retirement of the temporary ditch-rescue tool. */
 internal class FarmDitchRescueRod(
+    plugin: Plugin,
     private val serviceItems: WorksiteServiceItems,
     private val access: WorksiteAccessPort,
     private val audience: WorksiteAudiencePort,
     private val locale: ArcFarmsLocale,
     private val debug: ArcFarmsDebug,
 ) {
+    private val hookKey = NamespacedKey(plugin, "farm_rescue_hook")
+
     fun identity(runtime: FarmRuntime) = ServiceItemIdentity(
         ActivityKind.FARM, runtime.settings.id, runtime.state.sequence, runtime.state.placementSequence,
         ObjectiveTargetRole("farm_care"), ITEM_ID,
@@ -46,11 +54,25 @@ internal class FarmDitchRescueRod(
         while (serviceItems.consume(player, identity)) Unit
     }
 
+    fun markCast(event: PlayerFishEvent, runtimes: Collection<FarmRuntime>) {
+        val hand = event.hand ?: return
+        val identity = serviceItems.identity(event.player.inventory.getItem(hand)) ?: return
+        if (isActive(identity, runtimes)) {
+            event.hook.persistentDataContainer.set(hookKey, PersistentDataType.STRING, hookStamp(identity))
+        }
+    }
+
+    fun ownsHook(hook: FishHook, runtime: FarmRuntime): Boolean =
+        hook.persistentDataContainer.get(hookKey, PersistentDataType.STRING) == hookStamp(identity(runtime))
+
+    private fun hookStamp(identity: ServiceItemIdentity): String =
+        "${identity.zoneId}:${identity.sequence}:${identity.objectiveNonce}"
+
     fun isActive(identity: ServiceItemIdentity, runtimes: Collection<FarmRuntime>): Boolean {
         if (!owns(identity)) return false
         val runtime = runtimes.firstOrNull { it.settings.id == identity.zoneId } ?: return false
         return runtime.state.phase == FarmPhase.CARE && runtime.state.careType == FarmCareType.DITCH_RESCUE &&
-            runtime.state.sequence == identity.sequence && runtime.state.placementSequence == identity.objectiveNonce
+            identity == identity(runtime)
     }
 
     fun release(playerId: UUID, identity: ServiceItemIdentity, reason: WorksitePlayerReleaseReason) {

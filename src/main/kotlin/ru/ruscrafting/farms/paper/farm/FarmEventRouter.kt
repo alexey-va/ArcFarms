@@ -466,6 +466,10 @@ internal class FarmEventRouter(
         pests.handlePestDamage(event, runtimes())
     }
 
+    fun onProjectileHitLowest(event: ProjectileHitEvent) {
+        care.onProjectileHit(event)
+    }
+
     fun onProjectileHit(event: ProjectileHitEvent) {
         if (actionIncidents.onProjectileHit(event)) return
         birds.onProjectileHit(event, runtimes())

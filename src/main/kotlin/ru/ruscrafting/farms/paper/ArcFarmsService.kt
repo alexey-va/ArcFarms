@@ -389,6 +389,7 @@ class ArcFarmsService(
     fun onEntityDamage(event: EntityDamageEvent) = worksiteEvents.onEntityDamage(event) { farm.events.onEntityDamage(event) }
     fun onEntityTarget(event: EntityTargetLivingEntityEvent) = farm.events.onEntityTarget(event)
     fun onFish(event: PlayerFishEvent) = farm.events.onFish(event)
+    fun onProjectileHitLowest(event: ProjectileHitEvent) = farm.events.onProjectileHitLowest(event)
     fun onProjectileHit(event: ProjectileHitEvent) = farm.events.onProjectileHit(event)
     fun onLoadCrossbow(event: EntityLoadCrossbowEvent) = farm.events.onLoadCrossbow(event)
     fun onShootBow(event: EntityShootBowEvent) = farm.events.onShootBow(event)

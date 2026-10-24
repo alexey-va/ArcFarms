@@ -203,6 +203,9 @@ class ArcFarmsListener(
     @EventHandler(priority = EventPriority.HIGHEST)
     fun onEntityTarget(event: EntityTargetLivingEntityEvent) = service.onEntityTarget(event)
 
+    @EventHandler(priority = EventPriority.LOWEST)
+    fun onProjectileHitLowest(event: ProjectileHitEvent) = service.onProjectileHitLowest(event)
+
     @EventHandler(priority = EventPriority.HIGHEST)
     fun onProjectileHit(event: ProjectileHitEvent) = service.onProjectileHit(event)
 
@@ -219,7 +222,7 @@ class ArcFarmsListener(
     @EventHandler(priority = EventPriority.HIGHEST)
     fun onDrop(event: PlayerDropItemEvent) = service.onDrop(event)
 
-    @EventHandler(priority = EventPriority.HIGHEST)
+    @EventHandler(priority = EventPriority.LOWEST)
     fun onFish(event: PlayerFishEvent) = service.onFish(event)
 
     @EventHandler(priority = EventPriority.HIGHEST)

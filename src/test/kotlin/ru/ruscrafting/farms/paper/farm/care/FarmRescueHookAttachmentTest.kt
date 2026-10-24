@@ -8,7 +8,7 @@ import io.mockk.verify
 import org.bukkit.entity.Entity
 import org.bukkit.entity.FishHook
 import org.bukkit.entity.Mob
-import org.bukkit.event.entity.EntityDamageByEntityEvent
+import org.bukkit.event.entity.ProjectileHitEvent
 
 class FarmRescueHookAttachmentTest : FunSpec({
     test("ditch rescue animals expose native hook collision") {
@@ -20,16 +20,14 @@ class FarmRescueHookAttachmentTest : FunSpec({
         verify(exactly = 1) { animal.isCollidable = true }
     }
 
-    test("validated rescue hit prevents damage and attaches the hook") {
+    test("validated rescue hit prevents vanilla collision and attaches the hook") {
         val hook = mockk<FishHook>(relaxed = true)
         val animal = mockk<Entity>(relaxed = true)
-        val event = mockk<EntityDamageByEntityEvent>(relaxed = true)
-        every { event.damager } returns hook
-        every { event.entity } returns animal
+        val event = ProjectileHitEvent(hook, animal)
 
         FarmRescueHookAttachment.attach(event) shouldBe true
 
-        verify(exactly = 1) { event.isCancelled = true }
+        event.isCancelled shouldBe true
         verify(exactly = 1) { hook.hookedEntity = animal }
     }
 })

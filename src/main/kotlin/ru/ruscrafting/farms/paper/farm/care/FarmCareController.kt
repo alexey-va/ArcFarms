@@ -22,6 +22,7 @@ import org.bukkit.entity.Projectile
 import org.bukkit.event.entity.EntityDamageByEntityEvent
 import org.bukkit.event.entity.EntityDamageEvent
 import org.bukkit.event.entity.EntityDeathEvent
+import org.bukkit.event.entity.ProjectileHitEvent
 import org.bukkit.event.vehicle.VehicleEnterEvent
 import org.bukkit.event.player.PlayerFishEvent
 import org.bukkit.inventory.ItemStack
@@ -119,7 +120,7 @@ internal class FarmCareController(
     private val pendingStarts = mutableMapOf<String, CompletableFuture<FarmCareStartResult>>()
     private val starts = FarmCareStartService(state, moles)
     private val ditchWorld = FarmDitchRescueWorld(ledger, state, debug)
-    private val rescueRod = FarmDitchRescueRod(serviceItems, access, audience, locale, debug)
+    private val rescueRod = FarmDitchRescueRod(plugin, serviceItems, access, audience, locale, debug)
     private val zoneKey = NamespacedKey(plugin, "farm_care_zone")
     private val sequenceKey = NamespacedKey(plugin, "farm_care_sequence")
     private val targetKey = NamespacedKey(plugin, "farm_care_target")
@@ -189,16 +190,6 @@ internal class FarmCareController(
         }
         if (moles.onDamage(event)) return true
         val identity = identity(event.entity) ?: return false
-        if (allowsRescueHook(event, identity)) {
-            FarmRescueHookAttachment.attach(event as EntityDamageByEntityEvent)
-            debug.event(
-                "farm_care_animal_hooked",
-                "zone" to identity.zoneId,
-                "target" to identity.targetId,
-                "player" to (((event.damager as FishHook).shooter as? Player)?.name ?: "unknown"),
-            )
-            return true
-        }
         event.isCancelled = true
         val player = (event as? EntityDamageByEntityEvent)?.let { damage ->
             when (val damager = damage.damager) {
@@ -776,6 +767,10 @@ internal class FarmCareController(
     }
 
     fun onFish(event: PlayerFishEvent): Boolean {
+        if (event.state == PlayerFishEvent.State.FISHING) {
+            rescueRod.markCast(event, runtimes())
+            return false
+        }
         if (event.state != PlayerFishEvent.State.CAUGHT_ENTITY) return false
         val caught = event.caught ?: return false
         val identity = identity(caught) ?: return false
@@ -783,24 +778,18 @@ internal class FarmCareController(
         event.isCancelled = true
         event.expToDrop = 0
         event.hook.remove()
-        val runtime = runtimes().firstOrNull { it.settings.id == identity.zoneId } ?: return true
-        if (runtime.state.phase != FarmPhase.CARE || runtime.state.careType != FarmCareType.DITCH_RESCUE ||
-            runtime.state.sequence != identity.sequence || !access.hasAccess(event.player, runtime.settings.permission)
-        ) return true
+        val runtime = rescueRuntime(event.player, caught, identity) ?: return true
         val held = if (event.hand == org.bukkit.inventory.EquipmentSlot.OFF_HAND) {
             event.player.inventory.itemInOffHand
         } else event.player.inventory.itemInMainHand
-        if (serviceItems.identity(held) != rescueRod.identity(runtime)) {
+        if (!rescueRod.ownsHook(event.hook, runtime) || serviceItems.identity(held) != rescueRod.identity(runtime)) {
             audience.sendActionBar(event.player, MessageKey.FARM_CARE_ANIMAL_ROD)
             return true
         }
-        val target = runtime.state.careTargets.firstOrNull {
-            it.id == identity.targetId && it.role == FarmCareRole.ANIMAL && !it.complete
-        } ?: return true
         presentation.feedback(event.player, caught.location, FarmCareRole.ANIMAL, true)
         caught.remove()
         entities[FarmCareEntityKey(identity.zoneId, identity.targetId)]?.remove(caught.uniqueId)
-        val result = FarmShiftEngine.advanceCare(runtime.state, target.id, event.player.uniqueId)
+        val result = FarmShiftEngine.advanceCare(runtime.state, identity.targetId, event.player.uniqueId)
         if (result.accepted) transitions.apply(runtime, result, event.player)
         debug.event(
             "farm_care_animal_fished",
@@ -811,21 +800,32 @@ internal class FarmCareController(
         return true
     }
 
-    private fun allowsRescueHook(event: EntityDamageEvent, identity: FarmCareEntityIdentity): Boolean {
-        if (identity.role != FarmCareRole.ANIMAL) return false
-        val hook = (event as? EntityDamageByEntityEvent)?.damager as? FishHook ?: return false
+    fun onProjectileHit(event: ProjectileHitEvent): Boolean {
+        val hook = event.entity as? FishHook ?: return false
+        val animal = event.hitEntity ?: return false
+        val identity = identity(animal) ?: return false
         val player = hook.shooter as? Player ?: return false
-        val runtime = runtimes().firstOrNull { it.settings.id == identity.zoneId } ?: return false
-        if (runtime.state.phase != FarmPhase.CARE || runtime.state.careType != FarmCareType.DITCH_RESCUE ||
-            runtime.state.sequence != identity.sequence || !access.hasAccess(player, runtime.settings.permission)
-        ) return false
-        val targetActive = runtime.state.careTargets.any {
-            it.id == identity.targetId && it.role == FarmCareRole.ANIMAL && !it.complete
-        }
-        if (!targetActive) return false
-        return listOf(player.inventory.itemInMainHand, player.inventory.itemInOffHand).any { held ->
+        val runtime = rescueRuntime(player, animal, identity) ?: return false
+        if (!rescueRod.ownsHook(hook, runtime)) return false
+        if (listOf(player.inventory.itemInMainHand, player.inventory.itemInOffHand).none { held ->
             serviceItems.identity(held) == rescueRod.identity(runtime)
-        }
+        }) return false
+        // Paper hooks attach at projectile collision; WorldGuard checks this before any damage event.
+        FarmRescueHookAttachment.attach(event)
+        debug.event("farm_care_animal_hooked", "zone" to identity.zoneId, "target" to identity.targetId, "player" to player.name)
+        return true
+    }
+
+    private fun rescueRuntime(player: Player, animal: Entity, identity: FarmCareEntityIdentity): FarmRuntime? {
+        if (identity.role != FarmCareRole.ANIMAL) return null
+        val runtime = runtimes().firstOrNull { it.settings.id == identity.zoneId } ?: return null
+        if (runtime.state.phase != FarmPhase.CARE || runtime.state.careType != FarmCareType.DITCH_RESCUE ||
+            runtime.state.sequence != identity.sequence || !access.hasAccess(player, runtime.settings.permission) ||
+            access.isAdminEditing(player) || !runtime.region.contains(player.location) || !runtime.region.contains(animal.location)
+        ) return null
+        return runtime.takeIf { it.state.careTargets.any { target ->
+            target.id == identity.targetId && target.role == FarmCareRole.ANIMAL && !target.complete
+        } }
     }
 
     fun isServiceItemActive(identity: ServiceItemIdentity): Boolean = rescueRod.isActive(identity, runtimes())
