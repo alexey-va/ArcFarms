@@ -158,7 +158,8 @@ class ArcFarmsMenuPlatform(
                     session.pending = false
                     session.revision++
                 },
-                closeOnEscape = closeOnEscape,
+                // A semantic Back stays in the native footer, which also owns Escape.
+                closeOnEscape = screen.exitButton?.closeDialogBeforeAction ?: closeOnEscape,
             )
         }
     }

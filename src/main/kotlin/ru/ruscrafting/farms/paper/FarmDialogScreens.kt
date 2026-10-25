@@ -140,8 +140,8 @@ internal object FarmDialogScreens {
                         })
                     }
                 },
-                exitButton = button("detail_back", text(session.player, if (closeOnEscape) "close" else "back"), style = LabelStyle(CONTROL)) { session.close() }
-                    .copy(width = 200, label = label(text(session.player, if (closeOnEscape) "close" else "back"), LabelStyle(CONTROL))), columns = 1,
+                exitButton = button("detail_back", text(session.player, "back"), style = LabelStyle(CONTROL)) { session.close() }
+                    .copy(width = 200), columns = 1,
             )
         }
         val body = mutableListOf(PaperDialogBody(restyle(text(session.player, "intro.${session.menuId.value}")), 468))
@@ -182,9 +182,8 @@ internal object FarmDialogScreens {
             when {
                 row in information -> Unit
                 row.id == "back" -> {
-                    val navigation = button("back", title, tooltip, LabelStyle(CONTROL), dispatch)
-                    if (closeOnEscape) buttons += navigation
-                    else back = navigation.copy(width = 200)
+                    back = button("back", text(session.player, "back"), tooltip, LabelStyle(CONTROL), dispatch)
+                        .copy(width = 200)
                 }
                 row.id == "confirm" -> {
                     // Price, license loss and voting terms stay visible before the action.
@@ -207,9 +206,9 @@ internal object FarmDialogScreens {
         if (information.isNotEmpty() && content.summary.isEmpty()) buttons += button("details", text(session.player, "details"), style = LabelStyle(DETAIL, chevron = true)) {
             session.detailSlot = null; session.showInformation = true; session.platform.refresh(session)
         }
-        if (back == null) {
-            back = button("close", text(session.player, if (closeOnEscape) "close" else "back"), style = LabelStyle(CONTROL)) { session.close() }
-                .copy(width = 200, label = label(text(session.player, if (closeOnEscape) "close" else "back"), LabelStyle(CONTROL)))
+        if (back == null && closeOnEscape) {
+            back = button("close", text(session.player, "close"), style = LabelStyle(CONTROL)) { session.close() }
+                .copy(width = 200, closeDialogBeforeAction = true)
         }
         return PaperDialogScreen(
             id = "farms.${session.menuId.value}",
