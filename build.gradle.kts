@@ -7,7 +7,7 @@ plugins {
     jacoco
 }
 group = "ru.ruscrafting"
-version = "0.45.60"
+version = "0.45.61"
 description = "Shared farm, lumbermill, and mine activities for RusCrafting"
 
 val integrationTestSourceSet = sourceSets.create("integrationTest") {
@@ -29,7 +29,7 @@ repositories {
 java { toolchain { languageVersion.set(JavaLanguageVersion.of(25)) } }
 kotlin { jvmToolchain(25) }
 
-val arcCoreVersion = "2.7.66"
+val arcCoreVersion = "2.7.67"
 
 dependencies {
     implementation(kotlin("stdlib"))
@@ -62,6 +62,7 @@ dependencies {
     testImplementation("io.mockk:mockk:1.14.7")
     testImplementation("ru.ruscrafting.arc:arc-core-paper-testing:$arcCoreVersion")
     testImplementation("ru.ruscrafting.arc:arc-core-paper-api:$arcCoreVersion")
+    testImplementation("com.sk89q.worldguard:worldguard-bukkit:7.0.16")
     testImplementation("ru.ruscrafting.arc:arc-dungeons-api:0.1.1")
     testRuntimeOnly("me.clip:placeholderapi:2.12.3")
     testRuntimeOnly("com.github.retrooper:packetevents-spigot:2.12.1") {

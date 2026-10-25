@@ -49,13 +49,18 @@ cases = [(0, 'timber-1-raw'), (10, 'timber-1-raw'), (10, 'timber-3-sawn'),
          (0, 'blade-rotor'), (5.55, 'blade-rotor'), (25, 'blade-rotor'),
          (5.55, 'pulley-upper'), (25, 'pulley-upper'), (5.55, 'pulley-lower'), (25, 'pulley-lower')]
 
-def sampled_pose(time, index):
+cases = [(0, time, part) for time, part in cases] + [(1, 0, 'timber-1-sawn'), (1, 10, 'timber-1-sawn'),
+    (1, 10, 'timber-final-3'), (1, 16.2, 'timber-final-3'), (1, 18.2, 'timber-final-3'),
+    (1, 25, 'timber-final-3'), (1, 25, 'timber-2-slab')]
+
+def sampled_pose(pass_index, time, index):
+    frames = export['passes'][pass_index]
     key = math.floor(time * 10 + 1e-7)
-    a = next(pose for pose in export['frames'][key][8] if pose[0] == index)
+    a = next(pose for pose in frames[key][8] if pose[0] == index)
     alpha = time * 10 - key
     if alpha < 1e-7:
         return a
-    b = next(pose for pose in export['frames'][key + 1][8] if pose[0] == index)
+    b = next(pose for pose in frames[key + 1][8] if pose[0] == index)
     qa, qb = a[8:12], b[8:12]
     if sum(x * y for x, y in zip(qa, qb)) < 0:
         qb = [-x for x in qb]
@@ -66,17 +71,18 @@ def sampled_pose(time, index):
     return a[:2] + [(x + y) / 2 for x, y in zip(a[2:8], b[2:8])] + [x / length for x in q]
 
 summary, meshes = [], {}
-for time, part_id in cases:
+for pass_index, time, part_id in cases:
     index = next(i for i, part in enumerate(export['parts']) if part['id'] == part_id)
     part = export['parts'][index]
-    pose = sampled_pose(time, index)
+    pose = sampled_pose(pass_index, time, index)
     assert pose[1], f'Invisible contact case {time}/{part_id}'
     position = [pose[2 + axis] + export['origin'][axis] for axis in range(3)]
-    stem = f'{part_id}-{time:g}'
+    stem = f'pass{pass_index + 1}-{part_id}-{time:g}'
     report = out / f'{stem}.json'
     rotor = part_id in ['blade-rotor', 'pulley-upper', 'pulley-lower']
     plane = (f'blade_collar:x:max:{export["origin"][0] + .2975 * scene_scale}' if part_id == 'blade-rotor' else f'axial_bearing:x:min:{export["origin"][0] + 1.74 * scene_scale}')
-    contact_args = ['--contact-plane', plane] if rotor else ['--surface-y', str(export['origin'][1] + export['logBottom'])]
+    support_y = export['origin'][1] + export['logBottom'] + ((.175 + .28) * scene_scale if part_id.startswith('timber-final') and time >= 18.2 else 0)
+    contact_args = ['--contact-plane', plane] if rotor else ['--surface-y', str(support_y)]
     command = ['python3', '-B', str(args.skill / 'scripts/analyze_itemsadder_display.py'),
                '--itemsadder-root', str(root), '--resource-pack', str(pack),
                '--item-id', part['itemModel'], '--context', 'none',
@@ -89,10 +95,10 @@ for time, part_id in cases:
     result = json.loads(report.read_text())
     residual = max((abs(plane['current_residual']) for plane in result['contact_planes']), default=abs(result['contact'].get('current_min_residual', 0)))
     assert result['status'] in ['grounded', 'contacted'] and abs(residual) <= 1e-4, (stem, result['status'], residual)
-    summary.append({'time': time, 'part': part_id, 'item': part['itemModel'], 'position': position, 'entityPosition': export['origin'], 'translation': pose[2:5],
+    summary.append({'passIndex': pass_index, 'time': time, 'part': part_id, 'item': part['itemModel'], 'position': position, 'entityPosition': export['origin'], 'translation': pose[2:5],
                     'scale': pose[5:8], 'leftRotation': pose[8:12], 'context': 'NONE',
                     'support': plane if rotor else 'outfeed-top' if part_id.endswith('slab') else 'timber-bolster pair',
-                    'surfaceY': None if rotor else export['origin'][1] + export['logBottom'], 'status': result['status'],
+                    'surfaceY': None if rotor else support_y, 'status': result['status'],
                     'currentResidual': residual, 'postAdjustmentResidual': result['contact']['post_adjustment_min_residual'],
                     'modelSha256': result['model_provenance'][0]['sha256'], 'command': command})
     if part['itemModel'] not in meshes:
@@ -108,33 +114,37 @@ for time, part_id in cases:
 # Turning offcuts are intentionally in transfer; their underside must clear the receiving table.
 manifest = json.loads((native / 'models.manifest.json').read_text())
 minimum_clearance = float('inf')
-for frame in export['frames']:
-    for pose in frame[8]:
-        part = export['parts'][pose[0]]
-        if not pose[1] or not part.get('itemModel'):
-            continue
-        kind = part['itemModel'].rsplit('_', 1)[1]
-        if kind not in ['raw', 'sawn', 'slab']:
-            continue
-        qx, qy, qz, qw = pose[8:12]
-        # These models only have the authored semantic slab rotation around Z.
-        assert abs(qx) < 1e-7 and abs(qy) < 1e-7
-        norm = qz * qz + qw * qw
-        sine, cosine = 2 * qz * qw / norm, 1 - 2 * qz * qz / norm
-        transformed_min = min(sine * x * pose[5] + cosine * y * pose[6] for box in manifest['models'][kind]['boxes']
-                              for x in [box['min'][0], box['max'][0]] for y in [box['min'][1], box['max'][1]])
-        clearance = pose[3] + transformed_min - export['logBottom']
-        minimum_clearance = min(minimum_clearance, clearance)
-        assert clearance >= -1e-4, (frame[0], part['id'], clearance)
-        if kind != 'slab' or frame[0] >= 16.2:
-            assert abs(clearance) <= 1e-4, (frame[0], part['id'], clearance)
+for pass_index, frames in enumerate(export['passes']):
+    for frame in frames:
+        for pose in frame[8]:
+            part = export['parts'][pose[0]]
+            if not pose[1] or not part.get('itemModel'):
+                continue
+            kind = part['itemModel'].rsplit('_', 1)[1]
+            if kind not in ['raw', 'sawn', 'slab']:
+                continue
+            qx, qy, qz, qw = pose[8:12]
+            # These models only have the authored semantic slab rotation around Z.
+            assert abs(qx) < 1e-7 and abs(qy) < 1e-7
+            norm = qz * qz + qw * qw
+            sine, cosine = 2 * qz * qw / norm, 1 - 2 * qz * qz / norm
+            transformed_min = min(sine * x * pose[5] + cosine * y * pose[6] for box in manifest['models'][kind]['boxes']
+                                  for x in [box['min'][0], box['max'][0]] for y in [box['min'][1], box['max'][1]])
+            clearance = pose[3] + transformed_min - export['logBottom']
+            minimum_clearance = min(minimum_clearance, clearance)
+            assert clearance >= -1e-4, (frame[0], part['id'], clearance)
+            transferring_final = part['motion'] == 'timber-final' and frame[0] >= 16.2
+            if transferring_final and frame[0] >= 18.2:
+                assert abs(clearance - (.175 + .28) * scene_scale) <= 1e-4, (frame[0], part['id'], clearance)
+            elif not transferring_final and (kind != 'slab' or frame[0] >= 16.2):
+                assert abs(clearance) <= 1e-4, (frame[0], part['id'], clearance)
 
 (out / 'grounding-summary.json').write_text(json.dumps({
     'scope': 'Offline exact model and compiled runtime poses; active client pack is not yet verified.',
     'nativeItemDisplayBaseY': 180, 'assetBakedY': 180,
     'clientJarSha256': hashlib.sha256(args.client_jar.read_bytes()).hexdigest(),
     'supportEvidence': f'Canonical local supports scaled by {scene_scale}: stockY={export["logBottom"]}; blade collar rearX={.2975 * scene_scale}; bearing/motor frontX={1.74 * scene_scale}. Entity origin{export["origin"]}; pose centers are native Display translations.',
-    'sampledFrames': len(export['frames']), 'minimumTransferClearance': minimum_clearance, 'cases': summary,
+    'sampledFrames': sum(map(len, export['passes'])), 'minimumTransferClearance': minimum_clearance, 'cases': summary,
 }, ensure_ascii=False, indent=2) + '\n')
 (out / 'native-item-faces.json').write_text(json.dumps(meshes, separators=(',', ':')))
-print(f'Grounded {len(summary)} representative placements; {len(export["frames"])} sampled frames clear the support planes. Residual <=1e-4.')
+print(f"Grounded {len(summary)} representative placements; {sum(map(len, export['passes']))} sampled frames clear the support planes. Residual <=1e-4.")

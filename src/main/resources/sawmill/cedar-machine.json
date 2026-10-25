@@ -3,7 +3,7 @@
   "origin": [
     188.5,
     73,
-    180.5
+    182.2
   ],
   "views": [
     {
@@ -2064,6 +2064,186 @@
         -1.84
       ],
       "ratio": 1.5
+    },
+    {
+      "id": "timber-final-1",
+      "name": "timber-final",
+      "itemModel": "arc_farms:cedar_sawmill_sawn",
+      "center": [
+        0,
+        1.63,
+        0
+      ],
+      "size": [
+        1,
+        1,
+        0.88
+      ],
+      "motion": "timber-final",
+      "section": 0,
+      "control": false
+    },
+    {
+      "id": "timber-board-1",
+      "name": "timber-board",
+      "block": "minecraft:stripped_spruce_log[axis=z]",
+      "center": [
+        0,
+        1.63,
+        0
+      ],
+      "size": [
+        0.28,
+        0.72,
+        0.88
+      ],
+      "motion": "timber-board",
+      "section": 0,
+      "control": false
+    },
+    {
+      "id": "timber-final-2",
+      "name": "timber-final",
+      "itemModel": "arc_farms:cedar_sawmill_sawn",
+      "center": [
+        0,
+        1.63,
+        0
+      ],
+      "size": [
+        1,
+        1,
+        0.88
+      ],
+      "motion": "timber-final",
+      "section": 1,
+      "control": false
+    },
+    {
+      "id": "timber-board-2",
+      "name": "timber-board",
+      "block": "minecraft:stripped_spruce_log[axis=z]",
+      "center": [
+        0,
+        1.63,
+        0
+      ],
+      "size": [
+        0.28,
+        0.72,
+        0.88
+      ],
+      "motion": "timber-board",
+      "section": 1,
+      "control": false
+    },
+    {
+      "id": "timber-final-3",
+      "name": "timber-final",
+      "itemModel": "arc_farms:cedar_sawmill_sawn",
+      "center": [
+        0,
+        1.63,
+        0
+      ],
+      "size": [
+        1,
+        1,
+        0.88
+      ],
+      "motion": "timber-final",
+      "section": 2,
+      "control": false
+    },
+    {
+      "id": "timber-board-3",
+      "name": "timber-board",
+      "block": "minecraft:stripped_spruce_log[axis=z]",
+      "center": [
+        0,
+        1.63,
+        0
+      ],
+      "size": [
+        0.28,
+        0.72,
+        0.88
+      ],
+      "motion": "timber-board",
+      "section": 2,
+      "control": false
+    },
+    {
+      "id": "timber-final-4",
+      "name": "timber-final",
+      "itemModel": "arc_farms:cedar_sawmill_sawn",
+      "center": [
+        0,
+        1.63,
+        0
+      ],
+      "size": [
+        1,
+        1,
+        0.88
+      ],
+      "motion": "timber-final",
+      "section": 3,
+      "control": false
+    },
+    {
+      "id": "timber-board-4",
+      "name": "timber-board",
+      "block": "minecraft:stripped_spruce_log[axis=z]",
+      "center": [
+        0,
+        1.63,
+        0
+      ],
+      "size": [
+        0.28,
+        0.72,
+        0.88
+      ],
+      "motion": "timber-board",
+      "section": 3,
+      "control": false
+    },
+    {
+      "id": "timber-final-5",
+      "name": "timber-final",
+      "itemModel": "arc_farms:cedar_sawmill_sawn",
+      "center": [
+        0,
+        1.63,
+        0
+      ],
+      "size": [
+        1,
+        1,
+        0.88
+      ],
+      "motion": "timber-final",
+      "section": 4,
+      "control": false
+    },
+    {
+      "id": "timber-board-5",
+      "name": "timber-board",
+      "block": "minecraft:stripped_spruce_log[axis=z]",
+      "center": [
+        0,
+        1.63,
+        0
+      ],
+      "size": [
+        0.28,
+        0.72,
+        0.88
+      ],
+      "motion": "timber-board",
+      "section": 4,
+      "control": false
     }
   ],
   "rotorBlueprints": {

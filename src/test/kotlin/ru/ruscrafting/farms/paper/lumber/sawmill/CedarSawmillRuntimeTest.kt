@@ -28,7 +28,7 @@ import ru.ruscrafting.farms.paper.lumber.LumbermillVersionedModule
 import java.util.UUID
 
 class CedarSawmillRuntimeTest : FunSpec({
-    test("keyed packet visuals retain all eighteen model handles through cut pause finish and replay") {
+    test("keyed packet visuals retain all twenty-three model handles through cut pause finish and replay") {
         MockBukkitTestRuntime.open().use { paper ->
             val world = paper.addSimpleWorld(CedarSawmillController.WORLD_NAME)
             val recording = SawmillDisplayRecording()
@@ -37,7 +37,7 @@ class CedarSawmillRuntimeTest : FunSpec({
             val ids = scene.entityIds()
             ids.size shouldBe CedarSawmillGeometry.parts.size
             ids.values.toSet().size shouldBe ids.size
-            scene.itemCount shouldBe 18
+            scene.itemCount shouldBe 23
             recording.items.map { it.itemMeta.customModelData }.toSet() shouldBe setOf(271001, 271002, 271003, 271004, 271005)
             val handles = recording.handles.toList()
             scene.render(CedarSawmillAnimation.sample(0.0), false)
@@ -79,7 +79,7 @@ class CedarSawmillRuntimeTest : FunSpec({
             val player = paper.server.addPlayer("Observer")
             registry.activateLoadedState()
             module.sawmillSnapshot()["active"] shouldBe true
-            module.sawmillSnapshot()["item_parts"] shouldBe 18
+            module.sawmillSnapshot()["item_parts"] shouldBe 23
             module.sawmillSnapshot()["desired_native_targets"] shouldBe 1
             registry.isAvailable(ActivityKind.LUMBER) shouldBe false
             registry.canAccess(player, ActivityKind.LUMBER) shouldBe false
@@ -179,12 +179,12 @@ class CedarSawmillRuntimeTest : FunSpec({
             controller.snapshot()["elapsed_ticks"] shouldBe 41
             controller.activate(player, key, Unit, Unit)
             repeat(20) { controller.updateVisuals() }
-            controller.snapshot()["phase"] shouldBe "PAUSED"
-            controller.snapshot()["elapsed_ticks"] shouldBe 41
+            controller.snapshot()["phase"] shouldBe "RUNNING"
+            controller.snapshot()["elapsed_ticks"] shouldBe 61
             controller.activate(player, key, Unit, Unit)
             repeat(2) { controller.updateVisuals() }
             controller.snapshot()["phase"] shouldBe "RUNNING"
-            controller.snapshot()["elapsed_ticks"] shouldBe 43
+            controller.snapshot()["elapsed_ticks"] shouldBe 63
             controller.snapshot()["cycles_started"] shouldBe 1
             recording.handles shouldBe handles
             rays.isNotEmpty() shouldBe true

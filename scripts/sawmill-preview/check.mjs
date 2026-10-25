@@ -72,14 +72,24 @@ const blade = parts.find(part => part.name === 'blade-rotor');
 assert.ok(blade?.itemModel === nativeModels.blade.itemModel, 'the saw must use the complete rigid native blade model');
 assert.ok(Math.max(...nativeModels.blade.boxes.map(box => blade.center[1] + box.max[1] * blade.size[1])) > LOG_BOTTOM + LOG_HEIGHT,
   'the solid disc must reach through the entire stock');
+for (const pass of [0, 1]) {
 let previousCut = Infinity;
 for (let time = 0; time <= CYCLE_SECONDS; time += .025) {
-  const state = sampleCycle(time);
+  const state = sampleCycle(time, pass);
   assert.ok(Object.values(state).filter(value => typeof value === 'number').every(Number.isFinite), `invalid pose at ${time}`);
   assert.ok(state.cutThreshold <= previousCut + EPSILON, 'sawn material must not grow back during return');
   previousCut = state.cutThreshold;
 }
-const finished = sampleCycle(CYCLE_SECONDS);
+const finished = sampleCycle(CYCLE_SECONDS, pass);
 assert.ok(finished.finished && !finished.contact, 'the stopped cycle must not keep cutting');
 assert.notEqual(finished.outputZ, finished.carriageZ, 'the offcut must remain on the outfeed during carriage return');
+}
+const runtime = JSON.parse(readFileSync(new URL('../../build/reports/sawmill-preview/runtime-export.json', import.meta.url), 'utf8'));
+const final = new Map(runtime.passes[1].at(-1)[8].map(pose => [runtime.parts[pose[0]].id, pose]));
+const stock = final.get('timber-3-sawn');
+assert.equal(stock[1], 0, 'the second pass must leave the carriage empty');
+const plank = final.get('timber-board-3'), cant = final.get('timber-final-3');
+assert.equal(plank[1], 1);assert.equal(cant[1], 1);
+assert.ok(Math.abs(plank[3] - plank[5] / 2 - (LOG_BOTTOM + .175 * SCENE_SCALE)) < 1e-5, 'second board must touch the first output');
+assert.ok(Math.abs(cant[3] - .235 * cant[5] - (plank[3] + plank[5] / 2)) < 1e-5, 'final cant must touch the second board');
 console.log(`Sawmill checks passed: ${parts.length} parts, ${CYCLE_SECONDS}s cycle, original z-fighting reproduced and current fixed faces clear.`);

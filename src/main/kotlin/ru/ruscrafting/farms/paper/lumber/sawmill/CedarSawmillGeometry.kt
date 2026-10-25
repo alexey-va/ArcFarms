@@ -9,7 +9,7 @@ import org.joml.Vector3f
 /** One authored scene. Block poses are cuboid centers; item poses are model origins. */
 internal object CedarSawmillGeometry {
     // Scale the complete authored machine about its floor anchor, including all controls.
-    const val SCENE_SCALE = 1.5f
+    const val SCENE_SCALE = 1.7f
     private val document: JsonObject = checkNotNull(javaClass.getResourceAsStream("/sawmill/cedar-machine.json"))
         .bufferedReader().use { JsonParser.parseReader(it).asJsonObject }
     val origin: Vector3f = document.getAsJsonArray("origin").vector()

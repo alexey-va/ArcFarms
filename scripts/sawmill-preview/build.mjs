@@ -54,17 +54,20 @@ const parts = makeParts();
 if (JSON.stringify(parts) !== JSON.stringify(runtime.parts)) throw Error('Runtime geometry changed; rerun the compiled Kotlin export.');
 for (const part of parts) if (part.block) material(part.block);
 for (const state of ['minecraft:spruce_log[axis=z]', 'minecraft:stripped_spruce_log[axis=z]', 'minecraft:spruce_planks', 'minecraft:light_gray_concrete']) material(state);
-// Step back with the larger footprint while preserving the authored player eye height.
-const views = SAWMILL.views.map(view => ({ ...view,
-  camera: local(view.camera.map((value, axis) => axis === 1 ? value
-    : SAWMILL.origin[axis] + (value - SAWMILL.origin[axis]) * runtime.sceneScale)),
-  target: local(view.target.map((value, axis) => SAWMILL.origin[axis]
-    + (value - SAWMILL.origin[axis]) * runtime.sceneScale)),
-}));
+// Keep all presets inside the open aisle, independent of the machine's floor scaling.
+const framing = {
+  overview: [[194.6,76.4,188.5],[188.7,74.8,181.2],78],
+  operator: [[194.5,74.62,186.4],[189.5,75.35,182.2],70],
+  infeed: [[194.5,74.62,172.5],[188.7,75.2,178.0],74],
+  drive: [[194.6,74.62,182.2],[189.4,75.1,181.8],70],
+  output: [[194.6,74.62,191.9],[190.4,75.4,187.5],72],
+};
+const views = SAWMILL.views.map(view => ({ ...view, camera: local(framing[view.id][0]),
+  target: local(framing[view.id][1]), fov: framing[view.id][2] }));
 const recipe = {
   version: 1, seed: 251026, title: 'Кедровый двор · рабочая пилорама',
-  subtitle: 'Один полный цикл в существующем цехе',
-  concept: 'Классическая круговая пилорама: закреплённое бревно проходит один диск, один горбыль остаётся на столе, остаток возвращается с сохранённой спиленной стороной.',
+  subtitle: 'Два распила одного бревна',
+  concept: 'Первый проход снимает горбыль. Следующее нажатие распиливает остаток; доска и последний брус остаются на выходном столе.',
   size: max.map((n, i) => n - min[i] + 1), palette, operations,
   preview: { defaultView: 'overview', views },
   lighting: { targetLevel: 8, samples: [] },

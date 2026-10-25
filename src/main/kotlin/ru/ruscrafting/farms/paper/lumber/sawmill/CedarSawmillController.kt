@@ -5,6 +5,7 @@ import org.bukkit.Chunk
 import org.bukkit.Location
 import org.bukkit.World
 import org.bukkit.entity.Player
+import org.bukkit.entity.Entity
 import org.bukkit.plugin.Plugin
 import org.bukkit.util.Vector
 import org.joml.Vector3f
@@ -34,6 +35,7 @@ internal class CedarSawmillController(
     private var visualTick = 0L
     private var visuals: CedarSawmillDisplays? = null
     private var controls: PaperSpatialControls<Unit, Unit>? = null
+    private var publicUse: AutoCloseable? = null
     private var input: SpatialControlFrame<Unit, Unit>? = null
     private var renderedTicks = -1
     private var renderedPhase: CedarSawmillPlayback.Phase? = null
@@ -70,10 +72,14 @@ internal class CedarSawmillController(
 
     override fun activate(player: Player, scene: SpatialSceneKey, context: Unit, action: Unit) {
         if (current(player, scene) == null) return
-        playback.toggle()
+        if (!playback.start()) return
         render()
         report("lever")
     }
+
+    fun allowsPublicUse(player: Player, entity: Entity): Boolean =
+        active && input != null && player.world.uid == visuals?.world?.uid &&
+            controls?.ownsNative(SCENE_KEY, entity) == true && controls?.target(SCENE_KEY, player) != null
 
     override fun inputFailed(player: Player, scene: SpatialSceneKey, context: Unit, failure: Exception) {
         cleanup("input_failed")
@@ -85,6 +91,7 @@ internal class CedarSawmillController(
         "phase" to playback.phase.name,
         "elapsed_ticks" to playback.elapsedTicks,
         "cycles_started" to playback.cyclesStarted,
+        "pass" to playback.passIndex + 1,
         "block_parts" to (visuals?.blockCount ?: 0),
         "item_parts" to (visuals?.itemCount ?: 0),
         "control_parts" to input?.controls.orEmpty().size,
@@ -108,9 +115,10 @@ internal class CedarSawmillController(
         val view = visuals ?: CedarSawmillDisplays(world, displays).also {
             visuals = it
             controls = PaperSpatialControls(plugin, displays, this)
+            if (plugin.server.pluginManager.isPluginEnabled("WorldGuard")) publicUse = CedarSawmillPublicUse(plugin, this)
         }
         if (renderedTicks != playback.elapsedTicks || renderedPhase != playback.phase) {
-            val frame = CedarSawmillAnimation.sample(playback.elapsedSeconds)
+            val frame = CedarSawmillAnimation.sample(playback.elapsedSeconds, playback.passIndex)
             view.render(frame, playback.phase == CedarSawmillPlayback.Phase.RUNNING &&
                 renderedTicks >= 0 && playback.elapsedTicks >= renderedTicks)
             input = controlFrame(world, frame)
@@ -164,12 +172,13 @@ internal class CedarSawmillController(
     private fun retireVisuals() {
         input = null
         var failure: Throwable? = null
-        listOf<() -> Unit>({ controls?.clear(SCENE_KEY) }, { controls?.close() }, { visuals?.close() }).forEach { close ->
+        listOf<() -> Unit>({ publicUse?.close() }, { controls?.clear(SCENE_KEY) }, { controls?.close() }, { visuals?.close() }).forEach { close ->
             runCatching(close).exceptionOrNull()?.let {
                 if (failure == null) failure = it else requireNotNull(failure).addSuppressed(it)
             }
         }
         controls = null
+        publicUse = null
         visuals = null
         renderedTicks = -1
         renderedPhase = null
