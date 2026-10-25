@@ -297,13 +297,13 @@ class ArcFarmsArchitectureContractTest : FunSpec({
         source.contains("mineModule.onMove") shouldBe false
     }
 
-    test("lumbermill remains an explicitly empty facade") {
+    test("lumber worksite remains unavailable while its authored demonstration owns only sawmill runtime") {
         val versioned = Files.readString(lumberVersionedPath)
         val lumberSources = Files.walk(lumberVersionedPath.parent).use { paths ->
             paths.filter { Files.isRegularFile(it) && it.toString().endsWith(".kt") }.toList()
         }
 
-        lumberSources shouldBe listOf(lumberVersionedPath)
+        lumberSources.all { it == lumberVersionedPath || it.startsWith(lumberVersionedPath.parent.resolve("sawmill")) } shouldBe true
         Files.exists(repositoryRoot.resolve("src/main/kotlin/ru/ruscrafting/farms/config/LumberConfig.kt")) shouldBe false
         Files.exists(repositoryRoot.resolve("src/main/kotlin/ru/ruscrafting/farms/domain/LumberShift.kt")) shouldBe false
         versioned.contains("class LumbermillVersionedModule") shouldBe true
@@ -311,6 +311,7 @@ class ArcFarmsArchitectureContractTest : FunSpec({
         versioned.contains("override fun isAvailable(): Boolean = false") shouldBe true
         versioned.contains("LumbermillComponentGraph") shouldBe false
         versioned.contains("LumberShiftEngine") shouldBe false
+        versioned.contains("CedarSawmillController(") shouldBe true
     }
 
     test("mine V2 cannot enter the legacy runtime") {

@@ -2,7 +2,7 @@
 const millRoot = new THREE.Group();
 millRoot.position.set(...SAWMILL.origin.map((value, index) => value - SAWMILL_CAPTURE.origin[index]));
 world.add(millRoot);
-const millParts = [], millStock = [], millChips = [];
+const millParts = [];
 let millLeverHitbox = null, millLeverHovered = false;
 let millTime = 0, millPlaying = false;
 let millSpeed = 1, millLastFrame = null, millAsBuilt = false;
@@ -18,78 +18,39 @@ function placePart(object, center, size, rotation = new THREE.Quaternion()) {
   object.scale.set(...size); object.quaternion.copy(rotation);
   object.position.copy(new THREE.Vector3(...size).multiplyScalar(-.5).applyQuaternion(rotation).add(new THREE.Vector3(...center)));
 }
-const logOutline = [[-.205,0],[.205,0],[.48,.17],[.48,.55],[.205,LOG_HEIGHT],[-.205,LOG_HEIGHT],[-.48,.55],[-.48,.17]];
-function clipTimber(polygon, plane, keepLeft) {
-  const result = [];
-  for (let i = 0; i < polygon.length; i++) {
-    const a = polygon[i], b = polygon[(i + 1) % polygon.length];
-    const aIn = keepLeft ? a[0] <= plane : a[0] >= plane;
-    const bIn = keepLeft ? b[0] <= plane : b[0] >= plane;
-    if (aIn) result.push(a);
-    if (aIn !== bIn) { const t = (plane - a[0]) / (b[0] - a[0]); result.push([plane, mix(a[1], b[1], t)]); }
+function nativeItemMesh(itemModel) {
+  const descriptor = NATIVE_ITEM_FACES[itemModel];
+  const batches = new Map();
+  for (const face of descriptor.faces) {
+    if (!batches.has(face.texture)) batches.set(face.texture, { positions: [], normals: [], uv: [] });
+    const batch = batches.get(face.texture), vertices = face.positions;
+    const a = new THREE.Vector3(...vertices[0]), b = new THREE.Vector3(...vertices[1]), c = new THREE.Vector3(...vertices[2]);
+    const outward = b.sub(a).cross(c.sub(a)).dot(new THREE.Vector3(...face.normal)) >= 0;
+    for (const index of outward ? [0,1,2,0,2,3] : [0,2,1,0,3,2]) {
+      batch.positions.push(...vertices[index]);batch.normals.push(...face.normal);batch.uv.push(...face.uv[index]);
+    }
   }
-  return result;
-}
-function timberMesh(polygon, centered = false) {
-  const nativeLog = VANILLA_ASSETS.blocks['minecraft:spruce_log[axis=z]'];
-  const nativeCut = VANILLA_ASSETS.blocks['minecraft:stripped_spruce_log[axis=z]'];
-  const bark = nativeLog.quads.find(face => Math.abs(face.normal[2]) < .5).texture;
-  const end = nativeLog.quads.find(face => Math.abs(face.normal[2]) > .5).texture;
-  const cut = nativeCut.quads.find(face => Math.abs(face.normal[2]) < .5).texture;
-  const materials = [bark, cut, end, end].map(name => new THREE.MeshStandardMaterial({ map: vanillaTextures.get(name), roughness: .96, side: THREE.DoubleSide }));
-  const positions = [], uvs = [], groups = [];
-  const vertex = ([x,y],z) => [x - (centered ? .3925 : 0), y - (centered ? LOG_HEIGHT/2 : 0), z];
-  function triangle(a,b,c,uv,material) {
-    const start = positions.length / 3; positions.push(...a,...b,...c); uvs.push(...uv.flat()); groups.push([start,3,material]);
+  const group = new THREE.Group();
+  for (const [texture, batch] of batches) {
+    if (!vanillaTextures.has(texture)) throw Error(`Missing native item PNG: ${texture}`);
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(batch.positions, 3));
+    geometry.setAttribute('normal', new THREE.Float32BufferAttribute(batch.normals, 3));
+    geometry.setAttribute('uv', new THREE.Float32BufferAttribute(batch.uv, 2));
+    const material = new THREE.MeshStandardMaterial({ map: vanillaTextures.get(texture), roughness: .96, side: THREE.FrontSide });
+    const mesh = new THREE.Mesh(geometry, material);mesh.castShadow = true;mesh.receiveShadow = true;group.add(mesh);
   }
-  for (let i = 1; i < polygon.length - 1; i++) {
-    const a=polygon[0],b=polygon[i],c=polygon[i+1];
-    const uv = [a,b,c].map(([x,y])=>[(x+.48)/.96,y/LOG_HEIGHT]);
-    triangle(vertex(a,1),vertex(b,1),vertex(c,1),uv,2);
-    triangle(vertex(c,0),vertex(b,0),vertex(a,0),[uv[2],uv[1],uv[0]],3);
-  }
-  for (let i=0;i<polygon.length;i++) {
-    const a=polygon[i],b=polygon[(i+1)%polygon.length];
-    const isCut = Math.abs(a[0]-b[0])<1e-6 && (Math.abs(a[0]-.235)<1e-6 || Math.abs(a[0]-.305)<1e-6);
-    const u0=i/polygon.length,u1=(i+1)/polygon.length;
-    triangle(vertex(a,0),vertex(b,0),vertex(b,1),[[u0,0],[u1,0],[u1,1]],isCut?1:0);
-    triangle(vertex(a,0),vertex(b,1),vertex(a,1),[[u0,0],[u1,1],[u0,1]],isCut?1:0);
-  }
-  const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));
-  geometry.setAttribute('uv',new THREE.Float32BufferAttribute(uvs,2));
-  groups.forEach(group=>geometry.addGroup(...group)); geometry.computeVertexNormals();
-  const object=new THREE.Mesh(geometry,materials);object.castShadow=true;object.receiveShadow=true;return object;
-}
-function annularPulley(part) {
-  const shape=new THREE.Shape(),hole=new THREE.Path(),count=32;
-  for(let i=0;i<=count;i++){const a=i/count*Math.PI*2;const f=i===0?'moveTo':'lineTo';shape[f](Math.cos(a)*part.outerRadius,Math.sin(a)*part.outerRadius);}
-  for(let i=count;i>=0;i--){const a=i/count*Math.PI*2;const f=i===count?'moveTo':'lineTo';hole[f](Math.cos(a)*part.innerRadius,Math.sin(a)*part.innerRadius);}
-  shape.holes.push(hole);
-  const geometry=new THREE.ExtrudeGeometry(shape,{depth:part.depth,bevelEnabled:false,steps:1,curveSegments:count});
-  geometry.translate(0,0,-part.depth/2);geometry.rotateY(Math.PI/2);
-  const model=VANILLA_ASSETS.blocks[part.block];
-  const object=new THREE.Mesh(geometry,new THREE.MeshStandardMaterial({map:vanillaTextures.get(model.quads[0].texture),roughness:.82}));
-  object.castShadow=true;object.receiveShadow=true;const group=new THREE.Group();group.add(object);return group;
+  return group;
 }
 function buildMill() {
   if (millParts.length) return;
-  for (const part of makeParts()) {
-    const object = part.shape==='annulus'?annularPulley(part):cubeModel(part.block);
-    object.traverse(child => { if (child.isMesh) child.userData.millLever = part.motion === 'lever'; });
-    millRoot.add(object); millParts.push({ part, object });
+  for (const part of runtime.parts) {
+    const object = part.itemModel ? nativeItemMesh(part.itemModel) : cubeModel(part.block);
+    object.traverse(child => { if (child.isMesh) child.userData.millLever = part.control === true; });
+    millRoot.add(object);millParts.push({part,object});
   }
-  millLeverHitbox = new THREE.Mesh(new THREE.BoxGeometry(.56,.78,.55),new THREE.MeshBasicMaterial({visible:false}));
-  millLeverHitbox.position.set(2.45,1.43,1.20);millLeverHitbox.userData.millHitbox=true;millRoot.add(millLeverHitbox);
-  // Five consecutive native log sections keep the bark texel scale close to one block.
-  for (let section = 0; section < 5; section++) {
-    const raw = timberMesh(logOutline), remaining = timberMesh(clipTimber(logOutline,.235,true));
-    const slab = timberMesh(clipTimber(logOutline,.305,false),true);
-    millRoot.add(raw,remaining,slab); millStock.push({section,raw,remaining,slab});
-  }
-  for (let i = 0; i < 36; i++) {
-    const object = cubeModel('minecraft:spruce_planks'); millRoot.add(object); millChips.push(object);
-  }
+  millLeverHitbox = new THREE.Mesh(new THREE.BoxGeometry(...runtime.leverSize),new THREE.MeshBasicMaterial({visible:false}));
+  millLeverHitbox.position.set(...runtime.leverCenter);millLeverHitbox.userData.millHitbox=true;millRoot.add(millLeverHitbox);
 }
 const originalBlockBuilder = buildMesh;
 buildMesh = function() {
@@ -106,60 +67,26 @@ buildMesh = function() {
 
 function poseMill(seconds) {
   const state = sampleCycle(seconds);
-  for (const { part, object } of millParts) {
-    const center = [...part.center];
-    let rotation = quat(part.rotation ?? [0, 0, 0]);
-    if (part.motion === 'blade' || part.motion === 'pulley') {
-      const turn = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), state.angle * (part.ratio ?? 1));
-      const at = new THREE.Vector3(...center).sub(new THREE.Vector3(...part.pivot)).applyQuaternion(turn).add(new THREE.Vector3(...part.pivot));
-      center.splice(0, 3, at.x, at.y, at.z); rotation.premultiply(turn);
+  // Match the server's10Hz transforms and two-tick display interpolation.
+  const firstFrame = runtime.frames[state.index], nextFrame = runtime.frames[Math.min(state.index + 1, runtime.frames.length - 1)];
+  const initial = runtime.frames[0][8], first = new Map(firstFrame[8].map(pose => [pose[0],pose]));
+  const next = new Map(nextFrame[8].map(pose => [pose[0],pose]));
+  for (let index = 0; index < millParts.length; index++) {
+    const { part, object } = millParts[index];
+    const from = first.get(index) ?? initial[index], to = next.get(index) ?? from;
+    object.visible = !!from[1] && (part.motion !== 'sawdust' || $('millDust').checked);
+    const center = from.slice(2,5).map((value,axis) => value + (to[2+axis]-value)*state.alpha);
+    const size = from.slice(5,8).map((value,axis) => value + (to[5+axis]-value)*state.alpha);
+    const rotation = new THREE.Quaternion(...from.slice(8,12)).normalize().slerp(new THREE.Quaternion(...to.slice(8,12)).normalize(),state.alpha);
+    if (part.itemModel) { object.position.set(...center);object.scale.set(...size);object.quaternion.copy(rotation); }
+    else {
+      // Native Display interpolation lerps the transmitted translation, not the
+      // reconstructed geometric center. Keep this exact for shaft/lever cuboids too.
+      const translation = pose => new THREE.Vector3(...pose.slice(5,8)).multiplyScalar(-.5)
+        .applyQuaternion(new THREE.Quaternion(...pose.slice(8,12)).normalize()).add(new THREE.Vector3(...pose.slice(2,5)));
+      object.position.copy(translation(from).lerp(translation(to),state.alpha));
+      object.scale.set(...size);object.quaternion.copy(rotation);
     }
-    if (part.motion === 'arbor') rotation = quat([state.angle,0,0]);
-    if (part.motion.startsWith('carriage') || part.motion === 'headblock') {
-      center[2] += state.carriageZ;
-      if (part.motion === 'headblock') center[0] += state.lateral;
-      if (part.motion === 'carriage-wheel') rotation = quat([(state.carriageZ + 5.8) / .155, 0, 0]);
-    }
-    if (part.motion === 'lever') {
-      const turn = quat([smooth(state.t / .7) * .7, 0, 0]);
-      const at = new THREE.Vector3(...center).sub(new THREE.Vector3(...part.pivot)).applyQuaternion(turn).add(new THREE.Vector3(...part.pivot));
-      center.splice(0, 3, at.x, at.y, at.z); rotation = turn;
-    }
-    if(part.shape==='annulus'){object.position.set(...center);object.quaternion.copy(rotation);}else placePart(object, center, part.size, rotation);
-  }
-  for (const { section, raw, remaining, slab } of millStock) {
-    const z0 = -LOG_LENGTH / 2 + section * LOG_LENGTH / 5;
-    const z1 = z0 + LOG_LENGTH / 5;
-    const spans = splitLogInterval(z0, z1, state.cutThreshold);
-    const rawLength = spans.raw[1] - spans.raw[0];
-    raw.visible = rawLength > .0001;
-    if (raw.visible) {raw.scale.set(1,1,rawLength);raw.position.set(state.lateral,LOG_BOTTOM,state.stockZ+spans.raw[0]);raw.material[2].visible=Math.abs(spans.raw[1]-LOG_LENGTH/2)<1e-6;raw.material[3].visible=Math.abs(spans.raw[0]+LOG_LENGTH/2)<1e-6;}
-    const cutLength = spans.cut[1] - spans.cut[0];
-    remaining.visible=slab.visible=cutLength>.0001;
-    if(remaining.visible){
-      remaining.scale.set(1,1,cutLength);remaining.position.set(state.lateral,LOG_BOTTOM,state.stockZ+spans.cut[0]);
-      for(const piece of [remaining,slab]){piece.material[2].visible=Math.abs(spans.cut[1]-LOG_LENGTH/2)<1e-6;piece.material[3].visible=Math.abs(spans.cut[0]+LOG_LENGTH/2)<1e-6;}
-      const tilt=-Math.PI/2*state.split;
-      const points=clipTimber(logOutline,.305,false).map(([x,y])=>new THREE.Vector3(x-.3925,y-LOG_HEIGHT/2,0).applyAxisAngle(new THREE.Vector3(0,0,1),tilt));
-      const minY=Math.min(...points.map(point=>point.y));
-      const grounded=1.27-minY;
-      slab.scale.set(1,1,cutLength);slab.rotation.z=tilt;
-      slab.position.set(.3925+state.split*.74,mix(LOG_BOTTOM+LOG_HEIGHT/2,grounded,state.split),state.outputZ+spans.cut[0]);
-    }
-  }
-  for (let index = 0; index < millChips.length; index++) {
-    const object = millChips[index];
-    const cycle = .72, offset = index * cycle / millChips.length;
-    const birth = Math.floor((seconds - offset) / cycle) * cycle + offset;
-    const age = seconds - birth, atBirth = sampleCycle(Math.max(0, birth));
-    object.visible = !millAsBuilt && $('millDust').checked && birth >= 0 && age < .48 && atBirth.contact;
-    if (!object.visible) continue;
-    const seed = Math.sin(index * 73.7 + Math.floor(birth * 30) * 2.1) * .5 + .5;
-    const x = .27 + age * (seed-.5)*.55;
-    const y = LOG_BOTTOM + .09 - age * (1.2 + seed * .6) - 3.8 * age * age;
-    const z = -.85 - age * (.3 + seed * .5);
-    const size = .022 + seed * .018;
-    placePart(object, [x, Math.max(.1, y), z], [size, size * .5, size * 1.5], quat([age * 8, seed * 7, age * 5]));
   }
   const kerf = state.contact ? 'Есть контакт с древесиной' : state.finished ? 'Цикл завершён' : 'Без контакта';
   $('millClock').textContent = `${state.t.toFixed(1)} / ${CYCLE_SECONDS.toFixed(0)} с`;
@@ -186,7 +113,7 @@ panel.innerHTML = `
   <div class="field"><label for="millDust">Опилки у пропила</label><input id="millDust" type="checkbox" checked></div>
   <div class="field"><label for="millOriginal">Исходный интерьер</label><input id="millOriginal" type="checkbox"></div>
   <div class="sawmill-beats" aria-label="Этапы цикла">${PHASES.map(phase => `<button data-beat="${phase.at}"><span>${phase.at.toFixed(1)}</span><span>${phase.label}</span></button>`).join('')}</div>
-  <div class="sawmill-separator"><p class="sawmill-note">Перетаскивание — поворот камеры. Колесо — приближение. Пробел — пауза.</p><p class="sawmill-note">Постройка — снимок живого мира. Механизм — локальное превью. На сервере ничего не меняется.</p><p class="sawmill-note" id="millStatus"></p></div>`;
+  <div class="sawmill-separator"><p class="sawmill-note">Перетаскивание — поворот камеры. Колесо — приближение. Пробел — пауза.</p><p class="sawmill-note">Постройка — снимок живого мира. Геометрия и кадры — из серверного кода. Свет в этом превью условный.</p><p class="sawmill-note" id="millStatus"></p></div>`;
 document.querySelector('aside').prepend(panel);
 const frameLabel = document.createElement('div'); frameLabel.className = 'sawmill-frame'; frameLabel.id = 'millFrameLabel';
 document.querySelector('.workspace').append(frameLabel);
@@ -231,7 +158,7 @@ function leverAtPointer(event) {
   if(!leverHit)return false;
   const visible=object=>{for(let node=object;node;node=node.parent)if(!node.visible)return false;return true;};
   const first=millRaycaster.intersectObjects(world.children,true).find(hit=>!hit.object.userData.millHitbox&&hit.object.isMesh&&visible(hit.object));
-  return !first || first.object.userData.millLever || first.distance>=leverHit.distance-.02;
+  return !!first?.object.userData.millLever;
 }
 function hoverLever(value) {
   if(value===millLeverHovered)return;millLeverHovered=value;

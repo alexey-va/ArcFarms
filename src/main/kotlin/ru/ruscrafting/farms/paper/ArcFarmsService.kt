@@ -179,7 +179,7 @@ class ArcFarmsService(
         viewerParticles = viewerParticles,
     )
     private val worksiteRewards = WorksiteRewardGrantService(farm.rewards)
-    private val lumbermillModule = LumbermillVersionedModule()
+    private val lumbermillModule = LumbermillVersionedModule(plugin, initialSettings.serverId, displays)
     private val minePointService = MinePointService(mineLocationRepository)
     private val mineModule = MineVersionedModule(
         plugin, initialSettings.serverId, initialSettings.mines, regionGateway, locale, mineJournal, worksitePorts,
@@ -545,6 +545,7 @@ class ArcFarmsService(
     fun protectsTemporaryBlock(location: org.bukkit.Location, player: Player? = null): Boolean =
         (player == null || !isAdminEditing(player)) && worksiteEvents.protectsTemporaryBlock(location)
     fun statuses(): List<ActivityStatus> = worksites.statuses()
+    fun sawmillSnapshot(): Map<String, Any> = lumbermillModule.sawmillSnapshot()
     fun enterpriseCompany(kind: ActivityKind) = enterprise.companyView(kind)
     fun enterpriseOwnership(kind: ActivityKind, playerId: UUID) = enterprise.ownershipView(kind, playerId)
     fun enterprisePlayerView(playerId: UUID) = enterprise.playerView(playerId)

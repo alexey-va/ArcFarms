@@ -1,0 +1,8914 @@
+{
+  "schema": 1,
+  "origin": [
+    188.5,
+    73,
+    180.5
+  ],
+  "views": [
+    {
+      "id": "overview",
+      "label": "Весь цикл",
+      "camera": [
+        195.2,
+        76.2,
+        188.2
+      ],
+      "target": [
+        188.5,
+        74.2,
+        180.8
+      ],
+      "fov": 67
+    },
+    {
+      "id": "operator",
+      "label": "Глазами игрока",
+      "camera": [
+        193.4,
+        74.62,
+        183.7
+      ],
+      "target": [
+        188.6,
+        74.5,
+        180.5
+      ],
+      "fov": 66
+    },
+    {
+      "id": "infeed",
+      "label": "Подача",
+      "camera": [
+        192.5,
+        74.62,
+        174.2
+      ],
+      "target": [
+        188.4,
+        74.4,
+        178.7
+      ],
+      "fov": 70
+    },
+    {
+      "id": "drive",
+      "label": "Диск и передача",
+      "camera": [
+        192.4,
+        74.62,
+        180.8
+      ],
+      "target": [
+        188.8,
+        74.3,
+        180.1
+      ],
+      "fov": 68
+    },
+    {
+      "id": "output",
+      "label": "Выход горбыля",
+      "camera": [
+        193.5,
+        74.62,
+        188.8
+      ],
+      "target": [
+        188.7,
+        74.2,
+        184.6
+      ],
+      "fov": 68
+    }
+  ],
+  "leverCenter": [
+    2.45,
+    1.43,
+    1.2
+  ],
+  "leverSize": [
+    0.7,
+    0.78,
+    0.7
+  ],
+  "parts": [
+    {
+      "name": "cast-foot",
+      "block": "minecraft:polished_deepslate",
+      "center": [
+        0.9,
+        0.13,
+        0
+      ],
+      "size": [
+        1.12,
+        0.26,
+        2.85
+      ],
+      "motion": "fixed",
+      "id": "cast-foot-1",
+      "control": false
+    },
+    {
+      "name": "cast-base",
+      "block": "minecraft:gray_concrete",
+      "center": [
+        0.83,
+        0.63,
+        0
+      ],
+      "size": [
+        1.02,
+        0.98,
+        2.37
+      ],
+      "motion": "fixed",
+      "id": "cast-base-1",
+      "control": false
+    },
+    {
+      "name": "body-shoulder",
+      "block": "minecraft:gray_concrete",
+      "center": [
+        0.85,
+        1.07,
+        0
+      ],
+      "size": [
+        1.08,
+        0.22,
+        2.55
+      ],
+      "motion": "fixed",
+      "id": "body-shoulder-1",
+      "control": false
+    },
+    {
+      "name": "table-underlay",
+      "block": "minecraft:polished_deepslate",
+      "center": [
+        0.86,
+        1.18,
+        0
+      ],
+      "size": [
+        1.08,
+        0.08,
+        2.75
+      ],
+      "motion": "fixed",
+      "id": "table-underlay-1",
+      "control": false
+    },
+    {
+      "name": "table-right",
+      "block": "minecraft:stripped_spruce_log[axis=z]",
+      "center": [
+        0.82,
+        1.245,
+        0
+      ],
+      "size": [
+        0.96,
+        0.05,
+        2.7
+      ],
+      "motion": "fixed",
+      "id": "table-right-1",
+      "control": false
+    },
+    {
+      "name": "cast-end-band",
+      "block": "minecraft:polished_deepslate",
+      "center": [
+        0.86,
+        0.68,
+        -1.15
+      ],
+      "size": [
+        1.02,
+        0.91,
+        0.12
+      ],
+      "motion": "fixed",
+      "id": "cast-end-band-1",
+      "control": false
+    },
+    {
+      "name": "cast-end-band",
+      "block": "minecraft:polished_deepslate",
+      "center": [
+        0.86,
+        0.68,
+        1.15
+      ],
+      "size": [
+        1.02,
+        0.91,
+        0.12
+      ],
+      "motion": "fixed",
+      "id": "cast-end-band-2",
+      "control": false
+    },
+    {
+      "name": "inspection-cover",
+      "block": "minecraft:polished_deepslate",
+      "center": [
+        1.36,
+        0.69,
+        0
+      ],
+      "size": [
+        0.035,
+        0.5,
+        1
+      ],
+      "motion": "fixed",
+      "id": "inspection-cover-1",
+      "control": false
+    },
+    {
+      "name": "maker-plate",
+      "block": "minecraft:waxed_exposed_copper",
+      "center": [
+        1.3925,
+        0.77,
+        0
+      ],
+      "size": [
+        0.015,
+        0.16,
+        0.4
+      ],
+      "motion": "fixed",
+      "id": "maker-plate-1",
+      "control": false
+    },
+    {
+      "name": "arbor",
+      "block": "minecraft:polished_deepslate",
+      "center": [
+        1.01,
+        1.18,
+        0
+      ],
+      "size": [
+        1.78,
+        0.1,
+        0.1
+      ],
+      "motion": "arbor",
+      "id": "arbor-1",
+      "control": false
+    },
+    {
+      "name": "arbor-collar",
+      "block": "minecraft:waxed_exposed_copper",
+      "center": [
+        0.3575,
+        1.18,
+        0
+      ],
+      "size": [
+        0.12,
+        0.12,
+        0.12
+      ],
+      "motion": "arbor",
+      "id": "arbor-collar-1",
+      "control": false
+    },
+    {
+      "name": "arbor-collar",
+      "block": "minecraft:waxed_exposed_copper",
+      "center": [
+        0.73,
+        1.18,
+        0
+      ],
+      "size": [
+        0.12,
+        0.12,
+        0.12
+      ],
+      "motion": "arbor",
+      "id": "arbor-collar-2",
+      "control": false
+    },
+    {
+      "name": "arbor-collar",
+      "block": "minecraft:waxed_exposed_copper",
+      "center": [
+        1.29,
+        1.18,
+        0
+      ],
+      "size": [
+        0.12,
+        0.12,
+        0.12
+      ],
+      "motion": "arbor",
+      "id": "arbor-collar-3",
+      "control": false
+    },
+    {
+      "name": "arbor-bearing",
+      "block": "minecraft:gray_concrete",
+      "center": [
+        1.52,
+        1.08,
+        0
+      ],
+      "size": [
+        0.37,
+        0.47,
+        0.49
+      ],
+      "motion": "fixed",
+      "id": "arbor-bearing-1",
+      "control": false
+    },
+    {
+      "name": "bearing-bronze",
+      "block": "minecraft:waxed_exposed_copper",
+      "center": [
+        1.7125,
+        1.18,
+        0
+      ],
+      "size": [
+        0.055,
+        0.29,
+        0.29
+      ],
+      "motion": "fixed",
+      "id": "bearing-bronze-1",
+      "control": false
+    },
+    {
+      "name": "drive-belt",
+      "block": "minecraft:black_concrete",
+      "center": [
+        1.89,
+        0.575,
+        -0.8240000000000001
+      ],
+      "size": [
+        0.2,
+        1.98,
+        0.045
+      ],
+      "motion": "fixed",
+      "rotation": [
+        -1.9343232037693352,
+        0,
+        0
+      ],
+      "id": "drive-belt-1",
+      "control": false
+    },
+    {
+      "name": "drive-belt",
+      "block": "minecraft:black_concrete",
+      "center": [
+        1.89,
+        1.085,
+        -1.016
+      ],
+      "size": [
+        0.2,
+        1.98,
+        0.045
+      ],
+      "motion": "fixed",
+      "rotation": [
+        -1.9343232037693352,
+        0,
+        0
+      ],
+      "id": "drive-belt-2",
+      "control": false
+    },
+    {
+      "name": "motor-foot",
+      "block": "minecraft:polished_deepslate",
+      "center": [
+        1.89,
+        0.115,
+        -1.84
+      ],
+      "size": [
+        1.12,
+        0.23,
+        1.2
+      ],
+      "motion": "fixed",
+      "id": "motor-foot-1",
+      "control": false
+    },
+    {
+      "name": "motor-body",
+      "block": "minecraft:gray_concrete",
+      "center": [
+        1.44,
+        0.47,
+        -1.84
+      ],
+      "size": [
+        0.6,
+        0.59,
+        0.82
+      ],
+      "motion": "fixed",
+      "id": "motor-body-1",
+      "control": false
+    },
+    {
+      "name": "motor-fin",
+      "block": "minecraft:polished_deepslate",
+      "center": [
+        1.18,
+        0.49,
+        -1.84
+      ],
+      "size": [
+        0.05,
+        0.66,
+        0.88
+      ],
+      "motion": "fixed",
+      "id": "motor-fin-1",
+      "control": false
+    },
+    {
+      "name": "motor-fin",
+      "block": "minecraft:polished_deepslate",
+      "center": [
+        1.28,
+        0.49,
+        -1.84
+      ],
+      "size": [
+        0.05,
+        0.66,
+        0.88
+      ],
+      "motion": "fixed",
+      "id": "motor-fin-2",
+      "control": false
+    },
+    {
+      "name": "motor-fin",
+      "block": "minecraft:polished_deepslate",
+      "center": [
+        1.38,
+        0.49,
+        -1.84
+      ],
+      "size": [
+        0.05,
+        0.66,
+        0.88
+      ],
+      "motion": "fixed",
+      "id": "motor-fin-3",
+      "control": false
+    },
+    {
+      "name": "motor-fin",
+      "block": "minecraft:polished_deepslate",
+      "center": [
+        1.48,
+        0.49,
+        -1.84
+      ],
+      "size": [
+        0.05,
+        0.66,
+        0.88
+      ],
+      "motion": "fixed",
+      "id": "motor-fin-4",
+      "control": false
+    },
+    {
+      "name": "motor-fin",
+      "block": "minecraft:polished_deepslate",
+      "center": [
+        1.58,
+        0.49,
+        -1.84
+      ],
+      "size": [
+        0.05,
+        0.66,
+        0.88
+      ],
+      "motion": "fixed",
+      "id": "motor-fin-5",
+      "control": false
+    },
+    {
+      "name": "motor-fin",
+      "block": "minecraft:polished_deepslate",
+      "center": [
+        1.68,
+        0.49,
+        -1.84
+      ],
+      "size": [
+        0.05,
+        0.66,
+        0.88
+      ],
+      "motion": "fixed",
+      "id": "motor-fin-6",
+      "control": false
+    },
+    {
+      "name": "motor-end",
+      "block": "minecraft:waxed_exposed_copper",
+      "center": [
+        1.07,
+        0.47,
+        -1.84
+      ],
+      "size": [
+        0.1,
+        0.38,
+        0.54
+      ],
+      "motion": "fixed",
+      "id": "motor-end-1",
+      "control": false
+    },
+    {
+      "name": "carriage-rail",
+      "block": "minecraft:polished_deepslate",
+      "center": [
+        -1.13,
+        0.13,
+        -1.4
+      ],
+      "size": [
+        0.085,
+        0.09,
+        15
+      ],
+      "motion": "fixed",
+      "id": "carriage-rail-1",
+      "control": false
+    },
+    {
+      "name": "carriage-rail",
+      "block": "minecraft:polished_deepslate",
+      "center": [
+        -0.13,
+        0.13,
+        -1.4
+      ],
+      "size": [
+        0.085,
+        0.09,
+        15
+      ],
+      "motion": "fixed",
+      "id": "carriage-rail-2",
+      "control": false
+    },
+    {
+      "name": "rail-sleeper",
+      "block": "minecraft:dark_oak_planks",
+      "center": [
+        -0.63,
+        0.05,
+        -8.6
+      ],
+      "size": [
+        1.9,
+        0.1,
+        0.22
+      ],
+      "motion": "fixed",
+      "id": "rail-sleeper-1",
+      "control": false
+    },
+    {
+      "name": "rail-sleeper",
+      "block": "minecraft:dark_oak_planks",
+      "center": [
+        -0.63,
+        0.05,
+        -7.35
+      ],
+      "size": [
+        1.9,
+        0.1,
+        0.22
+      ],
+      "motion": "fixed",
+      "id": "rail-sleeper-2",
+      "control": false
+    },
+    {
+      "name": "rail-sleeper",
+      "block": "minecraft:dark_oak_planks",
+      "center": [
+        -0.63,
+        0.05,
+        -6.1
+      ],
+      "size": [
+        1.9,
+        0.1,
+        0.22
+      ],
+      "motion": "fixed",
+      "id": "rail-sleeper-3",
+      "control": false
+    },
+    {
+      "name": "rail-sleeper",
+      "block": "minecraft:dark_oak_planks",
+      "center": [
+        -0.63,
+        0.05,
+        -4.85
+      ],
+      "size": [
+        1.9,
+        0.1,
+        0.22
+      ],
+      "motion": "fixed",
+      "id": "rail-sleeper-4",
+      "control": false
+    },
+    {
+      "name": "rail-sleeper",
+      "block": "minecraft:dark_oak_planks",
+      "center": [
+        -0.63,
+        0.05,
+        -3.5999999999999996
+      ],
+      "size": [
+        1.9,
+        0.1,
+        0.22
+      ],
+      "motion": "fixed",
+      "id": "rail-sleeper-5",
+      "control": false
+    },
+    {
+      "name": "rail-sleeper",
+      "block": "minecraft:dark_oak_planks",
+      "center": [
+        -0.63,
+        0.05,
+        -2.3499999999999996
+      ],
+      "size": [
+        1.9,
+        0.1,
+        0.22
+      ],
+      "motion": "fixed",
+      "id": "rail-sleeper-6",
+      "control": false
+    },
+    {
+      "name": "rail-sleeper",
+      "block": "minecraft:dark_oak_planks",
+      "center": [
+        -0.63,
+        0.05,
+        -1.0999999999999996
+      ],
+      "size": [
+        1.9,
+        0.1,
+        0.22
+      ],
+      "motion": "fixed",
+      "id": "rail-sleeper-7",
+      "control": false
+    },
+    {
+      "name": "rail-sleeper",
+      "block": "minecraft:dark_oak_planks",
+      "center": [
+        -0.63,
+        0.05,
+        0.15000000000000036
+      ],
+      "size": [
+        1.9,
+        0.1,
+        0.22
+      ],
+      "motion": "fixed",
+      "id": "rail-sleeper-8",
+      "control": false
+    },
+    {
+      "name": "rail-sleeper",
+      "block": "minecraft:dark_oak_planks",
+      "center": [
+        -0.63,
+        0.05,
+        1.4000000000000004
+      ],
+      "size": [
+        1.9,
+        0.1,
+        0.22
+      ],
+      "motion": "fixed",
+      "id": "rail-sleeper-9",
+      "control": false
+    },
+    {
+      "name": "rail-sleeper",
+      "block": "minecraft:dark_oak_planks",
+      "center": [
+        -0.63,
+        0.05,
+        2.6500000000000004
+      ],
+      "size": [
+        1.9,
+        0.1,
+        0.22
+      ],
+      "motion": "fixed",
+      "id": "rail-sleeper-10",
+      "control": false
+    },
+    {
+      "name": "rail-sleeper",
+      "block": "minecraft:dark_oak_planks",
+      "center": [
+        -0.63,
+        0.05,
+        3.9000000000000004
+      ],
+      "size": [
+        1.9,
+        0.1,
+        0.22
+      ],
+      "motion": "fixed",
+      "id": "rail-sleeper-11",
+      "control": false
+    },
+    {
+      "name": "rail-sleeper",
+      "block": "minecraft:dark_oak_planks",
+      "center": [
+        -0.63,
+        0.05,
+        5.15
+      ],
+      "size": [
+        1.9,
+        0.1,
+        0.22
+      ],
+      "motion": "fixed",
+      "id": "rail-sleeper-12",
+      "control": false
+    },
+    {
+      "name": "carriage-side",
+      "block": "minecraft:gray_concrete",
+      "center": [
+        -1.12,
+        0.48,
+        0
+      ],
+      "size": [
+        0.18,
+        0.28,
+        3.18
+      ],
+      "motion": "carriage",
+      "id": "carriage-side-1",
+      "control": false
+    },
+    {
+      "name": "carriage-side",
+      "block": "minecraft:gray_concrete",
+      "center": [
+        -0.13,
+        0.48,
+        0
+      ],
+      "size": [
+        0.18,
+        0.28,
+        3.18
+      ],
+      "motion": "carriage",
+      "id": "carriage-side-2",
+      "control": false
+    },
+    {
+      "name": "carriage-axle",
+      "block": "minecraft:polished_deepslate",
+      "center": [
+        -0.63,
+        0.29,
+        -1.3
+      ],
+      "size": [
+        1.27,
+        0.13,
+        0.13
+      ],
+      "motion": "carriage",
+      "id": "carriage-axle-1",
+      "control": false
+    },
+    {
+      "name": "carriage-wheel",
+      "block": "minecraft:polished_deepslate",
+      "center": [
+        -1.15,
+        0.29,
+        -1.3
+      ],
+      "size": [
+        0.16,
+        0.31,
+        0.31
+      ],
+      "motion": "carriage-wheel",
+      "id": "carriage-wheel-1",
+      "control": false
+    },
+    {
+      "name": "wheel-pin",
+      "block": "minecraft:waxed_exposed_copper",
+      "center": [
+        -1.0499999999999998,
+        0.29,
+        -1.3
+      ],
+      "size": [
+        0.055,
+        0.105,
+        0.105
+      ],
+      "motion": "carriage",
+      "id": "wheel-pin-1",
+      "control": false
+    },
+    {
+      "name": "carriage-wheel",
+      "block": "minecraft:polished_deepslate",
+      "center": [
+        -0.13,
+        0.29,
+        -1.3
+      ],
+      "size": [
+        0.16,
+        0.31,
+        0.31
+      ],
+      "motion": "carriage-wheel",
+      "id": "carriage-wheel-2",
+      "control": false
+    },
+    {
+      "name": "wheel-pin",
+      "block": "minecraft:waxed_exposed_copper",
+      "center": [
+        -0.03,
+        0.29,
+        -1.3
+      ],
+      "size": [
+        0.055,
+        0.105,
+        0.105
+      ],
+      "motion": "carriage",
+      "id": "wheel-pin-2",
+      "control": false
+    },
+    {
+      "name": "headblock-base",
+      "block": "minecraft:polished_deepslate",
+      "center": [
+        -0.62,
+        0.855,
+        -1.3
+      ],
+      "size": [
+        1.32,
+        0.39,
+        0.4
+      ],
+      "motion": "carriage",
+      "id": "headblock-base-1",
+      "control": false
+    },
+    {
+      "name": "timber-bolster",
+      "block": "minecraft:stripped_dark_oak_log[axis=x]",
+      "center": [
+        -0.225,
+        1.16,
+        -1.3
+      ],
+      "size": [
+        0.92,
+        0.22,
+        0.36
+      ],
+      "motion": "headblock",
+      "id": "timber-bolster-1",
+      "control": false
+    },
+    {
+      "name": "log-dog",
+      "block": "minecraft:gray_concrete",
+      "center": [
+        -0.65,
+        1.35,
+        -1.3
+      ],
+      "size": [
+        0.17,
+        0.64,
+        0.18
+      ],
+      "motion": "headblock",
+      "id": "log-dog-1",
+      "control": false
+    },
+    {
+      "name": "dog-tooth",
+      "block": "minecraft:smooth_stone",
+      "center": [
+        -0.54,
+        1.55,
+        -1.3
+      ],
+      "size": [
+        0.16,
+        0.06,
+        0.12
+      ],
+      "motion": "headblock",
+      "id": "dog-tooth-1",
+      "control": false
+    },
+    {
+      "name": "carriage-axle",
+      "block": "minecraft:polished_deepslate",
+      "center": [
+        -0.63,
+        0.29,
+        1.3
+      ],
+      "size": [
+        1.27,
+        0.13,
+        0.13
+      ],
+      "motion": "carriage",
+      "id": "carriage-axle-2",
+      "control": false
+    },
+    {
+      "name": "carriage-wheel",
+      "block": "minecraft:polished_deepslate",
+      "center": [
+        -1.15,
+        0.29,
+        1.3
+      ],
+      "size": [
+        0.16,
+        0.31,
+        0.31
+      ],
+      "motion": "carriage-wheel",
+      "id": "carriage-wheel-3",
+      "control": false
+    },
+    {
+      "name": "wheel-pin",
+      "block": "minecraft:waxed_exposed_copper",
+      "center": [
+        -1.0499999999999998,
+        0.29,
+        1.3
+      ],
+      "size": [
+        0.055,
+        0.105,
+        0.105
+      ],
+      "motion": "carriage",
+      "id": "wheel-pin-3",
+      "control": false
+    },
+    {
+      "name": "carriage-wheel",
+      "block": "minecraft:polished_deepslate",
+      "center": [
+        -0.13,
+        0.29,
+        1.3
+      ],
+      "size": [
+        0.16,
+        0.31,
+        0.31
+      ],
+      "motion": "carriage-wheel",
+      "id": "carriage-wheel-4",
+      "control": false
+    },
+    {
+      "name": "wheel-pin",
+      "block": "minecraft:waxed_exposed_copper",
+      "center": [
+        -0.03,
+        0.29,
+        1.3
+      ],
+      "size": [
+        0.055,
+        0.105,
+        0.105
+      ],
+      "motion": "carriage",
+      "id": "wheel-pin-4",
+      "control": false
+    },
+    {
+      "name": "headblock-base",
+      "block": "minecraft:polished_deepslate",
+      "center": [
+        -0.62,
+        0.855,
+        1.3
+      ],
+      "size": [
+        1.32,
+        0.39,
+        0.4
+      ],
+      "motion": "carriage",
+      "id": "headblock-base-2",
+      "control": false
+    },
+    {
+      "name": "timber-bolster",
+      "block": "minecraft:stripped_dark_oak_log[axis=x]",
+      "center": [
+        -0.225,
+        1.16,
+        1.3
+      ],
+      "size": [
+        0.92,
+        0.22,
+        0.36
+      ],
+      "motion": "headblock",
+      "id": "timber-bolster-2",
+      "control": false
+    },
+    {
+      "name": "log-dog",
+      "block": "minecraft:gray_concrete",
+      "center": [
+        -0.65,
+        1.35,
+        1.3
+      ],
+      "size": [
+        0.17,
+        0.64,
+        0.18
+      ],
+      "motion": "headblock",
+      "id": "log-dog-2",
+      "control": false
+    },
+    {
+      "name": "dog-tooth",
+      "block": "minecraft:smooth_stone",
+      "center": [
+        -0.54,
+        1.55,
+        1.3
+      ],
+      "size": [
+        0.16,
+        0.06,
+        0.12
+      ],
+      "motion": "headblock",
+      "id": "dog-tooth-2",
+      "control": false
+    },
+    {
+      "name": "outfeed-beam",
+      "block": "minecraft:stripped_spruce_log[axis=z]",
+      "center": [
+        0.54,
+        1.07,
+        4.1
+      ],
+      "size": [
+        0.22,
+        0.3,
+        5.4
+      ],
+      "motion": "fixed",
+      "id": "outfeed-beam-1",
+      "control": false
+    },
+    {
+      "name": "outfeed-leg",
+      "block": "minecraft:gray_concrete",
+      "center": [
+        0.54,
+        0.51,
+        1.7
+      ],
+      "size": [
+        0.18,
+        1.02,
+        0.27
+      ],
+      "motion": "fixed",
+      "id": "outfeed-leg-1",
+      "control": false
+    },
+    {
+      "name": "outfeed-leg",
+      "block": "minecraft:gray_concrete",
+      "center": [
+        0.54,
+        0.51,
+        4
+      ],
+      "size": [
+        0.18,
+        1.02,
+        0.27
+      ],
+      "motion": "fixed",
+      "id": "outfeed-leg-2",
+      "control": false
+    },
+    {
+      "name": "outfeed-leg",
+      "block": "minecraft:gray_concrete",
+      "center": [
+        0.54,
+        0.51,
+        6.5
+      ],
+      "size": [
+        0.18,
+        1.02,
+        0.27
+      ],
+      "motion": "fixed",
+      "id": "outfeed-leg-3",
+      "control": false
+    },
+    {
+      "name": "outfeed-beam",
+      "block": "minecraft:stripped_spruce_log[axis=z]",
+      "center": [
+        1.75,
+        1.07,
+        4.1
+      ],
+      "size": [
+        0.22,
+        0.3,
+        5.4
+      ],
+      "motion": "fixed",
+      "id": "outfeed-beam-2",
+      "control": false
+    },
+    {
+      "name": "outfeed-leg",
+      "block": "minecraft:gray_concrete",
+      "center": [
+        1.75,
+        0.51,
+        1.7
+      ],
+      "size": [
+        0.18,
+        1.02,
+        0.27
+      ],
+      "motion": "fixed",
+      "id": "outfeed-leg-4",
+      "control": false
+    },
+    {
+      "name": "outfeed-leg",
+      "block": "minecraft:gray_concrete",
+      "center": [
+        1.75,
+        0.51,
+        4
+      ],
+      "size": [
+        0.18,
+        1.02,
+        0.27
+      ],
+      "motion": "fixed",
+      "id": "outfeed-leg-5",
+      "control": false
+    },
+    {
+      "name": "outfeed-leg",
+      "block": "minecraft:gray_concrete",
+      "center": [
+        1.75,
+        0.51,
+        6.5
+      ],
+      "size": [
+        0.18,
+        1.02,
+        0.27
+      ],
+      "motion": "fixed",
+      "id": "outfeed-leg-6",
+      "control": false
+    },
+    {
+      "name": "outfeed-top",
+      "block": "minecraft:spruce_planks",
+      "center": [
+        1.13,
+        1.23,
+        1.6
+      ],
+      "size": [
+        1.44,
+        0.08,
+        0.43
+      ],
+      "motion": "fixed",
+      "id": "outfeed-top-1",
+      "control": false
+    },
+    {
+      "name": "outfeed-top",
+      "block": "minecraft:spruce_planks",
+      "center": [
+        1.13,
+        1.23,
+        2.1
+      ],
+      "size": [
+        1.44,
+        0.08,
+        0.43
+      ],
+      "motion": "fixed",
+      "id": "outfeed-top-2",
+      "control": false
+    },
+    {
+      "name": "outfeed-top",
+      "block": "minecraft:spruce_planks",
+      "center": [
+        1.13,
+        1.23,
+        2.6
+      ],
+      "size": [
+        1.44,
+        0.08,
+        0.43
+      ],
+      "motion": "fixed",
+      "id": "outfeed-top-3",
+      "control": false
+    },
+    {
+      "name": "outfeed-top",
+      "block": "minecraft:spruce_planks",
+      "center": [
+        1.13,
+        1.23,
+        3.1
+      ],
+      "size": [
+        1.44,
+        0.08,
+        0.43
+      ],
+      "motion": "fixed",
+      "id": "outfeed-top-4",
+      "control": false
+    },
+    {
+      "name": "outfeed-top",
+      "block": "minecraft:spruce_planks",
+      "center": [
+        1.13,
+        1.23,
+        3.6
+      ],
+      "size": [
+        1.44,
+        0.08,
+        0.43
+      ],
+      "motion": "fixed",
+      "id": "outfeed-top-5",
+      "control": false
+    },
+    {
+      "name": "outfeed-top",
+      "block": "minecraft:spruce_planks",
+      "center": [
+        1.13,
+        1.23,
+        4.1
+      ],
+      "size": [
+        1.44,
+        0.08,
+        0.43
+      ],
+      "motion": "fixed",
+      "id": "outfeed-top-6",
+      "control": false
+    },
+    {
+      "name": "outfeed-top",
+      "block": "minecraft:spruce_planks",
+      "center": [
+        1.13,
+        1.23,
+        4.6
+      ],
+      "size": [
+        1.44,
+        0.08,
+        0.43
+      ],
+      "motion": "fixed",
+      "id": "outfeed-top-7",
+      "control": false
+    },
+    {
+      "name": "outfeed-top",
+      "block": "minecraft:spruce_planks",
+      "center": [
+        1.13,
+        1.23,
+        5.1
+      ],
+      "size": [
+        1.44,
+        0.08,
+        0.43
+      ],
+      "motion": "fixed",
+      "id": "outfeed-top-8",
+      "control": false
+    },
+    {
+      "name": "outfeed-top",
+      "block": "minecraft:spruce_planks",
+      "center": [
+        1.13,
+        1.23,
+        5.6
+      ],
+      "size": [
+        1.44,
+        0.08,
+        0.43
+      ],
+      "motion": "fixed",
+      "id": "outfeed-top-9",
+      "control": false
+    },
+    {
+      "name": "outfeed-top",
+      "block": "minecraft:spruce_planks",
+      "center": [
+        1.13,
+        1.23,
+        6.1
+      ],
+      "size": [
+        1.44,
+        0.08,
+        0.43
+      ],
+      "motion": "fixed",
+      "id": "outfeed-top-10",
+      "control": false
+    },
+    {
+      "name": "outfeed-top",
+      "block": "minecraft:spruce_planks",
+      "center": [
+        1.13,
+        1.23,
+        6.6
+      ],
+      "size": [
+        1.44,
+        0.08,
+        0.43
+      ],
+      "motion": "fixed",
+      "id": "outfeed-top-11",
+      "control": false
+    },
+    {
+      "name": "outfeed-end-stop",
+      "block": "minecraft:polished_deepslate",
+      "center": [
+        1.13,
+        1.34,
+        6.85
+      ],
+      "size": [
+        1.46,
+        0.22,
+        0.1
+      ],
+      "motion": "fixed",
+      "id": "outfeed-end-stop-1",
+      "control": false
+    },
+    {
+      "name": "control-plinth",
+      "block": "minecraft:gray_concrete",
+      "center": [
+        2.45,
+        0.54,
+        1.08
+      ],
+      "size": [
+        0.44,
+        1.08,
+        0.46
+      ],
+      "motion": "fixed",
+      "id": "control-plinth-1",
+      "control": false
+    },
+    {
+      "name": "control-cap",
+      "block": "minecraft:waxed_exposed_copper",
+      "center": [
+        2.45,
+        1.12,
+        1.08
+      ],
+      "size": [
+        0.48,
+        0.1,
+        0.5
+      ],
+      "motion": "fixed",
+      "id": "control-cap-1",
+      "control": false
+    },
+    {
+      "name": "control-lever",
+      "block": "minecraft:polished_deepslate",
+      "center": [
+        2.45,
+        1.42,
+        1.08
+      ],
+      "size": [
+        0.085,
+        0.54,
+        0.085
+      ],
+      "motion": "lever",
+      "pivot": [
+        2.45,
+        1.15,
+        1.08
+      ],
+      "id": "control-lever-1",
+      "control": true
+    },
+    {
+      "name": "lever-handle",
+      "block": "minecraft:dark_oak_log[axis=x]",
+      "center": [
+        2.45,
+        1.69,
+        1.08
+      ],
+      "size": [
+        0.28,
+        0.1,
+        0.12
+      ],
+      "motion": "lever",
+      "pivot": [
+        2.45,
+        1.15,
+        1.08
+      ],
+      "id": "lever-handle-1",
+      "control": true
+    },
+    {
+      "id": "timber-0-raw",
+      "name": "timber-raw",
+      "itemModel": "arc_farms:cedar_sawmill_raw",
+      "center": [
+        0,
+        1.63,
+        0
+      ],
+      "size": [
+        1,
+        1,
+        0.88
+      ],
+      "motion": "timber-raw",
+      "section": 0
+    },
+    {
+      "id": "timber-0-sawn",
+      "name": "timber-sawn",
+      "itemModel": "arc_farms:cedar_sawmill_sawn",
+      "center": [
+        0,
+        1.63,
+        0
+      ],
+      "size": [
+        1,
+        1,
+        0.88
+      ],
+      "motion": "timber-sawn",
+      "section": 0
+    },
+    {
+      "id": "timber-0-slab",
+      "name": "timber-slab",
+      "itemModel": "arc_farms:cedar_sawmill_slab",
+      "center": [
+        0,
+        1.63,
+        0
+      ],
+      "size": [
+        1,
+        1,
+        0.88
+      ],
+      "motion": "timber-slab",
+      "section": 0
+    },
+    {
+      "id": "timber-1-raw",
+      "name": "timber-raw",
+      "itemModel": "arc_farms:cedar_sawmill_raw",
+      "center": [
+        0,
+        1.63,
+        0
+      ],
+      "size": [
+        1,
+        1,
+        0.88
+      ],
+      "motion": "timber-raw",
+      "section": 1
+    },
+    {
+      "id": "timber-1-sawn",
+      "name": "timber-sawn",
+      "itemModel": "arc_farms:cedar_sawmill_sawn",
+      "center": [
+        0,
+        1.63,
+        0
+      ],
+      "size": [
+        1,
+        1,
+        0.88
+      ],
+      "motion": "timber-sawn",
+      "section": 1
+    },
+    {
+      "id": "timber-1-slab",
+      "name": "timber-slab",
+      "itemModel": "arc_farms:cedar_sawmill_slab",
+      "center": [
+        0,
+        1.63,
+        0
+      ],
+      "size": [
+        1,
+        1,
+        0.88
+      ],
+      "motion": "timber-slab",
+      "section": 1
+    },
+    {
+      "id": "timber-2-raw",
+      "name": "timber-raw",
+      "itemModel": "arc_farms:cedar_sawmill_raw",
+      "center": [
+        0,
+        1.63,
+        0
+      ],
+      "size": [
+        1,
+        1,
+        0.88
+      ],
+      "motion": "timber-raw",
+      "section": 2
+    },
+    {
+      "id": "timber-2-sawn",
+      "name": "timber-sawn",
+      "itemModel": "arc_farms:cedar_sawmill_sawn",
+      "center": [
+        0,
+        1.63,
+        0
+      ],
+      "size": [
+        1,
+        1,
+        0.88
+      ],
+      "motion": "timber-sawn",
+      "section": 2
+    },
+    {
+      "id": "timber-2-slab",
+      "name": "timber-slab",
+      "itemModel": "arc_farms:cedar_sawmill_slab",
+      "center": [
+        0,
+        1.63,
+        0
+      ],
+      "size": [
+        1,
+        1,
+        0.88
+      ],
+      "motion": "timber-slab",
+      "section": 2
+    },
+    {
+      "id": "timber-3-raw",
+      "name": "timber-raw",
+      "itemModel": "arc_farms:cedar_sawmill_raw",
+      "center": [
+        0,
+        1.63,
+        0
+      ],
+      "size": [
+        1,
+        1,
+        0.88
+      ],
+      "motion": "timber-raw",
+      "section": 3
+    },
+    {
+      "id": "timber-3-sawn",
+      "name": "timber-sawn",
+      "itemModel": "arc_farms:cedar_sawmill_sawn",
+      "center": [
+        0,
+        1.63,
+        0
+      ],
+      "size": [
+        1,
+        1,
+        0.88
+      ],
+      "motion": "timber-sawn",
+      "section": 3
+    },
+    {
+      "id": "timber-3-slab",
+      "name": "timber-slab",
+      "itemModel": "arc_farms:cedar_sawmill_slab",
+      "center": [
+        0,
+        1.63,
+        0
+      ],
+      "size": [
+        1,
+        1,
+        0.88
+      ],
+      "motion": "timber-slab",
+      "section": 3
+    },
+    {
+      "id": "timber-4-raw",
+      "name": "timber-raw",
+      "itemModel": "arc_farms:cedar_sawmill_raw",
+      "center": [
+        0,
+        1.63,
+        0
+      ],
+      "size": [
+        1,
+        1,
+        0.88
+      ],
+      "motion": "timber-raw",
+      "section": 4
+    },
+    {
+      "id": "timber-4-sawn",
+      "name": "timber-sawn",
+      "itemModel": "arc_farms:cedar_sawmill_sawn",
+      "center": [
+        0,
+        1.63,
+        0
+      ],
+      "size": [
+        1,
+        1,
+        0.88
+      ],
+      "motion": "timber-sawn",
+      "section": 4
+    },
+    {
+      "id": "timber-4-slab",
+      "name": "timber-slab",
+      "itemModel": "arc_farms:cedar_sawmill_slab",
+      "center": [
+        0,
+        1.63,
+        0
+      ],
+      "size": [
+        1,
+        1,
+        0.88
+      ],
+      "motion": "timber-slab",
+      "section": 4
+    },
+    {
+      "id": "sawdust-0",
+      "name": "sawdust",
+      "block": "minecraft:spruce_planks",
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "size": [
+        0.03,
+        0.015,
+        0.045
+      ],
+      "motion": "sawdust",
+      "section": 0
+    },
+    {
+      "id": "sawdust-1",
+      "name": "sawdust",
+      "block": "minecraft:spruce_planks",
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "size": [
+        0.03,
+        0.015,
+        0.045
+      ],
+      "motion": "sawdust",
+      "section": 1
+    },
+    {
+      "id": "sawdust-2",
+      "name": "sawdust",
+      "block": "minecraft:spruce_planks",
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "size": [
+        0.03,
+        0.015,
+        0.045
+      ],
+      "motion": "sawdust",
+      "section": 2
+    },
+    {
+      "id": "sawdust-3",
+      "name": "sawdust",
+      "block": "minecraft:spruce_planks",
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "size": [
+        0.03,
+        0.015,
+        0.045
+      ],
+      "motion": "sawdust",
+      "section": 3
+    },
+    {
+      "id": "sawdust-4",
+      "name": "sawdust",
+      "block": "minecraft:spruce_planks",
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "size": [
+        0.03,
+        0.015,
+        0.045
+      ],
+      "motion": "sawdust",
+      "section": 4
+    },
+    {
+      "id": "sawdust-5",
+      "name": "sawdust",
+      "block": "minecraft:spruce_planks",
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "size": [
+        0.03,
+        0.015,
+        0.045
+      ],
+      "motion": "sawdust",
+      "section": 5
+    },
+    {
+      "id": "sawdust-6",
+      "name": "sawdust",
+      "block": "minecraft:spruce_planks",
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "size": [
+        0.03,
+        0.015,
+        0.045
+      ],
+      "motion": "sawdust",
+      "section": 6
+    },
+    {
+      "id": "sawdust-7",
+      "name": "sawdust",
+      "block": "minecraft:spruce_planks",
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "size": [
+        0.03,
+        0.015,
+        0.045
+      ],
+      "motion": "sawdust",
+      "section": 7
+    },
+    {
+      "id": "sawdust-8",
+      "name": "sawdust",
+      "block": "minecraft:spruce_planks",
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "size": [
+        0.03,
+        0.015,
+        0.045
+      ],
+      "motion": "sawdust",
+      "section": 8
+    },
+    {
+      "id": "sawdust-9",
+      "name": "sawdust",
+      "block": "minecraft:spruce_planks",
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "size": [
+        0.03,
+        0.015,
+        0.045
+      ],
+      "motion": "sawdust",
+      "section": 9
+    },
+    {
+      "id": "sawdust-10",
+      "name": "sawdust",
+      "block": "minecraft:spruce_planks",
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "size": [
+        0.03,
+        0.015,
+        0.045
+      ],
+      "motion": "sawdust",
+      "section": 10
+    },
+    {
+      "id": "sawdust-11",
+      "name": "sawdust",
+      "block": "minecraft:spruce_planks",
+      "center": [
+        0,
+        0,
+        0
+      ],
+      "size": [
+        0.03,
+        0.015,
+        0.045
+      ],
+      "motion": "sawdust",
+      "section": 11
+    },
+    {
+      "id": "blade-rotor",
+      "name": "blade-rotor",
+      "itemModel": "arc_farms:cedar_sawmill_blade",
+      "center": [
+        0.27,
+        1.18,
+        0
+      ],
+      "size": [
+        1,
+        1,
+        1
+      ],
+      "motion": "blade",
+      "pivot": [
+        0.27,
+        1.18,
+        0
+      ]
+    },
+    {
+      "id": "pulley-upper",
+      "name": "pulley-rotor",
+      "itemModel": "arc_farms:cedar_sawmill_pulley",
+      "center": [
+        1.89,
+        1.18,
+        0
+      ],
+      "size": [
+        1,
+        1,
+        1
+      ],
+      "motion": "pulley",
+      "pivot": [
+        1.89,
+        1.18,
+        0
+      ],
+      "ratio": 1
+    },
+    {
+      "id": "pulley-lower",
+      "name": "pulley-rotor",
+      "itemModel": "arc_farms:cedar_sawmill_pulley",
+      "center": [
+        1.89,
+        0.48,
+        -1.84
+      ],
+      "size": [
+        1,
+        0.6666666666666666,
+        0.6666666666666666
+      ],
+      "motion": "pulley",
+      "pivot": [
+        1.89,
+        0.48,
+        -1.84
+      ],
+      "ratio": 1.5
+    }
+  ],
+  "rotorBlueprints": {
+    "blade": [
+      {
+        "name": "blade-disc",
+        "block": "minecraft:light_gray_concrete",
+        "center": [
+          0.27,
+          0.1653658536585365,
+          0
+        ],
+        "size": [
+          0.045,
+          0.050731707317073216,
+          0.45658536585365933
+        ],
+        "motion": "blade",
+        "pivot": [
+          0.27,
+          1.18,
+          0
+        ],
+        "id": "blade-disc-1",
+        "control": false
+      },
+      {
+        "name": "blade-disc",
+        "block": "minecraft:light_gray_concrete",
+        "center": [
+          0.27,
+          0.21609756097560973,
+          0
+        ],
+        "size": [
+          0.045,
+          0.050731707317073216,
+          0.7810047068816727
+        ],
+        "motion": "blade",
+        "pivot": [
+          0.27,
+          1.18,
+          0
+        ],
+        "id": "blade-disc-2",
+        "control": false
+      },
+      {
+        "name": "blade-disc",
+        "block": "minecraft:light_gray_concrete",
+        "center": [
+          0.27,
+          0.26682926829268283,
+          0
+        ],
+        "size": [
+          0.045,
+          0.050731707317073216,
+          0.9954279778128063
+        ],
+        "motion": "blade",
+        "pivot": [
+          0.27,
+          1.18,
+          0
+        ],
+        "id": "blade-disc-3",
+        "control": false
+      },
+      {
+        "name": "blade-disc",
+        "block": "minecraft:light_gray_concrete",
+        "center": [
+          0.27,
+          0.31756097560975605,
+          0
+        ],
+        "size": [
+          0.045,
+          0.050731707317073216,
+          1.1624094445741644
+        ],
+        "motion": "blade",
+        "pivot": [
+          0.27,
+          1.18,
+          0
+        ],
+        "id": "blade-disc-4",
+        "control": false
+      },
+      {
+        "name": "blade-disc",
+        "block": "minecraft:light_gray_concrete",
+        "center": [
+          0.27,
+          0.36829268292682915,
+          0
+        ],
+        "size": [
+          0.045,
+          0.050731707317073216,
+          1.300355691970278
+        ],
+        "motion": "blade",
+        "pivot": [
+          0.27,
+          1.18,
+          0
+        ],
+        "id": "blade-disc-5",
+        "control": false
+      },
+      {
+        "name": "blade-disc",
+        "block": "minecraft:light_gray_concrete",
+        "center": [
+          0.27,
+          0.41902439024390237,
+          0
+        ],
+        "size": [
+          0.045,
+          0.050731707317073216,
+          1.4177674299494054
+        ],
+        "motion": "blade",
+        "pivot": [
+          0.27,
+          1.18,
+          0
+        ],
+        "id": "blade-disc-6",
+        "control": false
+      },
+      {
+        "name": "blade-disc",
+        "block": "minecraft:light_gray_concrete",
+        "center": [
+          0.27,
+          0.4697560975609756,
+          0
+        ],
+        "size": [
+          0.045,
+          0.050731707317073216,
+          1.5194125167948114
+        ],
+        "motion": "blade",
+        "pivot": [
+          0.27,
+          1.18,
+          0
+        ],
+        "id": "blade-disc-7",
+        "control": false
+      },
+      {
+        "name": "blade-disc",
+        "block": "minecraft:light_gray_concrete",
+        "center": [
+          0.27,
+          0.5204878048780488,
+          0
+        ],
+        "size": [
+          0.045,
+          0.050731707317073216,
+          1.6082831398549517
+        ],
+        "motion": "blade",
+        "pivot": [
+          0.27,
+          1.18,
+          0
+        ],
+        "id": "blade-disc-8",
+        "control": false
+      },
+      {
+        "name": "blade-disc",
+        "block": "minecraft:light_gray_concrete",
+        "center": [
+          0.27,
+          0.5712195121951219,
+          0
+        ],
+        "size": [
+          0.045,
+          0.050731707317073216,
+          1.6864000921110682
+        ],
+        "motion": "blade",
+        "pivot": [
+          0.27,
+          1.18,
+          0
+        ],
+        "id": "blade-disc-9",
+        "control": false
+      },
+      {
+        "name": "blade-disc",
+        "block": "minecraft:light_gray_concrete",
+        "center": [
+          0.27,
+          0.621951219512195,
+          0
+        ],
+        "size": [
+          0.045,
+          0.050731707317073216,
+          1.7551997705059943
+        ],
+        "motion": "blade",
+        "pivot": [
+          0.27,
+          1.18,
+          0
+        ],
+        "id": "blade-disc-10",
+        "control": false
+      },
+      {
+        "name": "blade-disc",
+        "block": "minecraft:light_gray_concrete",
+        "center": [
+          0.27,
+          0.6726829268292682,
+          0
+        ],
+        "size": [
+          0.045,
+          0.05073170731707316,
+          1.8157415975512403
+        ],
+        "motion": "blade",
+        "pivot": [
+          0.27,
+          1.18,
+          0
+        ],
+        "id": "blade-disc-11",
+        "control": false
+      },
+      {
+        "name": "blade-disc",
+        "block": "minecraft:light_gray_concrete",
+        "center": [
+          0.27,
+          0.7234146341463414,
+          0
+        ],
+        "size": [
+          0.045,
+          0.05073170731707316,
+          1.8688282999658166
+        ],
+        "motion": "blade",
+        "pivot": [
+          0.27,
+          1.18,
+          0
+        ],
+        "id": "blade-disc-12",
+        "control": false
+      },
+      {
+        "name": "blade-disc",
+        "block": "minecraft:light_gray_concrete",
+        "center": [
+          0.27,
+          0.7741463414634145,
+          0
+        ],
+        "size": [
+          0.045,
+          0.05073170731707316,
+          1.9150799543125805
+        ],
+        "motion": "blade",
+        "pivot": [
+          0.27,
+          1.18,
+          0
+        ],
+        "id": "blade-disc-13",
+        "control": false
+      },
+      {
+        "name": "blade-disc",
+        "block": "minecraft:light_gray_concrete",
+        "center": [
+          0.27,
+          0.8248780487804878,
+          0
+        ],
+        "size": [
+          0.045,
+          0.05073170731707316,
+          1.9549817388017172
+        ],
+        "motion": "blade",
+        "pivot": [
+          0.27,
+          1.18,
+          0
+        ],
+        "id": "blade-disc-14",
+        "control": false
+      },
+      {
+        "name": "blade-disc",
+        "block": "minecraft:light_gray_concrete",
+        "center": [
+          0.27,
+          0.875609756097561,
+          0
+        ],
+        "size": [
+          0.045,
+          0.05073170731707316,
+          1.9889158649043088
+        ],
+        "motion": "blade",
+        "pivot": [
+          0.27,
+          1.18,
+          0
+        ],
+        "id": "blade-disc-15",
+        "control": false
+      },
+      {
+        "name": "blade-disc",
+        "block": "minecraft:light_gray_concrete",
+        "center": [
+          0.27,
+          0.9263414634146342,
+          0
+        ],
+        "size": [
+          0.045,
+          0.05073170731707316,
+          2.017183528405257
+        ],
+        "motion": "blade",
+        "pivot": [
+          0.27,
+          1.18,
+          0
+        ],
+        "id": "blade-disc-16",
+        "control": false
+      },
+      {
+        "name": "blade-disc",
+        "block": "minecraft:light_gray_concrete",
+        "center": [
+          0.27,
+          0.9770731707317073,
+          0
+        ],
+        "size": [
+          0.045,
+          0.05073170731707316,
+          2.04002029594131
+        ],
+        "motion": "blade",
+        "pivot": [
+          0.27,
+          1.18,
+          0
+        ],
+        "id": "blade-disc-17",
+        "control": false
+      },
+      {
+        "name": "blade-disc",
+        "block": "minecraft:light_gray_concrete",
+        "center": [
+          0.27,
+          1.0278048780487803,
+          0
+        ],
+        "size": [
+          0.045,
+          0.05073170731707316,
+          2.057607003151237
+        ],
+        "motion": "blade",
+        "pivot": [
+          0.27,
+          1.18,
+          0
+        ],
+        "id": "blade-disc-18",
+        "control": false
+      },
+      {
+        "name": "blade-disc",
+        "block": "minecraft:light_gray_concrete",
+        "center": [
+          0.27,
+          1.0785365853658535,
+          0
+        ],
+        "size": [
+          0.045,
+          0.050731707317073174,
+          2.0700774627929066
+        ],
+        "motion": "blade",
+        "pivot": [
+          0.27,
+          1.18,
+          0
+        ],
+        "id": "blade-disc-19",
+        "control": false
+      },
+      {
+        "name": "blade-disc",
+        "block": "minecraft:light_gray_concrete",
+        "center": [
+          0.27,
+          1.1292682926829267,
+          0
+        ],
+        "size": [
+          0.045,
+          0.050731707317073174,
+          2.0775238086459513
+        ],
+        "motion": "blade",
+        "pivot": [
+          0.27,
+          1.18,
+          0
+        ],
+        "id": "blade-disc-20",
+        "control": false
+      },
+      {
+        "name": "blade-disc",
+        "block": "minecraft:light_gray_concrete",
+        "center": [
+          0.27,
+          1.18,
+          0
+        ],
+        "size": [
+          0.045,
+          0.050731707317073174,
+          2.08
+        ],
+        "motion": "blade",
+        "pivot": [
+          0.27,
+          1.18,
+          0
+        ],
+        "id": "blade-disc-21",
+        "control": false
+      },
+      {
+        "name": "blade-disc",
+        "block": "minecraft:light_gray_concrete",
+        "center": [
+          0.27,
+          1.2307317073170732,
+          0
+        ],
+        "size": [
+          0.045,
+          0.050731707317073174,
+          2.0775238086459513
+        ],
+        "motion": "blade",
+        "pivot": [
+          0.27,
+          1.18,
+          0
+        ],
+        "id": "blade-disc-22",
+        "control": false
+      },
+      {
+        "name": "blade-disc",
+        "block": "minecraft:light_gray_concrete",
+        "center": [
+          0.27,
+          1.2814634146341464,
+          0
+        ],
+        "size": [
+          0.045,
+          0.05073170731707316,
+          2.0700774627929066
+        ],
+        "motion": "blade",
+        "pivot": [
+          0.27,
+          1.18,
+          0
+        ],
+        "id": "blade-disc-23",
+        "control": false
+      },
+      {
+        "name": "blade-disc",
+        "block": "minecraft:light_gray_concrete",
+        "center": [
+          0.27,
+          1.3321951219512196,
+          0
+        ],
+        "size": [
+          0.045,
+          0.05073170731707316,
+          2.057607003151237
+        ],
+        "motion": "blade",
+        "pivot": [
+          0.27,
+          1.18,
+          0
+        ],
+        "id": "blade-disc-24",
+        "control": false
+      },
+      {
+        "name": "blade-disc",
+        "block": "minecraft:light_gray_concrete",
+        "center": [
+          0.27,
+          1.3829268292682926,
+          0
+        ],
+        "size": [
+          0.045,
+          0.05073170731707316,
+          2.04002029594131
+        ],
+        "motion": "blade",
+        "pivot": [
+          0.27,
+          1.18,
+          0
+        ],
+        "id": "blade-disc-25",
+        "control": false
+      },
+      {
+        "name": "blade-disc",
+        "block": "minecraft:light_gray_concrete",
+        "center": [
+          0.27,
+          1.4336585365853658,
+          0
+        ],
+        "size": [
+          0.045,
+          0.05073170731707316,
+          2.017183528405257
+        ],
+        "motion": "blade",
+        "pivot": [
+          0.27,
+          1.18,
+          0
+        ],
+        "id": "blade-disc-26",
+        "control": false
+      },
+      {
+        "name": "blade-disc",
+        "block": "minecraft:light_gray_concrete",
+        "center": [
+          0.27,
+          1.484390243902439,
+          0
+        ],
+        "size": [
+          0.045,
+          0.05073170731707316,
+          1.9889158649043088
+        ],
+        "motion": "blade",
+        "pivot": [
+          0.27,
+          1.18,
+          0
+        ],
+        "id": "blade-disc-27",
+        "control": false
+      },
+      {
+        "name": "blade-disc",
+        "block": "minecraft:light_gray_concrete",
+        "center": [
+          0.27,
+          1.5351219512195122,
+          0
+        ],
+        "size": [
+          0.045,
+          0.05073170731707316,
+          1.9549817388017172
+        ],
+        "motion": "blade",
+        "pivot": [
+          0.27,
+          1.18,
+          0
+        ],
+        "id": "blade-disc-28",
+        "control": false
+      },
+      {
+        "name": "blade-disc",
+        "block": "minecraft:light_gray_concrete",
+        "center": [
+          0.27,
+          1.5858536585365854,
+          0
+        ],
+        "size": [
+          0.045,
+          0.05073170731707316,
+          1.9150799543125805
+        ],
+        "motion": "blade",
+        "pivot": [
+          0.27,
+          1.18,
+          0
+        ],
+        "id": "blade-disc-29",
+        "control": false
+      },
+      {
+        "name": "blade-disc",
+        "block": "minecraft:light_gray_concrete",
+        "center": [
+          0.27,
+          1.6365853658536584,
+          0
+        ],
+        "size": [
+          0.045,
+          0.05073170731707316,
+          1.8688282999658166
+        ],
+        "motion": "blade",
+        "pivot": [
+          0.27,
+          1.18,
+          0
+        ],
+        "id": "blade-disc-30",
+        "control": false
+      },
+      {
+        "name": "blade-disc",
+        "block": "minecraft:light_gray_concrete",
+        "center": [
+          0.27,
+          1.6873170731707319,
+          0
+        ],
+        "size": [
+          0.045,
+          0.050731707317073216,
+          1.81574159755124
+        ],
+        "motion": "blade",
+        "pivot": [
+          0.27,
+          1.18,
+          0
+        ],
+        "id": "blade-disc-31",
+        "control": false
+      },
+      {
+        "name": "blade-disc",
+        "block": "minecraft:light_gray_concrete",
+        "center": [
+          0.27,
+          1.7380487804878049,
+          0
+        ],
+        "size": [
+          0.045,
+          0.050731707317073216,
+          1.7551997705059943
+        ],
+        "motion": "blade",
+        "pivot": [
+          0.27,
+          1.18,
+          0
+        ],
+        "id": "blade-disc-32",
+        "control": false
+      },
+      {
+        "name": "blade-disc",
+        "block": "minecraft:light_gray_concrete",
+        "center": [
+          0.27,
+          1.788780487804878,
+          0
+        ],
+        "size": [
+          0.045,
+          0.050731707317073216,
+          1.686400092111068
+        ],
+        "motion": "blade",
+        "pivot": [
+          0.27,
+          1.18,
+          0
+        ],
+        "id": "blade-disc-33",
+        "control": false
+      },
+      {
+        "name": "blade-disc",
+        "block": "minecraft:light_gray_concrete",
+        "center": [
+          0.27,
+          1.839512195121951,
+          0
+        ],
+        "size": [
+          0.045,
+          0.050731707317073216,
+          1.6082831398549517
+        ],
+        "motion": "blade",
+        "pivot": [
+          0.27,
+          1.18,
+          0
+        ],
+        "id": "blade-disc-34",
+        "control": false
+      },
+      {
+        "name": "blade-disc",
+        "block": "minecraft:light_gray_concrete",
+        "center": [
+          0.27,
+          1.8902439024390243,
+          0
+        ],
+        "size": [
+          0.045,
+          0.050731707317073216,
+          1.5194125167948114
+        ],
+        "motion": "blade",
+        "pivot": [
+          0.27,
+          1.18,
+          0
+        ],
+        "id": "blade-disc-35",
+        "control": false
+      },
+      {
+        "name": "blade-disc",
+        "block": "minecraft:light_gray_concrete",
+        "center": [
+          0.27,
+          1.9409756097560975,
+          0
+        ],
+        "size": [
+          0.045,
+          0.050731707317073216,
+          1.4177674299494054
+        ],
+        "motion": "blade",
+        "pivot": [
+          0.27,
+          1.18,
+          0
+        ],
+        "id": "blade-disc-36",
+        "control": false
+      },
+      {
+        "name": "blade-disc",
+        "block": "minecraft:light_gray_concrete",
+        "center": [
+          0.27,
+          1.9917073170731705,
+          0
+        ],
+        "size": [
+          0.045,
+          0.050731707317073216,
+          1.3003556919702786
+        ],
+        "motion": "blade",
+        "pivot": [
+          0.27,
+          1.18,
+          0
+        ],
+        "id": "blade-disc-37",
+        "control": false
+      },
+      {
+        "name": "blade-disc",
+        "block": "minecraft:light_gray_concrete",
+        "center": [
+          0.27,
+          2.042439024390244,
+          0
+        ],
+        "size": [
+          0.045,
+          0.050731707317073216,
+          1.1624094445741642
+        ],
+        "motion": "blade",
+        "pivot": [
+          0.27,
+          1.18,
+          0
+        ],
+        "id": "blade-disc-38",
+        "control": false
+      },
+      {
+        "name": "blade-disc",
+        "block": "minecraft:light_gray_concrete",
+        "center": [
+          0.27,
+          2.093170731707317,
+          0
+        ],
+        "size": [
+          0.045,
+          0.050731707317073216,
+          0.9954279778128059
+        ],
+        "motion": "blade",
+        "pivot": [
+          0.27,
+          1.18,
+          0
+        ],
+        "id": "blade-disc-39",
+        "control": false
+      },
+      {
+        "name": "blade-disc",
+        "block": "minecraft:light_gray_concrete",
+        "center": [
+          0.27,
+          2.1439024390243904,
+          0
+        ],
+        "size": [
+          0.045,
+          0.050731707317073216,
+          0.7810047068816716
+        ],
+        "motion": "blade",
+        "pivot": [
+          0.27,
+          1.18,
+          0
+        ],
+        "id": "blade-disc-40",
+        "control": false
+      },
+      {
+        "name": "blade-disc",
+        "block": "minecraft:light_gray_concrete",
+        "center": [
+          0.27,
+          2.194634146341463,
+          0
+        ],
+        "size": [
+          0.045,
+          0.050731707317073216,
+          0.45658536585365933
+        ],
+        "motion": "blade",
+        "pivot": [
+          0.27,
+          1.18,
+          0
+        ],
+        "id": "blade-disc-41",
+        "control": false
+      },
+      {
+        "name": "saw-tooth",
+        "block": "minecraft:smooth_stone",
+        "center": [
+          0.27,
+          2.215,
+          0
+        ],
+        "size": [
+          0.055,
+          0.14,
+          0.075
+        ],
+        "motion": "blade",
+        "pivot": [
+          0.27,
+          1.18,
+          0
+        ],
+        "rotation": [
+          -0.27,
+          0,
+          0
+        ],
+        "id": "saw-tooth-1",
+        "control": false
+      },
+      {
+        "name": "saw-tooth",
+        "block": "minecraft:smooth_stone",
+        "center": [
+          0.27,
+          2.1890503891081874,
+          0.23030916664478537
+        ],
+        "size": [
+          0.055,
+          0.14,
+          0.075
+        ],
+        "motion": "blade",
+        "pivot": [
+          0.27,
+          1.18,
+          0
+        ],
+        "rotation": [
+          -0.045600524743586224,
+          0,
+          0
+        ],
+        "id": "saw-tooth-2",
+        "control": false
+      },
+      {
+        "name": "saw-tooth",
+        "block": "minecraft:smooth_stone",
+        "center": [
+          0.27,
+          2.1125027782790036,
+          0.44906966998667264
+        ],
+        "size": [
+          0.055,
+          0.14,
+          0.075
+        ],
+        "motion": "blade",
+        "pivot": [
+          0.27,
+          1.18,
+          0
+        ],
+        "rotation": [
+          0.17879895051282757,
+          0,
+          0
+        ],
+        "id": "saw-tooth-3",
+        "control": false
+      },
+      {
+        "name": "saw-tooth",
+        "block": "minecraft:smooth_stone",
+        "center": [
+          0.27,
+          1.9891955843544107,
+          0.6453119449237891
+        ],
+        "size": [
+          0.055,
+          0.14,
+          0.075
+        ],
+        "motion": "blade",
+        "pivot": [
+          0.27,
+          1.18,
+          0
+        ],
+        "rotation": [
+          0.40319842576924136,
+          0,
+          0
+        ],
+        "id": "saw-tooth-4",
+        "control": false
+      },
+      {
+        "name": "saw-tooth",
+        "block": "minecraft:smooth_stone",
+        "center": [
+          0.27,
+          1.8253119449237891,
+          0.8091955843544107
+        ],
+        "size": [
+          0.055,
+          0.14,
+          0.075
+        ],
+        "motion": "blade",
+        "pivot": [
+          0.27,
+          1.18,
+          0
+        ],
+        "rotation": [
+          0.6275979010256552,
+          0,
+          0
+        ],
+        "id": "saw-tooth-5",
+        "control": false
+      },
+      {
+        "name": "saw-tooth",
+        "block": "minecraft:smooth_stone",
+        "center": [
+          0.27,
+          1.6290696699866727,
+          0.9325027782790037
+        ],
+        "size": [
+          0.055,
+          0.14,
+          0.075
+        ],
+        "motion": "blade",
+        "pivot": [
+          0.27,
+          1.18,
+          0
+        ],
+        "rotation": [
+          0.851997376282069,
+          0,
+          0
+        ],
+        "id": "saw-tooth-6",
+        "control": false
+      },
+      {
+        "name": "saw-tooth",
+        "block": "minecraft:smooth_stone",
+        "center": [
+          0.27,
+          1.4103091666447853,
+          1.0090503891081875
+        ],
+        "size": [
+          0.055,
+          0.14,
+          0.075
+        ],
+        "motion": "blade",
+        "pivot": [
+          0.27,
+          1.18,
+          0
+        ],
+        "rotation": [
+          1.0763968515384827,
+          0,
+          0
+        ],
+        "id": "saw-tooth-7",
+        "control": false
+      },
+      {
+        "name": "saw-tooth",
+        "block": "minecraft:smooth_stone",
+        "center": [
+          0.27,
+          1.18,
+          1.035
+        ],
+        "size": [
+          0.055,
+          0.14,
+          0.075
+        ],
+        "motion": "blade",
+        "pivot": [
+          0.27,
+          1.18,
+          0
+        ],
+        "rotation": [
+          1.3007963267948965,
+          0,
+          0
+        ],
+        "id": "saw-tooth-8",
+        "control": false
+      },
+      {
+        "name": "saw-tooth",
+        "block": "minecraft:smooth_stone",
+        "center": [
+          0.27,
+          0.9496908333552146,
+          1.0090503891081875
+        ],
+        "size": [
+          0.055,
+          0.14,
+          0.075
+        ],
+        "motion": "blade",
+        "pivot": [
+          0.27,
+          1.18,
+          0
+        ],
+        "rotation": [
+          1.5251958020513103,
+          0,
+          0
+        ],
+        "id": "saw-tooth-9",
+        "control": false
+      },
+      {
+        "name": "saw-tooth",
+        "block": "minecraft:smooth_stone",
+        "center": [
+          0.27,
+          0.7309303300133274,
+          0.9325027782790037
+        ],
+        "size": [
+          0.055,
+          0.14,
+          0.075
+        ],
+        "motion": "blade",
+        "pivot": [
+          0.27,
+          1.18,
+          0
+        ],
+        "rotation": [
+          1.7495952773077241,
+          0,
+          0
+        ],
+        "id": "saw-tooth-10",
+        "control": false
+      },
+      {
+        "name": "saw-tooth",
+        "block": "minecraft:smooth_stone",
+        "center": [
+          0.27,
+          0.5346880550762109,
+          0.8091955843544109
+        ],
+        "size": [
+          0.055,
+          0.14,
+          0.075
+        ],
+        "motion": "blade",
+        "pivot": [
+          0.27,
+          1.18,
+          0
+        ],
+        "rotation": [
+          1.973994752564138,
+          0,
+          0
+        ],
+        "id": "saw-tooth-11",
+        "control": false
+      },
+      {
+        "name": "saw-tooth",
+        "block": "minecraft:smooth_stone",
+        "center": [
+          0.27,
+          0.3708044156455895,
+          0.6453119449237895
+        ],
+        "size": [
+          0.055,
+          0.14,
+          0.075
+        ],
+        "motion": "blade",
+        "pivot": [
+          0.27,
+          1.18,
+          0
+        ],
+        "rotation": [
+          2.1983942278205513,
+          0,
+          0
+        ],
+        "id": "saw-tooth-12",
+        "control": false
+      },
+      {
+        "name": "saw-tooth",
+        "block": "minecraft:smooth_stone",
+        "center": [
+          0.27,
+          0.2474972217209963,
+          0.44906966998667275
+        ],
+        "size": [
+          0.055,
+          0.14,
+          0.075
+        ],
+        "motion": "blade",
+        "pivot": [
+          0.27,
+          1.18,
+          0
+        ],
+        "rotation": [
+          2.4227937030769655,
+          0,
+          0
+        ],
+        "id": "saw-tooth-13",
+        "control": false
+      },
+      {
+        "name": "saw-tooth",
+        "block": "minecraft:smooth_stone",
+        "center": [
+          0.27,
+          0.1709496108918125,
+          0.23030916664478507
+        ],
+        "size": [
+          0.055,
+          0.14,
+          0.075
+        ],
+        "motion": "blade",
+        "pivot": [
+          0.27,
+          1.18,
+          0
+        ],
+        "rotation": [
+          2.6471931783333797,
+          0,
+          0
+        ],
+        "id": "saw-tooth-14",
+        "control": false
+      },
+      {
+        "name": "saw-tooth",
+        "block": "minecraft:smooth_stone",
+        "center": [
+          0.27,
+          0.14500000000000002,
+          1.2675094371175104e-16
+        ],
+        "size": [
+          0.055,
+          0.14,
+          0.075
+        ],
+        "motion": "blade",
+        "pivot": [
+          0.27,
+          1.18,
+          0
+        ],
+        "rotation": [
+          2.871592653589793,
+          0,
+          0
+        ],
+        "id": "saw-tooth-15",
+        "control": false
+      },
+      {
+        "name": "saw-tooth",
+        "block": "minecraft:smooth_stone",
+        "center": [
+          0.27,
+          0.1709496108918125,
+          -0.2303091666447848
+        ],
+        "size": [
+          0.055,
+          0.14,
+          0.075
+        ],
+        "motion": "blade",
+        "pivot": [
+          0.27,
+          1.18,
+          0
+        ],
+        "rotation": [
+          3.0959921288462064,
+          0,
+          0
+        ],
+        "id": "saw-tooth-16",
+        "control": false
+      },
+      {
+        "name": "saw-tooth",
+        "block": "minecraft:smooth_stone",
+        "center": [
+          0.27,
+          0.2474972217209962,
+          -0.4490696699866725
+        ],
+        "size": [
+          0.055,
+          0.14,
+          0.075
+        ],
+        "motion": "blade",
+        "pivot": [
+          0.27,
+          1.18,
+          0
+        ],
+        "rotation": [
+          3.3203916041026207,
+          0,
+          0
+        ],
+        "id": "saw-tooth-17",
+        "control": false
+      },
+      {
+        "name": "saw-tooth",
+        "block": "minecraft:smooth_stone",
+        "center": [
+          0.27,
+          0.3708044156455894,
+          -0.6453119449237894
+        ],
+        "size": [
+          0.055,
+          0.14,
+          0.075
+        ],
+        "motion": "blade",
+        "pivot": [
+          0.27,
+          1.18,
+          0
+        ],
+        "rotation": [
+          3.544791079359035,
+          0,
+          0
+        ],
+        "id": "saw-tooth-18",
+        "control": false
+      },
+      {
+        "name": "saw-tooth",
+        "block": "minecraft:smooth_stone",
+        "center": [
+          0.27,
+          0.5346880550762106,
+          -0.8091955843544106
+        ],
+        "size": [
+          0.055,
+          0.14,
+          0.075
+        ],
+        "motion": "blade",
+        "pivot": [
+          0.27,
+          1.18,
+          0
+        ],
+        "rotation": [
+          3.7691905546154483,
+          0,
+          0
+        ],
+        "id": "saw-tooth-19",
+        "control": false
+      },
+      {
+        "name": "saw-tooth",
+        "block": "minecraft:smooth_stone",
+        "center": [
+          0.27,
+          0.7309303300133272,
+          -0.9325027782790036
+        ],
+        "size": [
+          0.055,
+          0.14,
+          0.075
+        ],
+        "motion": "blade",
+        "pivot": [
+          0.27,
+          1.18,
+          0
+        ],
+        "rotation": [
+          3.993590029871862,
+          0,
+          0
+        ],
+        "id": "saw-tooth-20",
+        "control": false
+      },
+      {
+        "name": "saw-tooth",
+        "block": "minecraft:smooth_stone",
+        "center": [
+          0.27,
+          0.9496908333552143,
+          -1.0090503891081875
+        ],
+        "size": [
+          0.055,
+          0.14,
+          0.075
+        ],
+        "motion": "blade",
+        "pivot": [
+          0.27,
+          1.18,
+          0
+        ],
+        "rotation": [
+          4.217989505128276,
+          0,
+          0
+        ],
+        "id": "saw-tooth-21",
+        "control": false
+      },
+      {
+        "name": "saw-tooth",
+        "block": "minecraft:smooth_stone",
+        "center": [
+          0.27,
+          1.1799999999999997,
+          -1.035
+        ],
+        "size": [
+          0.055,
+          0.14,
+          0.075
+        ],
+        "motion": "blade",
+        "pivot": [
+          0.27,
+          1.18,
+          0
+        ],
+        "rotation": [
+          4.44238898038469,
+          0,
+          0
+        ],
+        "id": "saw-tooth-22",
+        "control": false
+      },
+      {
+        "name": "saw-tooth",
+        "block": "minecraft:smooth_stone",
+        "center": [
+          0.27,
+          1.4103091666447842,
+          -1.0090503891081877
+        ],
+        "size": [
+          0.055,
+          0.14,
+          0.075
+        ],
+        "motion": "blade",
+        "pivot": [
+          0.27,
+          1.18,
+          0
+        ],
+        "rotation": [
+          4.666788455641102,
+          0,
+          0
+        ],
+        "id": "saw-tooth-23",
+        "control": false
+      },
+      {
+        "name": "saw-tooth",
+        "block": "minecraft:smooth_stone",
+        "center": [
+          0.27,
+          1.6290696699866725,
+          -0.9325027782790039
+        ],
+        "size": [
+          0.055,
+          0.14,
+          0.075
+        ],
+        "motion": "blade",
+        "pivot": [
+          0.27,
+          1.18,
+          0
+        ],
+        "rotation": [
+          4.891187930897518,
+          0,
+          0
+        ],
+        "id": "saw-tooth-24",
+        "control": false
+      },
+      {
+        "name": "saw-tooth",
+        "block": "minecraft:smooth_stone",
+        "center": [
+          0.27,
+          1.825311944923789,
+          -0.8091955843544109
+        ],
+        "size": [
+          0.055,
+          0.14,
+          0.075
+        ],
+        "motion": "blade",
+        "pivot": [
+          0.27,
+          1.18,
+          0
+        ],
+        "rotation": [
+          5.1155874061539315,
+          0,
+          0
+        ],
+        "id": "saw-tooth-25",
+        "control": false
+      },
+      {
+        "name": "saw-tooth",
+        "block": "minecraft:smooth_stone",
+        "center": [
+          0.27,
+          1.9891955843544107,
+          -0.6453119449237893
+        ],
+        "size": [
+          0.055,
+          0.14,
+          0.075
+        ],
+        "motion": "blade",
+        "pivot": [
+          0.27,
+          1.18,
+          0
+        ],
+        "rotation": [
+          5.339986881410345,
+          0,
+          0
+        ],
+        "id": "saw-tooth-26",
+        "control": false
+      },
+      {
+        "name": "saw-tooth",
+        "block": "minecraft:smooth_stone",
+        "center": [
+          0.27,
+          2.112502778279004,
+          -0.44906966998667197
+        ],
+        "size": [
+          0.055,
+          0.14,
+          0.075
+        ],
+        "motion": "blade",
+        "pivot": [
+          0.27,
+          1.18,
+          0
+        ],
+        "rotation": [
+          5.564386356666759,
+          0,
+          0
+        ],
+        "id": "saw-tooth-27",
+        "control": false
+      },
+      {
+        "name": "saw-tooth",
+        "block": "minecraft:smooth_stone",
+        "center": [
+          0.27,
+          2.1890503891081874,
+          -0.23030916664478565
+        ],
+        "size": [
+          0.055,
+          0.14,
+          0.075
+        ],
+        "motion": "blade",
+        "pivot": [
+          0.27,
+          1.18,
+          0
+        ],
+        "rotation": [
+          5.788785831923173,
+          0,
+          0
+        ],
+        "id": "saw-tooth-28",
+        "control": false
+      }
+    ],
+    "pulley": [
+      {
+        "name": "pulley-rim",
+        "block": "minecraft:polished_deepslate",
+        "center": [
+          1.89,
+          0.8284374999999999,
+          0
+        ],
+        "size": [
+          0.24,
+          0.046875,
+          0.2609889545076573
+        ],
+        "motion": "pulley",
+        "pivot": [
+          1.89,
+          1.18,
+          0
+        ],
+        "ratio": 1,
+        "id": "pulley-rim-1",
+        "control": false
+      },
+      {
+        "name": "pulley-rim",
+        "block": "minecraft:polished_deepslate",
+        "center": [
+          1.89,
+          0.8753124999999999,
+          0
+        ],
+        "size": [
+          0.24,
+          0.046875,
+          0.4372208931135382
+        ],
+        "motion": "pulley",
+        "pivot": [
+          1.89,
+          1.18,
+          0
+        ],
+        "ratio": 1,
+        "id": "pulley-rim-2",
+        "control": false
+      },
+      {
+        "name": "pulley-rim",
+        "block": "minecraft:polished_deepslate",
+        "center": [
+          1.89,
+          0.9221874999999999,
+          -0.19690023845107502
+        ],
+        "size": [
+          0.24,
+          0.046875,
+          0.15083780615826792
+        ],
+        "motion": "pulley",
+        "pivot": [
+          1.89,
+          1.18,
+          0
+        ],
+        "ratio": 1,
+        "id": "pulley-rim-3",
+        "control": false
+      },
+      {
+        "name": "pulley-rim",
+        "block": "minecraft:polished_deepslate",
+        "center": [
+          1.89,
+          0.9221874999999999,
+          0.19690023845107502
+        ],
+        "size": [
+          0.24,
+          0.046875,
+          0.15083780615826792
+        ],
+        "motion": "pulley",
+        "pivot": [
+          1.89,
+          1.18,
+          0
+        ],
+        "ratio": 1,
+        "id": "pulley-rim-4",
+        "control": false
+      },
+      {
+        "name": "pulley-rim",
+        "block": "minecraft:polished_deepslate",
+        "center": [
+          1.89,
+          0.9690624999999999,
+          -0.2508503369443746
+        ],
+        "size": [
+          0.24,
+          0.046875,
+          0.11839728964201426
+        ],
+        "motion": "pulley",
+        "pivot": [
+          1.89,
+          1.18,
+          0
+        ],
+        "ratio": 1,
+        "id": "pulley-rim-5",
+        "control": false
+      },
+      {
+        "name": "pulley-rim",
+        "block": "minecraft:polished_deepslate",
+        "center": [
+          1.89,
+          0.9690624999999999,
+          0.2508503369443746
+        ],
+        "size": [
+          0.24,
+          0.046875,
+          0.11839728964201426
+        ],
+        "motion": "pulley",
+        "pivot": [
+          1.89,
+          1.18,
+          0
+        ],
+        "ratio": 1,
+        "id": "pulley-rim-6",
+        "control": false
+      },
+      {
+        "name": "pulley-rim",
+        "block": "minecraft:polished_deepslate",
+        "center": [
+          1.89,
+          1.0159375,
+          -0.2851243686692744
+        ],
+        "size": [
+          0.24,
+          0.046875,
+          0.10416507062730246
+        ],
+        "motion": "pulley",
+        "pivot": [
+          1.89,
+          1.18,
+          0
+        ],
+        "ratio": 1,
+        "id": "pulley-rim-7",
+        "control": false
+      },
+      {
+        "name": "pulley-rim",
+        "block": "minecraft:polished_deepslate",
+        "center": [
+          1.89,
+          1.0159375,
+          0.2851243686692744
+        ],
+        "size": [
+          0.24,
+          0.046875,
+          0.10416507062730246
+        ],
+        "motion": "pulley",
+        "pivot": [
+          1.89,
+          1.18,
+          0
+        ],
+        "ratio": 1,
+        "id": "pulley-rim-8",
+        "control": false
+      },
+      {
+        "name": "pulley-rim",
+        "block": "minecraft:polished_deepslate",
+        "center": [
+          1.89,
+          1.0628125,
+          -0.3080057787179138
+        ],
+        "size": [
+          0.24,
+          0.046875,
+          0.09642676226279717
+        ],
+        "motion": "pulley",
+        "pivot": [
+          1.89,
+          1.18,
+          0
+        ],
+        "ratio": 1,
+        "id": "pulley-rim-9",
+        "control": false
+      },
+      {
+        "name": "pulley-rim",
+        "block": "minecraft:polished_deepslate",
+        "center": [
+          1.89,
+          1.0628125,
+          0.3080057787179138
+        ],
+        "size": [
+          0.24,
+          0.046875,
+          0.09642676226279717
+        ],
+        "motion": "pulley",
+        "pivot": [
+          1.89,
+          1.18,
+          0
+        ],
+        "ratio": 1,
+        "id": "pulley-rim-10",
+        "control": false
+      },
+      {
+        "name": "pulley-rim",
+        "block": "minecraft:polished_deepslate",
+        "center": [
+          1.89,
+          1.1096875,
+          -0.32226982687475175
+        ],
+        "size": [
+          0.24,
+          0.046875,
+          0.09215879838338925
+        ],
+        "motion": "pulley",
+        "pivot": [
+          1.89,
+          1.18,
+          0
+        ],
+        "ratio": 1,
+        "id": "pulley-rim-11",
+        "control": false
+      },
+      {
+        "name": "pulley-rim",
+        "block": "minecraft:polished_deepslate",
+        "center": [
+          1.89,
+          1.1096875,
+          0.32226982687475175
+        ],
+        "size": [
+          0.24,
+          0.046875,
+          0.09215879838338925
+        ],
+        "motion": "pulley",
+        "pivot": [
+          1.89,
+          1.18,
+          0
+        ],
+        "ratio": 1,
+        "id": "pulley-rim-12",
+        "control": false
+      },
+      {
+        "name": "pulley-rim",
+        "block": "minecraft:polished_deepslate",
+        "center": [
+          1.89,
+          1.1565625,
+          -0.3291507567845896
+        ],
+        "size": [
+          0.24,
+          0.046875,
+          0.09023220936853854
+        ],
+        "motion": "pulley",
+        "pivot": [
+          1.89,
+          1.18,
+          0
+        ],
+        "ratio": 1,
+        "id": "pulley-rim-13",
+        "control": false
+      },
+      {
+        "name": "pulley-rim",
+        "block": "minecraft:polished_deepslate",
+        "center": [
+          1.89,
+          1.1565625,
+          0.3291507567845896
+        ],
+        "size": [
+          0.24,
+          0.046875,
+          0.09023220936853854
+        ],
+        "motion": "pulley",
+        "pivot": [
+          1.89,
+          1.18,
+          0
+        ],
+        "ratio": 1,
+        "id": "pulley-rim-14",
+        "control": false
+      },
+      {
+        "name": "pulley-rim",
+        "block": "minecraft:polished_deepslate",
+        "center": [
+          1.89,
+          1.2034375,
+          -0.3291507567845896
+        ],
+        "size": [
+          0.24,
+          0.046875,
+          0.09023220936853854
+        ],
+        "motion": "pulley",
+        "pivot": [
+          1.89,
+          1.18,
+          0
+        ],
+        "ratio": 1,
+        "id": "pulley-rim-15",
+        "control": false
+      },
+      {
+        "name": "pulley-rim",
+        "block": "minecraft:polished_deepslate",
+        "center": [
+          1.89,
+          1.2034375,
+          0.3291507567845896
+        ],
+        "size": [
+          0.24,
+          0.046875,
+          0.09023220936853854
+        ],
+        "motion": "pulley",
+        "pivot": [
+          1.89,
+          1.18,
+          0
+        ],
+        "ratio": 1,
+        "id": "pulley-rim-16",
+        "control": false
+      },
+      {
+        "name": "pulley-rim",
+        "block": "minecraft:polished_deepslate",
+        "center": [
+          1.89,
+          1.2503125,
+          -0.32226982687475175
+        ],
+        "size": [
+          0.24,
+          0.046875,
+          0.09215879838338925
+        ],
+        "motion": "pulley",
+        "pivot": [
+          1.89,
+          1.18,
+          0
+        ],
+        "ratio": 1,
+        "id": "pulley-rim-17",
+        "control": false
+      },
+      {
+        "name": "pulley-rim",
+        "block": "minecraft:polished_deepslate",
+        "center": [
+          1.89,
+          1.2503125,
+          0.32226982687475175
+        ],
+        "size": [
+          0.24,
+          0.046875,
+          0.09215879838338925
+        ],
+        "motion": "pulley",
+        "pivot": [
+          1.89,
+          1.18,
+          0
+        ],
+        "ratio": 1,
+        "id": "pulley-rim-18",
+        "control": false
+      },
+      {
+        "name": "pulley-rim",
+        "block": "minecraft:polished_deepslate",
+        "center": [
+          1.89,
+          1.2971875,
+          -0.3080057787179138
+        ],
+        "size": [
+          0.24,
+          0.046875,
+          0.09642676226279717
+        ],
+        "motion": "pulley",
+        "pivot": [
+          1.89,
+          1.18,
+          0
+        ],
+        "ratio": 1,
+        "id": "pulley-rim-19",
+        "control": false
+      },
+      {
+        "name": "pulley-rim",
+        "block": "minecraft:polished_deepslate",
+        "center": [
+          1.89,
+          1.2971875,
+          0.3080057787179138
+        ],
+        "size": [
+          0.24,
+          0.046875,
+          0.09642676226279717
+        ],
+        "motion": "pulley",
+        "pivot": [
+          1.89,
+          1.18,
+          0
+        ],
+        "ratio": 1,
+        "id": "pulley-rim-20",
+        "control": false
+      },
+      {
+        "name": "pulley-rim",
+        "block": "minecraft:polished_deepslate",
+        "center": [
+          1.89,
+          1.3440625,
+          -0.2851243686692744
+        ],
+        "size": [
+          0.24,
+          0.046875,
+          0.10416507062730246
+        ],
+        "motion": "pulley",
+        "pivot": [
+          1.89,
+          1.18,
+          0
+        ],
+        "ratio": 1,
+        "id": "pulley-rim-21",
+        "control": false
+      },
+      {
+        "name": "pulley-rim",
+        "block": "minecraft:polished_deepslate",
+        "center": [
+          1.89,
+          1.3440625,
+          0.2851243686692744
+        ],
+        "size": [
+          0.24,
+          0.046875,
+          0.10416507062730246
+        ],
+        "motion": "pulley",
+        "pivot": [
+          1.89,
+          1.18,
+          0
+        ],
+        "ratio": 1,
+        "id": "pulley-rim-22",
+        "control": false
+      },
+      {
+        "name": "pulley-rim",
+        "block": "minecraft:polished_deepslate",
+        "center": [
+          1.89,
+          1.3909375,
+          -0.2508503369443746
+        ],
+        "size": [
+          0.24,
+          0.046875,
+          0.11839728964201426
+        ],
+        "motion": "pulley",
+        "pivot": [
+          1.89,
+          1.18,
+          0
+        ],
+        "ratio": 1,
+        "id": "pulley-rim-23",
+        "control": false
+      },
+      {
+        "name": "pulley-rim",
+        "block": "minecraft:polished_deepslate",
+        "center": [
+          1.89,
+          1.3909375,
+          0.2508503369443746
+        ],
+        "size": [
+          0.24,
+          0.046875,
+          0.11839728964201426
+        ],
+        "motion": "pulley",
+        "pivot": [
+          1.89,
+          1.18,
+          0
+        ],
+        "ratio": 1,
+        "id": "pulley-rim-24",
+        "control": false
+      },
+      {
+        "name": "pulley-rim",
+        "block": "minecraft:polished_deepslate",
+        "center": [
+          1.89,
+          1.4378125,
+          -0.19690023845107502
+        ],
+        "size": [
+          0.24,
+          0.046875,
+          0.15083780615826792
+        ],
+        "motion": "pulley",
+        "pivot": [
+          1.89,
+          1.18,
+          0
+        ],
+        "ratio": 1,
+        "id": "pulley-rim-25",
+        "control": false
+      },
+      {
+        "name": "pulley-rim",
+        "block": "minecraft:polished_deepslate",
+        "center": [
+          1.89,
+          1.4378125,
+          0.19690023845107502
+        ],
+        "size": [
+          0.24,
+          0.046875,
+          0.15083780615826792
+        ],
+        "motion": "pulley",
+        "pivot": [
+          1.89,
+          1.18,
+          0
+        ],
+        "ratio": 1,
+        "id": "pulley-rim-26",
+        "control": false
+      },
+      {
+        "name": "pulley-rim",
+        "block": "minecraft:polished_deepslate",
+        "center": [
+          1.89,
+          1.4846875,
+          0
+        ],
+        "size": [
+          0.24,
+          0.046875,
+          0.4372208931135382
+        ],
+        "motion": "pulley",
+        "pivot": [
+          1.89,
+          1.18,
+          0
+        ],
+        "ratio": 1,
+        "id": "pulley-rim-27",
+        "control": false
+      },
+      {
+        "name": "pulley-rim",
+        "block": "minecraft:polished_deepslate",
+        "center": [
+          1.89,
+          1.5315625,
+          0
+        ],
+        "size": [
+          0.24,
+          0.046875,
+          0.2609889545076573
+        ],
+        "motion": "pulley",
+        "pivot": [
+          1.89,
+          1.18,
+          0
+        ],
+        "ratio": 1,
+        "id": "pulley-rim-28",
+        "control": false
+      },
+      {
+        "name": "pulley-spoke",
+        "block": "minecraft:polished_deepslate",
+        "center": [
+          1.89,
+          1.18,
+          0
+        ],
+        "size": [
+          0.13,
+          0.5940000000000001,
+          0.075
+        ],
+        "motion": "pulley",
+        "pivot": [
+          1.89,
+          1.18,
+          0
+        ],
+        "ratio": 1,
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "id": "pulley-spoke-1",
+        "control": false
+      },
+      {
+        "name": "pulley-spoke",
+        "block": "minecraft:polished_deepslate",
+        "center": [
+          1.89,
+          1.18,
+          0
+        ],
+        "size": [
+          0.13,
+          0.5940000000000001,
+          0.075
+        ],
+        "motion": "pulley",
+        "pivot": [
+          1.89,
+          1.18,
+          0
+        ],
+        "ratio": 1,
+        "rotation": [
+          1.0471975511965976,
+          0,
+          0
+        ],
+        "id": "pulley-spoke-2",
+        "control": false
+      },
+      {
+        "name": "pulley-spoke",
+        "block": "minecraft:polished_deepslate",
+        "center": [
+          1.89,
+          1.18,
+          0
+        ],
+        "size": [
+          0.13,
+          0.5940000000000001,
+          0.075
+        ],
+        "motion": "pulley",
+        "pivot": [
+          1.89,
+          1.18,
+          0
+        ],
+        "ratio": 1,
+        "rotation": [
+          2.0943951023931953,
+          0,
+          0
+        ],
+        "id": "pulley-spoke-3",
+        "control": false
+      },
+      {
+        "name": "pulley-hub",
+        "block": "minecraft:waxed_exposed_copper",
+        "center": [
+          1.89,
+          1.18,
+          0
+        ],
+        "size": [
+          0.3,
+          0.18,
+          0.18
+        ],
+        "motion": "pulley",
+        "pivot": [
+          1.89,
+          1.18,
+          0
+        ],
+        "ratio": 1,
+        "id": "pulley-hub-1",
+        "control": false
+      }
+    ]
+  },
+  "nativeModels": {
+    "raw": {
+      "itemModel": "arc_farms:cedar_sawmill_raw",
+      "file": "cedar_sawmill_raw.json",
+      "sha256": "f1dbc52bdb5e589422b796f202fbe20d0ed752dfee4ae3a9dc80d8f744212f03",
+      "origin": [
+        0,
+        0.36,
+        0
+      ],
+      "boxes": [
+        {
+          "min": [
+            -0.205,
+            -0.36,
+            -0.5
+          ],
+          "max": [
+            0.205,
+            -0.33,
+            0.5
+          ]
+        },
+        {
+          "min": [
+            -0.2535294,
+            -0.33,
+            -0.5
+          ],
+          "max": [
+            0.2535294,
+            -0.3,
+            0.5
+          ]
+        },
+        {
+          "min": [
+            -0.3020588,
+            -0.3,
+            -0.5
+          ],
+          "max": [
+            0.3020588,
+            -0.27,
+            0.5
+          ]
+        },
+        {
+          "min": [
+            -0.3505882,
+            -0.27,
+            -0.5
+          ],
+          "max": [
+            0.3505882,
+            -0.24,
+            0.5
+          ]
+        },
+        {
+          "min": [
+            -0.3991176,
+            -0.24,
+            -0.5
+          ],
+          "max": [
+            0.3991176,
+            -0.21,
+            0.5
+          ]
+        },
+        {
+          "min": [
+            -0.4476471,
+            -0.21,
+            -0.5
+          ],
+          "max": [
+            0.4476471,
+            -0.18,
+            0.5
+          ]
+        },
+        {
+          "min": [
+            -0.48,
+            -0.18,
+            -0.5
+          ],
+          "max": [
+            0.48,
+            -0.15,
+            0.5
+          ]
+        },
+        {
+          "min": [
+            -0.48,
+            -0.15,
+            -0.5
+          ],
+          "max": [
+            0.48,
+            -0.12,
+            0.5
+          ]
+        },
+        {
+          "min": [
+            -0.48,
+            -0.12,
+            -0.5
+          ],
+          "max": [
+            0.48,
+            -0.09,
+            0.5
+          ]
+        },
+        {
+          "min": [
+            -0.48,
+            -0.09,
+            -0.5
+          ],
+          "max": [
+            0.48,
+            -0.06,
+            0.5
+          ]
+        },
+        {
+          "min": [
+            -0.48,
+            -0.06,
+            -0.5
+          ],
+          "max": [
+            0.48,
+            -0.03,
+            0.5
+          ]
+        },
+        {
+          "min": [
+            -0.48,
+            -0.03,
+            -0.5
+          ],
+          "max": [
+            0.48,
+            0,
+            0.5
+          ]
+        },
+        {
+          "min": [
+            -0.48,
+            0,
+            -0.5
+          ],
+          "max": [
+            0.48,
+            0.03,
+            0.5
+          ]
+        },
+        {
+          "min": [
+            -0.48,
+            0.03,
+            -0.5
+          ],
+          "max": [
+            0.48,
+            0.06,
+            0.5
+          ]
+        },
+        {
+          "min": [
+            -0.48,
+            0.06,
+            -0.5
+          ],
+          "max": [
+            0.48,
+            0.09,
+            0.5
+          ]
+        },
+        {
+          "min": [
+            -0.48,
+            0.09,
+            -0.5
+          ],
+          "max": [
+            0.48,
+            0.12,
+            0.5
+          ]
+        },
+        {
+          "min": [
+            -0.48,
+            0.12,
+            -0.5
+          ],
+          "max": [
+            0.48,
+            0.15,
+            0.5
+          ]
+        },
+        {
+          "min": [
+            -0.48,
+            0.15,
+            -0.5
+          ],
+          "max": [
+            0.48,
+            0.18,
+            0.5
+          ]
+        },
+        {
+          "min": [
+            -0.4476471,
+            0.18,
+            -0.5
+          ],
+          "max": [
+            0.4476471,
+            0.21,
+            0.5
+          ]
+        },
+        {
+          "min": [
+            -0.3991176,
+            0.21,
+            -0.5
+          ],
+          "max": [
+            0.3991176,
+            0.24,
+            0.5
+          ]
+        },
+        {
+          "min": [
+            -0.3505882,
+            0.24,
+            -0.5
+          ],
+          "max": [
+            0.3505882,
+            0.27,
+            0.5
+          ]
+        },
+        {
+          "min": [
+            -0.3020588,
+            0.27,
+            -0.5
+          ],
+          "max": [
+            0.3020588,
+            0.3,
+            0.5
+          ]
+        },
+        {
+          "min": [
+            -0.2535294,
+            0.3,
+            -0.5
+          ],
+          "max": [
+            0.2535294,
+            0.33,
+            0.5
+          ]
+        },
+        {
+          "min": [
+            -0.205,
+            0.33,
+            -0.5
+          ],
+          "max": [
+            0.205,
+            0.36,
+            0.5
+          ]
+        }
+      ]
+    },
+    "sawn": {
+      "itemModel": "arc_farms:cedar_sawmill_sawn",
+      "file": "cedar_sawmill_sawn.json",
+      "sha256": "1592756c5472d84a549d316e620467380ac2c768bf537727cf87b4eea34df1f4",
+      "origin": [
+        0,
+        0.36,
+        0
+      ],
+      "boxes": [
+        {
+          "min": [
+            -0.205,
+            -0.36,
+            -0.5
+          ],
+          "max": [
+            0.205,
+            -0.33,
+            0.5
+          ]
+        },
+        {
+          "min": [
+            -0.2535294,
+            -0.33,
+            -0.5
+          ],
+          "max": [
+            0.235,
+            -0.3,
+            0.5
+          ]
+        },
+        {
+          "min": [
+            -0.3020588,
+            -0.3,
+            -0.5
+          ],
+          "max": [
+            0.235,
+            -0.27,
+            0.5
+          ]
+        },
+        {
+          "min": [
+            -0.3505882,
+            -0.27,
+            -0.5
+          ],
+          "max": [
+            0.235,
+            -0.24,
+            0.5
+          ]
+        },
+        {
+          "min": [
+            -0.3991176,
+            -0.24,
+            -0.5
+          ],
+          "max": [
+            0.235,
+            -0.21,
+            0.5
+          ]
+        },
+        {
+          "min": [
+            -0.4476471,
+            -0.21,
+            -0.5
+          ],
+          "max": [
+            0.235,
+            -0.18,
+            0.5
+          ]
+        },
+        {
+          "min": [
+            -0.48,
+            -0.18,
+            -0.5
+          ],
+          "max": [
+            0.235,
+            -0.15,
+            0.5
+          ]
+        },
+        {
+          "min": [
+            -0.48,
+            -0.15,
+            -0.5
+          ],
+          "max": [
+            0.235,
+            -0.12,
+            0.5
+          ]
+        },
+        {
+          "min": [
+            -0.48,
+            -0.12,
+            -0.5
+          ],
+          "max": [
+            0.235,
+            -0.09,
+            0.5
+          ]
+        },
+        {
+          "min": [
+            -0.48,
+            -0.09,
+            -0.5
+          ],
+          "max": [
+            0.235,
+            -0.06,
+            0.5
+          ]
+        },
+        {
+          "min": [
+            -0.48,
+            -0.06,
+            -0.5
+          ],
+          "max": [
+            0.235,
+            -0.03,
+            0.5
+          ]
+        },
+        {
+          "min": [
+            -0.48,
+            -0.03,
+            -0.5
+          ],
+          "max": [
+            0.235,
+            0,
+            0.5
+          ]
+        },
+        {
+          "min": [
+            -0.48,
+            0,
+            -0.5
+          ],
+          "max": [
+            0.235,
+            0.03,
+            0.5
+          ]
+        },
+        {
+          "min": [
+            -0.48,
+            0.03,
+            -0.5
+          ],
+          "max": [
+            0.235,
+            0.06,
+            0.5
+          ]
+        },
+        {
+          "min": [
+            -0.48,
+            0.06,
+            -0.5
+          ],
+          "max": [
+            0.235,
+            0.09,
+            0.5
+          ]
+        },
+        {
+          "min": [
+            -0.48,
+            0.09,
+            -0.5
+          ],
+          "max": [
+            0.235,
+            0.12,
+            0.5
+          ]
+        },
+        {
+          "min": [
+            -0.48,
+            0.12,
+            -0.5
+          ],
+          "max": [
+            0.235,
+            0.15,
+            0.5
+          ]
+        },
+        {
+          "min": [
+            -0.48,
+            0.15,
+            -0.5
+          ],
+          "max": [
+            0.235,
+            0.18,
+            0.5
+          ]
+        },
+        {
+          "min": [
+            -0.4476471,
+            0.18,
+            -0.5
+          ],
+          "max": [
+            0.235,
+            0.21,
+            0.5
+          ]
+        },
+        {
+          "min": [
+            -0.3991176,
+            0.21,
+            -0.5
+          ],
+          "max": [
+            0.235,
+            0.24,
+            0.5
+          ]
+        },
+        {
+          "min": [
+            -0.3505882,
+            0.24,
+            -0.5
+          ],
+          "max": [
+            0.235,
+            0.27,
+            0.5
+          ]
+        },
+        {
+          "min": [
+            -0.3020588,
+            0.27,
+            -0.5
+          ],
+          "max": [
+            0.235,
+            0.3,
+            0.5
+          ]
+        },
+        {
+          "min": [
+            -0.2535294,
+            0.3,
+            -0.5
+          ],
+          "max": [
+            0.235,
+            0.33,
+            0.5
+          ]
+        },
+        {
+          "min": [
+            -0.205,
+            0.33,
+            -0.5
+          ],
+          "max": [
+            0.205,
+            0.36,
+            0.5
+          ]
+        }
+      ]
+    },
+    "slab": {
+      "itemModel": "arc_farms:cedar_sawmill_slab",
+      "file": "cedar_sawmill_slab.json",
+      "sha256": "7a76876b9a63dab2646b66d053af31140dade8092a8d07a31e4a09d459d0b1c1",
+      "origin": [
+        0.3925,
+        0.36,
+        0
+      ],
+      "boxes": [
+        {
+          "min": [
+            -0.0875,
+            -0.27,
+            -0.5
+          ],
+          "max": [
+            -0.0419118,
+            -0.24,
+            0.5
+          ]
+        },
+        {
+          "min": [
+            -0.0875,
+            -0.24,
+            -0.5
+          ],
+          "max": [
+            0.0066176,
+            -0.21,
+            0.5
+          ]
+        },
+        {
+          "min": [
+            -0.0875,
+            -0.21,
+            -0.5
+          ],
+          "max": [
+            0.0551471,
+            -0.18,
+            0.5
+          ]
+        },
+        {
+          "min": [
+            -0.0875,
+            -0.18,
+            -0.5
+          ],
+          "max": [
+            0.0875,
+            -0.15,
+            0.5
+          ]
+        },
+        {
+          "min": [
+            -0.0875,
+            -0.15,
+            -0.5
+          ],
+          "max": [
+            0.0875,
+            -0.12,
+            0.5
+          ]
+        },
+        {
+          "min": [
+            -0.0875,
+            -0.12,
+            -0.5
+          ],
+          "max": [
+            0.0875,
+            -0.09,
+            0.5
+          ]
+        },
+        {
+          "min": [
+            -0.0875,
+            -0.09,
+            -0.5
+          ],
+          "max": [
+            0.0875,
+            -0.06,
+            0.5
+          ]
+        },
+        {
+          "min": [
+            -0.0875,
+            -0.06,
+            -0.5
+          ],
+          "max": [
+            0.0875,
+            -0.03,
+            0.5
+          ]
+        },
+        {
+          "min": [
+            -0.0875,
+            -0.03,
+            -0.5
+          ],
+          "max": [
+            0.0875,
+            0,
+            0.5
+          ]
+        },
+        {
+          "min": [
+            -0.0875,
+            0,
+            -0.5
+          ],
+          "max": [
+            0.0875,
+            0.03,
+            0.5
+          ]
+        },
+        {
+          "min": [
+            -0.0875,
+            0.03,
+            -0.5
+          ],
+          "max": [
+            0.0875,
+            0.06,
+            0.5
+          ]
+        },
+        {
+          "min": [
+            -0.0875,
+            0.06,
+            -0.5
+          ],
+          "max": [
+            0.0875,
+            0.09,
+            0.5
+          ]
+        },
+        {
+          "min": [
+            -0.0875,
+            0.09,
+            -0.5
+          ],
+          "max": [
+            0.0875,
+            0.12,
+            0.5
+          ]
+        },
+        {
+          "min": [
+            -0.0875,
+            0.12,
+            -0.5
+          ],
+          "max": [
+            0.0875,
+            0.15,
+            0.5
+          ]
+        },
+        {
+          "min": [
+            -0.0875,
+            0.15,
+            -0.5
+          ],
+          "max": [
+            0.0875,
+            0.18,
+            0.5
+          ]
+        },
+        {
+          "min": [
+            -0.0875,
+            0.18,
+            -0.5
+          ],
+          "max": [
+            0.0551471,
+            0.21,
+            0.5
+          ]
+        },
+        {
+          "min": [
+            -0.0875,
+            0.21,
+            -0.5
+          ],
+          "max": [
+            0.0066176,
+            0.24,
+            0.5
+          ]
+        },
+        {
+          "min": [
+            -0.0875,
+            0.24,
+            -0.5
+          ],
+          "max": [
+            -0.0419118,
+            0.27,
+            0.5
+          ]
+        }
+      ]
+    },
+    "blade": {
+      "itemModel": "arc_farms:cedar_sawmill_blade",
+      "file": "cedar_sawmill_blade.json",
+      "sha256": "e3e3b9c9d3d47f3e61480cd1ae0f5217e6f6e56e12d46a8387e9e418b7ec6b62",
+      "origin": [
+        0,
+        0,
+        0
+      ],
+      "boxes": [
+        {
+          "min": [
+            -0.0275,
+            -1.1,
+            -0.025
+          ],
+          "max": [
+            0.0275,
+            -1.05,
+            0.05
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            -1.075,
+            -0.275
+          ],
+          "max": [
+            0.0275,
+            -0.95,
+            -0.2
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            -1.075,
+            0.225
+          ],
+          "max": [
+            0.0275,
+            -1.05,
+            0.275
+          ]
+        },
+        {
+          "min": [
+            -0.0225,
+            -1.05,
+            -0.2
+          ],
+          "max": [
+            0.0225,
+            -0.975,
+            -0.05
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            -1.05,
+            -0.05
+          ],
+          "max": [
+            0.0275,
+            -1.025,
+            0.05
+          ]
+        },
+        {
+          "min": [
+            -0.0225,
+            -1.05,
+            0.05
+          ],
+          "max": [
+            0.0225,
+            -1.025,
+            0.2
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            -1.05,
+            0.2
+          ],
+          "max": [
+            0.0275,
+            -1.025,
+            0.3
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            -1.025,
+            -0.05
+          ],
+          "max": [
+            0.0275,
+            -0.975,
+            0.025
+          ]
+        },
+        {
+          "min": [
+            -0.0225,
+            -1.025,
+            0.025
+          ],
+          "max": [
+            0.0225,
+            -1,
+            0.2
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            -1.025,
+            0.2
+          ],
+          "max": [
+            0.0275,
+            -1,
+            0.275
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            -1,
+            -0.5
+          ],
+          "max": [
+            0.0275,
+            -0.95,
+            -0.425
+          ]
+        },
+        {
+          "min": [
+            -0.0225,
+            -1,
+            -0.4
+          ],
+          "max": [
+            0.0225,
+            -0.95,
+            -0.275
+          ]
+        },
+        {
+          "min": [
+            -0.0225,
+            -1,
+            0.025
+          ],
+          "max": [
+            0.0225,
+            -0.95,
+            0.175
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            -1,
+            0.175
+          ],
+          "max": [
+            0.0275,
+            -0.95,
+            0.25
+          ]
+        },
+        {
+          "min": [
+            -0.0225,
+            -1,
+            0.25
+          ],
+          "max": [
+            0.0225,
+            -0.95,
+            0.4
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            -1,
+            0.45
+          ],
+          "max": [
+            0.0275,
+            -0.975,
+            0.5
+          ]
+        },
+        {
+          "min": [
+            -0.0225,
+            -0.975,
+            -0.2
+          ],
+          "max": [
+            0.0225,
+            -0.95,
+            0
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            -0.975,
+            0
+          ],
+          "max": [
+            0.0275,
+            -0.95,
+            0.025
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            -0.975,
+            0.425
+          ],
+          "max": [
+            0.0275,
+            -0.95,
+            0.525
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            -0.95,
+            -0.5
+          ],
+          "max": [
+            0.0275,
+            -0.925,
+            -0.4
+          ]
+        },
+        {
+          "min": [
+            -0.0225,
+            -0.95,
+            -0.4
+          ],
+          "max": [
+            0.0225,
+            -0.925,
+            0.4
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            -0.95,
+            0.4
+          ],
+          "max": [
+            0.0275,
+            -0.925,
+            0.5
+          ]
+        },
+        {
+          "min": [
+            -0.0225,
+            -0.925,
+            -0.5
+          ],
+          "max": [
+            0.0225,
+            -0.9,
+            -0.475
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            -0.925,
+            -0.475
+          ],
+          "max": [
+            0.0275,
+            -0.875,
+            -0.4
+          ]
+        },
+        {
+          "min": [
+            -0.0225,
+            -0.925,
+            -0.4
+          ],
+          "max": [
+            0.0225,
+            -0.9,
+            0.375
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            -0.925,
+            0.375
+          ],
+          "max": [
+            0.0275,
+            -0.9,
+            0.475
+          ]
+        },
+        {
+          "min": [
+            -0.0225,
+            -0.925,
+            0.475
+          ],
+          "max": [
+            0.0225,
+            -0.9,
+            0.5
+          ]
+        },
+        {
+          "min": [
+            -0.0225,
+            -0.9,
+            -0.575
+          ],
+          "max": [
+            0.0225,
+            -0.85,
+            -0.475
+          ]
+        },
+        {
+          "min": [
+            -0.0225,
+            -0.9,
+            -0.4
+          ],
+          "max": [
+            0.0225,
+            -0.875,
+            0.4
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            -0.9,
+            0.4
+          ],
+          "max": [
+            0.0275,
+            -0.875,
+            0.45
+          ]
+        },
+        {
+          "min": [
+            -0.0225,
+            -0.9,
+            0.45
+          ],
+          "max": [
+            0.0225,
+            -0.85,
+            0.575
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            -0.875,
+            -0.7
+          ],
+          "max": [
+            0.0275,
+            -0.825,
+            -0.625
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            -0.875,
+            -0.475
+          ],
+          "max": [
+            0.0275,
+            -0.85,
+            -0.45
+          ]
+        },
+        {
+          "min": [
+            -0.0225,
+            -0.875,
+            -0.45
+          ],
+          "max": [
+            0.0225,
+            -0.85,
+            0.425
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            -0.875,
+            0.425
+          ],
+          "max": [
+            0.0275,
+            -0.85,
+            0.45
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            -0.875,
+            0.65
+          ],
+          "max": [
+            0.0275,
+            -0.85,
+            0.7
+          ]
+        },
+        {
+          "min": [
+            -0.0225,
+            -0.85,
+            -0.575
+          ],
+          "max": [
+            0.0225,
+            -0.825,
+            0.575
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            -0.85,
+            0.625
+          ],
+          "max": [
+            0.0275,
+            -0.825,
+            0.7
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            -0.825,
+            -0.675
+          ],
+          "max": [
+            0.0275,
+            -0.775,
+            -0.6
+          ]
+        },
+        {
+          "min": [
+            -0.0225,
+            -0.825,
+            -0.6
+          ],
+          "max": [
+            0.0225,
+            -0.775,
+            0.575
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            -0.825,
+            0.575
+          ],
+          "max": [
+            0.0275,
+            -0.8,
+            0.725
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            -0.8,
+            0.575
+          ],
+          "max": [
+            0.0275,
+            -0.775,
+            0.675
+          ]
+        },
+        {
+          "min": [
+            -0.0225,
+            -0.775,
+            -0.7
+          ],
+          "max": [
+            0.0225,
+            -0.75,
+            -0.675
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            -0.775,
+            -0.675
+          ],
+          "max": [
+            0.0275,
+            -0.75,
+            -0.575
+          ]
+        },
+        {
+          "min": [
+            -0.0225,
+            -0.775,
+            -0.575
+          ],
+          "max": [
+            0.0225,
+            -0.75,
+            0.6
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            -0.775,
+            0.6
+          ],
+          "max": [
+            0.0275,
+            -0.75,
+            0.65
+          ]
+        },
+        {
+          "min": [
+            -0.0225,
+            -0.775,
+            0.65
+          ],
+          "max": [
+            0.0225,
+            -0.75,
+            0.7
+          ]
+        },
+        {
+          "min": [
+            -0.0225,
+            -0.75,
+            -0.7
+          ],
+          "max": [
+            0.0225,
+            -0.725,
+            -0.65
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            -0.75,
+            -0.65
+          ],
+          "max": [
+            0.0275,
+            -0.725,
+            -0.625
+          ]
+        },
+        {
+          "min": [
+            -0.0225,
+            -0.75,
+            -0.625
+          ],
+          "max": [
+            0.0225,
+            -0.725,
+            0.7
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            -0.725,
+            -0.825
+          ],
+          "max": [
+            0.0275,
+            -0.7,
+            -0.8
+          ]
+        },
+        {
+          "min": [
+            -0.0225,
+            -0.725,
+            -0.75
+          ],
+          "max": [
+            0.0225,
+            -0.675,
+            0.75
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            -0.7,
+            -0.875
+          ],
+          "max": [
+            0.0275,
+            -0.675,
+            -0.8
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            -0.7,
+            0.825
+          ],
+          "max": [
+            0.0275,
+            -0.675,
+            0.875
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            -0.675,
+            -0.875
+          ],
+          "max": [
+            0.0275,
+            -0.65,
+            -0.775
+          ]
+        },
+        {
+          "min": [
+            -0.0225,
+            -0.675,
+            -0.775
+          ],
+          "max": [
+            0.0225,
+            -0.65,
+            0.75
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            -0.675,
+            0.75
+          ],
+          "max": [
+            0.0275,
+            -0.65,
+            0.875
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            -0.65,
+            -0.85
+          ],
+          "max": [
+            0.0275,
+            -0.625,
+            -0.75
+          ]
+        },
+        {
+          "min": [
+            -0.0225,
+            -0.65,
+            -0.75
+          ],
+          "max": [
+            0.0225,
+            -0.625,
+            0.725
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            -0.65,
+            0.725
+          ],
+          "max": [
+            0.0275,
+            -0.625,
+            0.875
+          ]
+        },
+        {
+          "min": [
+            -0.0225,
+            -0.625,
+            -0.85
+          ],
+          "max": [
+            0.0225,
+            -0.575,
+            -0.825
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            -0.625,
+            -0.825
+          ],
+          "max": [
+            0.0275,
+            -0.6,
+            -0.75
+          ]
+        },
+        {
+          "min": [
+            -0.0225,
+            -0.625,
+            -0.75
+          ],
+          "max": [
+            0.0225,
+            -0.6,
+            0.75
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            -0.625,
+            0.75
+          ],
+          "max": [
+            0.0275,
+            -0.6,
+            0.825
+          ]
+        },
+        {
+          "min": [
+            -0.0225,
+            -0.625,
+            0.825
+          ],
+          "max": [
+            0.0225,
+            -0.6,
+            0.85
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            -0.6,
+            -0.825
+          ],
+          "max": [
+            0.0275,
+            -0.575,
+            -0.775
+          ]
+        },
+        {
+          "min": [
+            -0.0225,
+            -0.6,
+            -0.775
+          ],
+          "max": [
+            0.0225,
+            -0.575,
+            0.75
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            -0.6,
+            0.75
+          ],
+          "max": [
+            0.0275,
+            -0.575,
+            0.775
+          ]
+        },
+        {
+          "min": [
+            -0.0225,
+            -0.6,
+            0.775
+          ],
+          "max": [
+            0.0225,
+            -0.575,
+            0.85
+          ]
+        },
+        {
+          "min": [
+            -0.0225,
+            -0.575,
+            -0.875
+          ],
+          "max": [
+            0.0225,
+            -0.525,
+            0.875
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            -0.525,
+            -0.975
+          ],
+          "max": [
+            0.0275,
+            -0.5,
+            -0.95
+          ]
+        },
+        {
+          "min": [
+            -0.0225,
+            -0.525,
+            -0.9
+          ],
+          "max": [
+            0.0225,
+            -0.475,
+            0.9
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            -0.5,
+            -1
+          ],
+          "max": [
+            0.0275,
+            -0.475,
+            -0.925
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            -0.5,
+            0.925
+          ],
+          "max": [
+            0.0275,
+            -0.475,
+            1
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            -0.475,
+            -1
+          ],
+          "max": [
+            0.0275,
+            -0.45,
+            -0.9
+          ]
+        },
+        {
+          "min": [
+            -0.0225,
+            -0.475,
+            -0.9
+          ],
+          "max": [
+            0.0225,
+            -0.45,
+            0.85
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            -0.475,
+            0.85
+          ],
+          "max": [
+            0.0275,
+            -0.45,
+            1
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            -0.45,
+            -0.975
+          ],
+          "max": [
+            0.0275,
+            -0.425,
+            -0.85
+          ]
+        },
+        {
+          "min": [
+            -0.0225,
+            -0.45,
+            -0.85
+          ],
+          "max": [
+            0.0225,
+            -0.425,
+            0.875
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            -0.45,
+            0.875
+          ],
+          "max": [
+            0.0275,
+            -0.425,
+            1
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            -0.425,
+            -0.95
+          ],
+          "max": [
+            0.0275,
+            -0.4,
+            -0.875
+          ]
+        },
+        {
+          "min": [
+            -0.0225,
+            -0.425,
+            -0.875
+          ],
+          "max": [
+            0.0225,
+            -0.4,
+            0.875
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            -0.425,
+            0.875
+          ],
+          "max": [
+            0.0275,
+            -0.4,
+            0.95
+          ]
+        },
+        {
+          "min": [
+            -0.0225,
+            -0.4,
+            -0.95
+          ],
+          "max": [
+            0.0225,
+            -0.375,
+            -0.925
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            -0.4,
+            -0.925
+          ],
+          "max": [
+            0.0275,
+            -0.375,
+            -0.9
+          ]
+        },
+        {
+          "min": [
+            -0.0225,
+            -0.4,
+            -0.9
+          ],
+          "max": [
+            0.0225,
+            -0.375,
+            0.95
+          ]
+        },
+        {
+          "min": [
+            -0.0225,
+            -0.375,
+            -0.975
+          ],
+          "max": [
+            0.0225,
+            -0.325,
+            0.975
+          ]
+        },
+        {
+          "min": [
+            -0.0225,
+            -0.325,
+            -1
+          ],
+          "max": [
+            0.0225,
+            -0.275,
+            1
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            -0.3,
+            -1.05
+          ],
+          "max": [
+            0.0275,
+            -0.275,
+            -1.025
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            -0.275,
+            -1.075
+          ],
+          "max": [
+            0.0275,
+            -0.25,
+            -1
+          ]
+        },
+        {
+          "min": [
+            -0.0225,
+            -0.275,
+            -1
+          ],
+          "max": [
+            0.0225,
+            -0.25,
+            0.95
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            -0.275,
+            0.95
+          ],
+          "max": [
+            0.0275,
+            -0.2,
+            1.075
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            -0.25,
+            -1.075
+          ],
+          "max": [
+            0.0275,
+            -0.225,
+            -0.95
+          ]
+        },
+        {
+          "min": [
+            -0.0225,
+            -0.25,
+            -0.95
+          ],
+          "max": [
+            0.0225,
+            -0.2,
+            0.95
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            -0.225,
+            -1.05
+          ],
+          "max": [
+            0.0275,
+            -0.2,
+            -0.95
+          ]
+        },
+        {
+          "min": [
+            -0.0225,
+            -0.2,
+            -1.025
+          ],
+          "max": [
+            0.0225,
+            -0.175,
+            -1
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            -0.2,
+            -1
+          ],
+          "max": [
+            0.0275,
+            -0.175,
+            -0.95
+          ]
+        },
+        {
+          "min": [
+            -0.0225,
+            -0.2,
+            -0.95
+          ],
+          "max": [
+            0.0225,
+            -0.175,
+            1.025
+          ]
+        },
+        {
+          "min": [
+            -0.0225,
+            -0.175,
+            -1.025
+          ],
+          "max": [
+            0.0225,
+            -0.1,
+            1.025
+          ]
+        },
+        {
+          "min": [
+            -0.0225,
+            -0.1,
+            -1.025
+          ],
+          "max": [
+            0.0225,
+            -0.075,
+            -0.1
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            -0.1,
+            -0.1
+          ],
+          "max": [
+            0.0275,
+            0.1,
+            0.1
+          ]
+        },
+        {
+          "min": [
+            -0.0225,
+            -0.1,
+            0.1
+          ],
+          "max": [
+            0.0225,
+            -0.075,
+            1.025
+          ]
+        },
+        {
+          "min": [
+            -0.0225,
+            -0.075,
+            -1.05
+          ],
+          "max": [
+            0.0225,
+            -0.05,
+            -0.1
+          ]
+        },
+        {
+          "min": [
+            -0.0225,
+            -0.075,
+            0.1
+          ],
+          "max": [
+            0.0225,
+            -0.05,
+            1.05
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            -0.05,
+            -1.1
+          ],
+          "max": [
+            0.0275,
+            -0.025,
+            -1.025
+          ]
+        },
+        {
+          "min": [
+            -0.0225,
+            -0.05,
+            -1.025
+          ],
+          "max": [
+            0.0225,
+            -0.025,
+            -0.1
+          ]
+        },
+        {
+          "min": [
+            -0.0225,
+            -0.05,
+            0.1
+          ],
+          "max": [
+            0.0225,
+            0,
+            0.975
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            -0.05,
+            0.975
+          ],
+          "max": [
+            0.0275,
+            -0.025,
+            1.05
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            -0.025,
+            -1.1
+          ],
+          "max": [
+            0.0275,
+            0,
+            -0.95
+          ]
+        },
+        {
+          "min": [
+            -0.0225,
+            -0.025,
+            -0.95
+          ],
+          "max": [
+            0.0225,
+            0,
+            -0.1
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            -0.025,
+            0.975
+          ],
+          "max": [
+            0.0275,
+            0,
+            1.1
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            0,
+            -1.1
+          ],
+          "max": [
+            0.0275,
+            0.025,
+            -0.975
+          ]
+        },
+        {
+          "min": [
+            -0.0225,
+            0,
+            -0.975
+          ],
+          "max": [
+            0.0225,
+            0.05,
+            -0.1
+          ]
+        },
+        {
+          "min": [
+            -0.0225,
+            0,
+            0.1
+          ],
+          "max": [
+            0.0225,
+            0.025,
+            0.95
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            0,
+            0.95
+          ],
+          "max": [
+            0.0275,
+            0.025,
+            1.1
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            0.025,
+            -1.05
+          ],
+          "max": [
+            0.0275,
+            0.05,
+            -0.975
+          ]
+        },
+        {
+          "min": [
+            -0.0225,
+            0.025,
+            0.1
+          ],
+          "max": [
+            0.0225,
+            0.05,
+            1.025
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            0.025,
+            1.025
+          ],
+          "max": [
+            0.0275,
+            0.05,
+            1.1
+          ]
+        },
+        {
+          "min": [
+            -0.0225,
+            0.05,
+            -1.05
+          ],
+          "max": [
+            0.0225,
+            0.075,
+            -0.1
+          ]
+        },
+        {
+          "min": [
+            -0.0225,
+            0.05,
+            0.1
+          ],
+          "max": [
+            0.0225,
+            0.075,
+            1.05
+          ]
+        },
+        {
+          "min": [
+            -0.0225,
+            0.075,
+            -1.025
+          ],
+          "max": [
+            0.0225,
+            0.1,
+            -0.1
+          ]
+        },
+        {
+          "min": [
+            -0.0225,
+            0.075,
+            0.1
+          ],
+          "max": [
+            0.0225,
+            0.1,
+            1.025
+          ]
+        },
+        {
+          "min": [
+            -0.0225,
+            0.1,
+            -1.025
+          ],
+          "max": [
+            0.0225,
+            0.175,
+            1.025
+          ]
+        },
+        {
+          "min": [
+            -0.0225,
+            0.175,
+            -1.025
+          ],
+          "max": [
+            0.0225,
+            0.2,
+            0.95
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            0.175,
+            0.95
+          ],
+          "max": [
+            0.0275,
+            0.2,
+            1
+          ]
+        },
+        {
+          "min": [
+            -0.0225,
+            0.175,
+            1
+          ],
+          "max": [
+            0.0225,
+            0.2,
+            1.025
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            0.2,
+            -1.075
+          ],
+          "max": [
+            0.0275,
+            0.275,
+            -0.95
+          ]
+        },
+        {
+          "min": [
+            -0.0225,
+            0.2,
+            -0.95
+          ],
+          "max": [
+            0.0225,
+            0.25,
+            0.95
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            0.2,
+            0.95
+          ],
+          "max": [
+            0.0275,
+            0.225,
+            1.05
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            0.225,
+            0.95
+          ],
+          "max": [
+            0.0275,
+            0.25,
+            1.075
+          ]
+        },
+        {
+          "min": [
+            -0.0225,
+            0.25,
+            -0.95
+          ],
+          "max": [
+            0.0225,
+            0.275,
+            1
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            0.25,
+            1
+          ],
+          "max": [
+            0.0275,
+            0.275,
+            1.075
+          ]
+        },
+        {
+          "min": [
+            -0.0225,
+            0.275,
+            -1
+          ],
+          "max": [
+            0.0225,
+            0.325,
+            1
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            0.275,
+            1.025
+          ],
+          "max": [
+            0.0275,
+            0.3,
+            1.05
+          ]
+        },
+        {
+          "min": [
+            -0.0225,
+            0.325,
+            -0.975
+          ],
+          "max": [
+            0.0225,
+            0.375,
+            0.975
+          ]
+        },
+        {
+          "min": [
+            -0.0225,
+            0.375,
+            -0.95
+          ],
+          "max": [
+            0.0225,
+            0.4,
+            0.9
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            0.375,
+            0.9
+          ],
+          "max": [
+            0.0275,
+            0.4,
+            0.925
+          ]
+        },
+        {
+          "min": [
+            -0.0225,
+            0.375,
+            0.925
+          ],
+          "max": [
+            0.0225,
+            0.4,
+            0.95
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            0.4,
+            -0.95
+          ],
+          "max": [
+            0.0275,
+            0.425,
+            -0.875
+          ]
+        },
+        {
+          "min": [
+            -0.0225,
+            0.4,
+            -0.875
+          ],
+          "max": [
+            0.0225,
+            0.425,
+            0.875
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            0.4,
+            0.875
+          ],
+          "max": [
+            0.0275,
+            0.425,
+            0.95
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            0.425,
+            -1
+          ],
+          "max": [
+            0.0275,
+            0.45,
+            -0.875
+          ]
+        },
+        {
+          "min": [
+            -0.0225,
+            0.425,
+            -0.875
+          ],
+          "max": [
+            0.0225,
+            0.45,
+            0.85
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            0.425,
+            0.85
+          ],
+          "max": [
+            0.0275,
+            0.45,
+            0.975
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            0.45,
+            -1
+          ],
+          "max": [
+            0.0275,
+            0.475,
+            -0.85
+          ]
+        },
+        {
+          "min": [
+            -0.0225,
+            0.45,
+            -0.85
+          ],
+          "max": [
+            0.0225,
+            0.475,
+            0.9
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            0.45,
+            0.9
+          ],
+          "max": [
+            0.0275,
+            0.475,
+            1
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            0.475,
+            -1
+          ],
+          "max": [
+            0.0275,
+            0.5,
+            -0.925
+          ]
+        },
+        {
+          "min": [
+            -0.0225,
+            0.475,
+            -0.9
+          ],
+          "max": [
+            0.0225,
+            0.525,
+            0.9
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            0.475,
+            0.925
+          ],
+          "max": [
+            0.0275,
+            0.5,
+            1
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            0.5,
+            0.95
+          ],
+          "max": [
+            0.0275,
+            0.525,
+            0.975
+          ]
+        },
+        {
+          "min": [
+            -0.0225,
+            0.525,
+            -0.875
+          ],
+          "max": [
+            0.0225,
+            0.575,
+            0.875
+          ]
+        },
+        {
+          "min": [
+            -0.0225,
+            0.575,
+            -0.85
+          ],
+          "max": [
+            0.0225,
+            0.6,
+            -0.775
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            0.575,
+            -0.775
+          ],
+          "max": [
+            0.0275,
+            0.6,
+            -0.75
+          ]
+        },
+        {
+          "min": [
+            -0.0225,
+            0.575,
+            -0.75
+          ],
+          "max": [
+            0.0225,
+            0.6,
+            0.775
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            0.575,
+            0.775
+          ],
+          "max": [
+            0.0275,
+            0.6,
+            0.825
+          ]
+        },
+        {
+          "min": [
+            -0.0225,
+            0.575,
+            0.825
+          ],
+          "max": [
+            0.0225,
+            0.625,
+            0.85
+          ]
+        },
+        {
+          "min": [
+            -0.0225,
+            0.6,
+            -0.85
+          ],
+          "max": [
+            0.0225,
+            0.625,
+            -0.825
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            0.6,
+            -0.825
+          ],
+          "max": [
+            0.0275,
+            0.625,
+            -0.75
+          ]
+        },
+        {
+          "min": [
+            -0.0225,
+            0.6,
+            -0.75
+          ],
+          "max": [
+            0.0225,
+            0.625,
+            0.75
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            0.6,
+            0.75
+          ],
+          "max": [
+            0.0275,
+            0.625,
+            0.825
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            0.625,
+            -0.875
+          ],
+          "max": [
+            0.0275,
+            0.65,
+            -0.725
+          ]
+        },
+        {
+          "min": [
+            -0.0225,
+            0.625,
+            -0.725
+          ],
+          "max": [
+            0.0225,
+            0.65,
+            0.75
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            0.625,
+            0.75
+          ],
+          "max": [
+            0.0275,
+            0.65,
+            0.85
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            0.65,
+            -0.875
+          ],
+          "max": [
+            0.0275,
+            0.675,
+            -0.75
+          ]
+        },
+        {
+          "min": [
+            -0.0225,
+            0.65,
+            -0.75
+          ],
+          "max": [
+            0.0225,
+            0.675,
+            0.775
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            0.65,
+            0.775
+          ],
+          "max": [
+            0.0275,
+            0.675,
+            0.875
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            0.675,
+            -0.875
+          ],
+          "max": [
+            0.0275,
+            0.7,
+            -0.825
+          ]
+        },
+        {
+          "min": [
+            -0.0225,
+            0.675,
+            -0.75
+          ],
+          "max": [
+            0.0225,
+            0.725,
+            0.75
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            0.675,
+            0.8
+          ],
+          "max": [
+            0.0275,
+            0.7,
+            0.875
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            0.7,
+            0.8
+          ],
+          "max": [
+            0.0275,
+            0.725,
+            0.825
+          ]
+        },
+        {
+          "min": [
+            -0.0225,
+            0.725,
+            -0.7
+          ],
+          "max": [
+            0.0225,
+            0.75,
+            0.625
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            0.725,
+            0.625
+          ],
+          "max": [
+            0.0275,
+            0.75,
+            0.65
+          ]
+        },
+        {
+          "min": [
+            -0.0225,
+            0.725,
+            0.65
+          ],
+          "max": [
+            0.0225,
+            0.75,
+            0.7
+          ]
+        },
+        {
+          "min": [
+            -0.0225,
+            0.75,
+            -0.7
+          ],
+          "max": [
+            0.0225,
+            0.775,
+            -0.65
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            0.75,
+            -0.65
+          ],
+          "max": [
+            0.0275,
+            0.775,
+            -0.6
+          ]
+        },
+        {
+          "min": [
+            -0.0225,
+            0.75,
+            -0.6
+          ],
+          "max": [
+            0.0225,
+            0.775,
+            0.575
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            0.75,
+            0.575
+          ],
+          "max": [
+            0.0275,
+            0.775,
+            0.675
+          ]
+        },
+        {
+          "min": [
+            -0.0225,
+            0.75,
+            0.675
+          ],
+          "max": [
+            0.0225,
+            0.775,
+            0.7
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            0.775,
+            -0.675
+          ],
+          "max": [
+            0.0275,
+            0.8,
+            -0.575
+          ]
+        },
+        {
+          "min": [
+            -0.0225,
+            0.775,
+            -0.575
+          ],
+          "max": [
+            0.0225,
+            0.825,
+            0.6
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            0.775,
+            0.6
+          ],
+          "max": [
+            0.0275,
+            0.825,
+            0.675
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            0.8,
+            -0.725
+          ],
+          "max": [
+            0.0275,
+            0.825,
+            -0.575
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            0.825,
+            -0.7
+          ],
+          "max": [
+            0.0275,
+            0.85,
+            -0.625
+          ]
+        },
+        {
+          "min": [
+            -0.0225,
+            0.825,
+            -0.575
+          ],
+          "max": [
+            0.0225,
+            0.85,
+            0.575
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            0.825,
+            0.625
+          ],
+          "max": [
+            0.0275,
+            0.875,
+            0.7
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            0.85,
+            -0.7
+          ],
+          "max": [
+            0.0275,
+            0.875,
+            -0.65
+          ]
+        },
+        {
+          "min": [
+            -0.0225,
+            0.85,
+            -0.575
+          ],
+          "max": [
+            0.0225,
+            0.9,
+            -0.45
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            0.85,
+            -0.45
+          ],
+          "max": [
+            0.0275,
+            0.875,
+            -0.425
+          ]
+        },
+        {
+          "min": [
+            -0.0225,
+            0.85,
+            -0.425
+          ],
+          "max": [
+            0.0225,
+            0.875,
+            0.45
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            0.85,
+            0.45
+          ],
+          "max": [
+            0.0275,
+            0.875,
+            0.475
+          ]
+        },
+        {
+          "min": [
+            -0.0225,
+            0.85,
+            0.475
+          ],
+          "max": [
+            0.0225,
+            0.9,
+            0.575
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            0.875,
+            -0.45
+          ],
+          "max": [
+            0.0275,
+            0.9,
+            -0.4
+          ]
+        },
+        {
+          "min": [
+            -0.0225,
+            0.875,
+            -0.4
+          ],
+          "max": [
+            0.0225,
+            0.9,
+            0.4
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            0.875,
+            0.4
+          ],
+          "max": [
+            0.0275,
+            0.925,
+            0.475
+          ]
+        },
+        {
+          "min": [
+            -0.0225,
+            0.9,
+            -0.5
+          ],
+          "max": [
+            0.0225,
+            0.925,
+            -0.475
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            0.9,
+            -0.475
+          ],
+          "max": [
+            0.0275,
+            0.925,
+            -0.375
+          ]
+        },
+        {
+          "min": [
+            -0.0225,
+            0.9,
+            -0.375
+          ],
+          "max": [
+            0.0225,
+            0.925,
+            0.4
+          ]
+        },
+        {
+          "min": [
+            -0.0225,
+            0.9,
+            0.475
+          ],
+          "max": [
+            0.0225,
+            0.925,
+            0.5
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            0.925,
+            -0.5
+          ],
+          "max": [
+            0.0275,
+            0.95,
+            -0.4
+          ]
+        },
+        {
+          "min": [
+            -0.0225,
+            0.925,
+            -0.4
+          ],
+          "max": [
+            0.0225,
+            0.95,
+            0.4
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            0.925,
+            0.4
+          ],
+          "max": [
+            0.0275,
+            0.95,
+            0.5
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            0.95,
+            -0.525
+          ],
+          "max": [
+            0.0275,
+            0.975,
+            -0.425
+          ]
+        },
+        {
+          "min": [
+            -0.0225,
+            0.95,
+            -0.4
+          ],
+          "max": [
+            0.0225,
+            1,
+            -0.25
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            0.95,
+            -0.25
+          ],
+          "max": [
+            0.0275,
+            1,
+            -0.175
+          ]
+        },
+        {
+          "min": [
+            -0.0225,
+            0.95,
+            -0.175
+          ],
+          "max": [
+            0.0225,
+            1,
+            -0.025
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            0.95,
+            -0.025
+          ],
+          "max": [
+            0.0275,
+            0.975,
+            0
+          ]
+        },
+        {
+          "min": [
+            -0.0225,
+            0.95,
+            0
+          ],
+          "max": [
+            0.0225,
+            0.975,
+            0.2
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            0.95,
+            0.2
+          ],
+          "max": [
+            0.0275,
+            1.075,
+            0.275
+          ]
+        },
+        {
+          "min": [
+            -0.0225,
+            0.95,
+            0.275
+          ],
+          "max": [
+            0.0225,
+            1,
+            0.4
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            0.95,
+            0.425
+          ],
+          "max": [
+            0.0275,
+            1,
+            0.5
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            0.975,
+            -0.5
+          ],
+          "max": [
+            0.0275,
+            1,
+            -0.45
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            0.975,
+            -0.025
+          ],
+          "max": [
+            0.0275,
+            1.025,
+            0.05
+          ]
+        },
+        {
+          "min": [
+            -0.0225,
+            0.975,
+            0.05
+          ],
+          "max": [
+            0.0225,
+            1.05,
+            0.2
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            1,
+            -0.275
+          ],
+          "max": [
+            0.0275,
+            1.025,
+            -0.2
+          ]
+        },
+        {
+          "min": [
+            -0.0225,
+            1,
+            -0.2
+          ],
+          "max": [
+            0.0225,
+            1.025,
+            -0.025
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            1.025,
+            -0.3
+          ],
+          "max": [
+            0.0275,
+            1.05,
+            -0.2
+          ]
+        },
+        {
+          "min": [
+            -0.0225,
+            1.025,
+            -0.2
+          ],
+          "max": [
+            0.0225,
+            1.05,
+            -0.05
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            1.025,
+            -0.05
+          ],
+          "max": [
+            0.0275,
+            1.05,
+            0.05
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            1.05,
+            -0.275
+          ],
+          "max": [
+            0.0275,
+            1.075,
+            -0.225
+          ]
+        },
+        {
+          "min": [
+            -0.0275,
+            1.05,
+            -0.05
+          ],
+          "max": [
+            0.0275,
+            1.1,
+            0.025
+          ]
+        }
+      ]
+    },
+    "pulley": {
+      "itemModel": "arc_farms:cedar_sawmill_pulley",
+      "file": "cedar_sawmill_pulley.json",
+      "sha256": "6efad81fc1646f061ea764f8de859401f0d6dbbdba9f577db2188ac6c4463ba5",
+      "origin": [
+        0,
+        0,
+        0
+      ],
+      "boxes": [
+        {
+          "min": [
+            -0.12,
+            -0.375,
+            -0.135
+          ],
+          "max": [
+            0.12,
+            -0.33,
+            0.135
+          ]
+        },
+        {
+          "min": [
+            -0.12,
+            -0.33,
+            -0.225
+          ],
+          "max": [
+            0.12,
+            -0.285,
+            0.225
+          ]
+        },
+        {
+          "min": [
+            -0.12,
+            -0.285,
+            -0.27
+          ],
+          "max": [
+            0.12,
+            -0.24,
+            -0.12
+          ]
+        },
+        {
+          "min": [
+            -0.065,
+            -0.285,
+            -0.045
+          ],
+          "max": [
+            0.065,
+            -0.09,
+            0.045
+          ]
+        },
+        {
+          "min": [
+            -0.12,
+            -0.285,
+            0.12
+          ],
+          "max": [
+            0.12,
+            -0.24,
+            0.27
+          ]
+        },
+        {
+          "min": [
+            -0.12,
+            -0.24,
+            -0.315
+          ],
+          "max": [
+            0.12,
+            -0.195,
+            -0.195
+          ]
+        },
+        {
+          "min": [
+            -0.12,
+            -0.24,
+            0.195
+          ],
+          "max": [
+            0.12,
+            -0.195,
+            0.315
+          ]
+        },
+        {
+          "min": [
+            -0.12,
+            -0.195,
+            -0.33
+          ],
+          "max": [
+            0.12,
+            -0.18,
+            -0.195
+          ]
+        },
+        {
+          "min": [
+            -0.12,
+            -0.195,
+            0.195
+          ],
+          "max": [
+            0.12,
+            -0.18,
+            0.33
+          ]
+        },
+        {
+          "min": [
+            -0.12,
+            -0.18,
+            -0.33
+          ],
+          "max": [
+            0.12,
+            -0.135,
+            -0.24
+          ]
+        },
+        {
+          "min": [
+            -0.065,
+            -0.18,
+            -0.24
+          ],
+          "max": [
+            0.065,
+            -0.165,
+            -0.225
+          ]
+        },
+        {
+          "min": [
+            -0.065,
+            -0.18,
+            0.225
+          ],
+          "max": [
+            0.065,
+            -0.165,
+            0.24
+          ]
+        },
+        {
+          "min": [
+            -0.12,
+            -0.18,
+            0.24
+          ],
+          "max": [
+            0.12,
+            -0.135,
+            0.33
+          ]
+        },
+        {
+          "min": [
+            -0.065,
+            -0.165,
+            -0.24
+          ],
+          "max": [
+            0.065,
+            -0.15,
+            -0.195
+          ]
+        },
+        {
+          "min": [
+            -0.065,
+            -0.165,
+            0.195
+          ],
+          "max": [
+            0.065,
+            -0.15,
+            0.24
+          ]
+        },
+        {
+          "min": [
+            -0.065,
+            -0.15,
+            -0.24
+          ],
+          "max": [
+            0.065,
+            -0.135,
+            -0.165
+          ]
+        },
+        {
+          "min": [
+            -0.065,
+            -0.15,
+            0.165
+          ],
+          "max": [
+            0.065,
+            -0.135,
+            0.24
+          ]
+        },
+        {
+          "min": [
+            -0.12,
+            -0.135,
+            -0.36
+          ],
+          "max": [
+            0.12,
+            -0.09,
+            -0.255
+          ]
+        },
+        {
+          "min": [
+            -0.065,
+            -0.135,
+            -0.255
+          ],
+          "max": [
+            0.065,
+            -0.12,
+            -0.15
+          ]
+        },
+        {
+          "min": [
+            -0.065,
+            -0.135,
+            0.15
+          ],
+          "max": [
+            0.065,
+            -0.12,
+            0.255
+          ]
+        },
+        {
+          "min": [
+            -0.12,
+            -0.135,
+            0.255
+          ],
+          "max": [
+            0.12,
+            -0.09,
+            0.36
+          ]
+        },
+        {
+          "min": [
+            -0.065,
+            -0.12,
+            -0.255
+          ],
+          "max": [
+            0.065,
+            -0.105,
+            -0.12
+          ]
+        },
+        {
+          "min": [
+            -0.065,
+            -0.12,
+            0.12
+          ],
+          "max": [
+            0.065,
+            -0.105,
+            0.255
+          ]
+        },
+        {
+          "min": [
+            -0.065,
+            -0.105,
+            -0.24
+          ],
+          "max": [
+            0.065,
+            -0.09,
+            -0.09
+          ]
+        },
+        {
+          "min": [
+            -0.065,
+            -0.105,
+            0.09
+          ],
+          "max": [
+            0.065,
+            -0.09,
+            0.24
+          ]
+        },
+        {
+          "min": [
+            -0.12,
+            -0.09,
+            -0.375
+          ],
+          "max": [
+            0.12,
+            -0.045,
+            -0.27
+          ]
+        },
+        {
+          "min": [
+            -0.065,
+            -0.09,
+            -0.225
+          ],
+          "max": [
+            0.065,
+            -0.075,
+            -0.09
+          ]
+        },
+        {
+          "min": [
+            -0.15,
+            -0.09,
+            -0.09
+          ],
+          "max": [
+            0.15,
+            0.09,
+            0.09
+          ]
+        },
+        {
+          "min": [
+            -0.065,
+            -0.09,
+            0.09
+          ],
+          "max": [
+            0.065,
+            -0.075,
+            0.225
+          ]
+        },
+        {
+          "min": [
+            -0.12,
+            -0.09,
+            0.27
+          ],
+          "max": [
+            0.12,
+            -0.045,
+            0.375
+          ]
+        },
+        {
+          "min": [
+            -0.065,
+            -0.075,
+            -0.195
+          ],
+          "max": [
+            0.065,
+            -0.06,
+            -0.09
+          ]
+        },
+        {
+          "min": [
+            -0.065,
+            -0.075,
+            0.09
+          ],
+          "max": [
+            0.065,
+            -0.06,
+            0.195
+          ]
+        },
+        {
+          "min": [
+            -0.065,
+            -0.06,
+            -0.165
+          ],
+          "max": [
+            0.065,
+            -0.045,
+            -0.09
+          ]
+        },
+        {
+          "min": [
+            -0.065,
+            -0.06,
+            0.09
+          ],
+          "max": [
+            0.065,
+            -0.045,
+            0.165
+          ]
+        },
+        {
+          "min": [
+            -0.12,
+            -0.045,
+            -0.375
+          ],
+          "max": [
+            0.12,
+            0.045,
+            -0.285
+          ]
+        },
+        {
+          "min": [
+            -0.065,
+            -0.045,
+            -0.135
+          ],
+          "max": [
+            0.065,
+            -0.03,
+            -0.09
+          ]
+        },
+        {
+          "min": [
+            -0.065,
+            -0.045,
+            0.09
+          ],
+          "max": [
+            0.065,
+            -0.03,
+            0.135
+          ]
+        },
+        {
+          "min": [
+            -0.12,
+            -0.045,
+            0.285
+          ],
+          "max": [
+            0.12,
+            0.045,
+            0.375
+          ]
+        },
+        {
+          "min": [
+            -0.065,
+            -0.03,
+            -0.12
+          ],
+          "max": [
+            0.065,
+            -0.015,
+            -0.09
+          ]
+        },
+        {
+          "min": [
+            -0.065,
+            -0.03,
+            0.09
+          ],
+          "max": [
+            0.065,
+            -0.015,
+            0.12
+          ]
+        },
+        {
+          "min": [
+            -0.065,
+            0.015,
+            -0.12
+          ],
+          "max": [
+            0.065,
+            0.03,
+            -0.09
+          ]
+        },
+        {
+          "min": [
+            -0.065,
+            0.015,
+            0.09
+          ],
+          "max": [
+            0.065,
+            0.03,
+            0.12
+          ]
+        },
+        {
+          "min": [
+            -0.065,
+            0.03,
+            -0.135
+          ],
+          "max": [
+            0.065,
+            0.045,
+            -0.09
+          ]
+        },
+        {
+          "min": [
+            -0.065,
+            0.03,
+            0.09
+          ],
+          "max": [
+            0.065,
+            0.045,
+            0.135
+          ]
+        },
+        {
+          "min": [
+            -0.12,
+            0.045,
+            -0.375
+          ],
+          "max": [
+            0.12,
+            0.09,
+            -0.27
+          ]
+        },
+        {
+          "min": [
+            -0.065,
+            0.045,
+            -0.165
+          ],
+          "max": [
+            0.065,
+            0.06,
+            -0.09
+          ]
+        },
+        {
+          "min": [
+            -0.065,
+            0.045,
+            0.09
+          ],
+          "max": [
+            0.065,
+            0.06,
+            0.165
+          ]
+        },
+        {
+          "min": [
+            -0.12,
+            0.045,
+            0.27
+          ],
+          "max": [
+            0.12,
+            0.09,
+            0.375
+          ]
+        },
+        {
+          "min": [
+            -0.065,
+            0.06,
+            -0.195
+          ],
+          "max": [
+            0.065,
+            0.075,
+            -0.09
+          ]
+        },
+        {
+          "min": [
+            -0.065,
+            0.06,
+            0.09
+          ],
+          "max": [
+            0.065,
+            0.075,
+            0.195
+          ]
+        },
+        {
+          "min": [
+            -0.065,
+            0.075,
+            -0.225
+          ],
+          "max": [
+            0.065,
+            0.09,
+            -0.09
+          ]
+        },
+        {
+          "min": [
+            -0.065,
+            0.075,
+            0.09
+          ],
+          "max": [
+            0.065,
+            0.09,
+            0.225
+          ]
+        },
+        {
+          "min": [
+            -0.12,
+            0.09,
+            -0.36
+          ],
+          "max": [
+            0.12,
+            0.135,
+            -0.255
+          ]
+        },
+        {
+          "min": [
+            -0.065,
+            0.09,
+            -0.24
+          ],
+          "max": [
+            0.065,
+            0.105,
+            -0.09
+          ]
+        },
+        {
+          "min": [
+            -0.065,
+            0.09,
+            -0.045
+          ],
+          "max": [
+            0.065,
+            0.285,
+            0.045
+          ]
+        },
+        {
+          "min": [
+            -0.065,
+            0.09,
+            0.09
+          ],
+          "max": [
+            0.065,
+            0.105,
+            0.24
+          ]
+        },
+        {
+          "min": [
+            -0.12,
+            0.09,
+            0.255
+          ],
+          "max": [
+            0.12,
+            0.135,
+            0.36
+          ]
+        },
+        {
+          "min": [
+            -0.065,
+            0.105,
+            -0.255
+          ],
+          "max": [
+            0.065,
+            0.12,
+            -0.12
+          ]
+        },
+        {
+          "min": [
+            -0.065,
+            0.105,
+            0.12
+          ],
+          "max": [
+            0.065,
+            0.12,
+            0.255
+          ]
+        },
+        {
+          "min": [
+            -0.065,
+            0.12,
+            -0.255
+          ],
+          "max": [
+            0.065,
+            0.135,
+            -0.15
+          ]
+        },
+        {
+          "min": [
+            -0.065,
+            0.12,
+            0.15
+          ],
+          "max": [
+            0.065,
+            0.135,
+            0.255
+          ]
+        },
+        {
+          "min": [
+            -0.12,
+            0.135,
+            -0.33
+          ],
+          "max": [
+            0.12,
+            0.18,
+            -0.24
+          ]
+        },
+        {
+          "min": [
+            -0.065,
+            0.135,
+            -0.24
+          ],
+          "max": [
+            0.065,
+            0.15,
+            -0.165
+          ]
+        },
+        {
+          "min": [
+            -0.065,
+            0.135,
+            0.165
+          ],
+          "max": [
+            0.065,
+            0.15,
+            0.24
+          ]
+        },
+        {
+          "min": [
+            -0.12,
+            0.135,
+            0.24
+          ],
+          "max": [
+            0.12,
+            0.18,
+            0.33
+          ]
+        },
+        {
+          "min": [
+            -0.065,
+            0.15,
+            -0.24
+          ],
+          "max": [
+            0.065,
+            0.165,
+            -0.195
+          ]
+        },
+        {
+          "min": [
+            -0.065,
+            0.15,
+            0.195
+          ],
+          "max": [
+            0.065,
+            0.165,
+            0.24
+          ]
+        },
+        {
+          "min": [
+            -0.065,
+            0.165,
+            -0.24
+          ],
+          "max": [
+            0.065,
+            0.18,
+            -0.225
+          ]
+        },
+        {
+          "min": [
+            -0.065,
+            0.165,
+            0.225
+          ],
+          "max": [
+            0.065,
+            0.18,
+            0.24
+          ]
+        },
+        {
+          "min": [
+            -0.12,
+            0.18,
+            -0.33
+          ],
+          "max": [
+            0.12,
+            0.195,
+            -0.195
+          ]
+        },
+        {
+          "min": [
+            -0.12,
+            0.18,
+            0.195
+          ],
+          "max": [
+            0.12,
+            0.195,
+            0.33
+          ]
+        },
+        {
+          "min": [
+            -0.12,
+            0.195,
+            -0.315
+          ],
+          "max": [
+            0.12,
+            0.24,
+            -0.195
+          ]
+        },
+        {
+          "min": [
+            -0.12,
+            0.195,
+            0.195
+          ],
+          "max": [
+            0.12,
+            0.24,
+            0.315
+          ]
+        },
+        {
+          "min": [
+            -0.12,
+            0.24,
+            -0.27
+          ],
+          "max": [
+            0.12,
+            0.285,
+            -0.12
+          ]
+        },
+        {
+          "min": [
+            -0.12,
+            0.24,
+            0.12
+          ],
+          "max": [
+            0.12,
+            0.285,
+            0.27
+          ]
+        },
+        {
+          "min": [
+            -0.12,
+            0.285,
+            -0.225
+          ],
+          "max": [
+            0.12,
+            0.33,
+            0.225
+          ]
+        },
+        {
+          "min": [
+            -0.12,
+            0.33,
+            -0.135
+          ],
+          "max": [
+            0.12,
+            0.375,
+            0.135
+          ]
+        }
+      ]
+    }
+  }
+}

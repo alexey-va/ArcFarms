@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { makeParts } from './machine.mjs';
 import { CYCLE_SECONDS, LOG_BOTTOM, LOG_HEIGHT, sampleCycle } from './motion.mjs';
 
@@ -64,7 +65,10 @@ assert.ok(Math.abs(top(table) - LOG_BOTTOM) < EPSILON, 'stock must touch the tab
 for (const part of parts.filter(part => ['timber-bolster', 'outfeed-top'].includes(part.name))) {
   assert.ok(Math.abs(top(part) - LOG_BOTTOM) < EPSILON, `${part.name} must support the stock without a gap`);
 }
-assert.ok(Math.max(...parts.filter(part => part.name === 'blade-disc').map(top)) > LOG_BOTTOM + LOG_HEIGHT,
+const nativeModels = JSON.parse(readFileSync(new URL('../../src/main/resources/sawmill/cedar-machine.json', import.meta.url), 'utf8')).nativeModels;
+const blade = parts.find(part => part.name === 'blade-rotor');
+assert.ok(blade?.itemModel === nativeModels.blade.itemModel, 'the saw must use the complete rigid native blade model');
+assert.ok(Math.max(...nativeModels.blade.boxes.map(box => blade.center[1] + box.max[1] * blade.size[1])) > LOG_BOTTOM + LOG_HEIGHT,
   'the solid disc must reach through the entire stock');
 let previousCut = Infinity;
 for (let time = 0; time <= CYCLE_SECONDS; time += .025) {

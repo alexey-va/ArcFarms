@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// Preview only. Reuses Location Atelier's exact vanilla block baker and renderer.
-import { readFile, writeFile, mkdir, rm } from 'node:fs/promises';
+// Source-driven runtime preview. Reuses Location Atelier and the native grounding face exporter.
+import { readFile, writeFile, mkdir, rm, readdir } from 'node:fs/promises';
 import { dirname, resolve, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
@@ -17,6 +17,21 @@ const options = Object.fromEntries(process.argv.slice(2).map(arg => {
 const atelier = resolve(options.atelier ?? join(project, '../ruscrafting-ops/scripts/location-atelier'));
 const out = resolve(options.out ?? join(project, 'build/reports/sawmill-preview'));
 const clientJar = resolve(options['client-jar'] ?? join(project, '../artifacts/.surface-cache/minecraft-1.21.11-client-ba2df812c2d12e0219c489c4cd9a5e1f0760f5bd.jar'));
+const runtimeText = await readFile(resolve(options['runtime-export'] ?? join(project, 'build/reports/sawmill-preview/runtime-export.json')), 'utf8');
+const runtime = JSON.parse(runtimeText);
+const nativeFaces = JSON.parse(await readFile(join(project, 'build/reports/sawmill-preview/grounding/native-item-faces.json'), 'utf8'));
+for (const descriptor of Object.values(runtime.nativeModels)) {
+  const modelBytes = await readFile(join(own, 'native-models', descriptor.file));
+  if (createHash('sha256').update(modelBytes).digest('hex') !== descriptor.sha256
+    || nativeFaces[descriptor.itemModel]?.modelSha256 !== descriptor.sha256) {
+    throw Error(`Stale native model export: ${descriptor.itemModel}; regenerate models, compiled export and grounding faces.`);
+  }
+}
+const classes = join(project, 'build/classes/kotlin/main/ru/ruscrafting/farms/paper/lumber/sawmill');
+const sourceClassSha256 = {};
+for (const filename of (await readdir(classes)).filter(name => /^CedarSawmill(?:Geometry|Animation)(?:\$|\.)/.test(name)).sort()) {
+  sourceClassSha256[filename] = createHash('sha256').update(await readFile(join(classes, filename))).digest('hex');
+}
 const snapshotText = await readFile(join(own, 'room.snapshot.json'), 'utf8');
 const snapshot = JSON.parse(snapshotText);
 if (snapshot.missingCells !== 0) throw Error('The captured room contains missing cells');
@@ -36,8 +51,9 @@ const operations = snapshot.blocks.map(([x, y, z, state]) => ({
   op: 'box', from: local([x, y, z]), to: local([x, y, z]), material: material(state),
 }));
 const parts = makeParts();
-for (const part of parts) material(part.block);
-for (const state of ['minecraft:spruce_log[axis=z]', 'minecraft:stripped_spruce_log[axis=z]', 'minecraft:spruce_planks']) material(state);
+if (JSON.stringify(parts) !== JSON.stringify(runtime.parts)) throw Error('Runtime geometry changed; rerun the compiled Kotlin export.');
+for (const part of parts) if (part.block) material(part.block);
+for (const state of ['minecraft:spruce_log[axis=z]', 'minecraft:stripped_spruce_log[axis=z]', 'minecraft:spruce_planks', 'minecraft:light_gray_concrete']) material(state);
 const views = SAWMILL.views.map(view => ({ ...view, camera: local(view.camera), target: local(view.target) }));
 const recipe = {
   version: 1, seed: 251026, title: 'Кедровый двор · рабочая пилорама',
@@ -59,7 +75,10 @@ const [motion, machine, viewer, css] = await Promise.all([
 const inline = value => JSON.stringify(value).replace(/</g, '\\u003c');
 const script = [
   `const SAWMILL_CAPTURE = ${inline({ world: snapshot.world, capturedAt: snapshot.capturedAt, origin: min, sha256: createHash('sha256').update(snapshotText).digest('hex') })};`,
-  motion.replace(/\bexport /g, ''), machine.replace(/\bexport /g, ''), viewer,
+  `const runtime = ${runtimeText};`,
+  `const NATIVE_ITEM_FACES = ${inline(nativeFaces)};`,
+  `const SAWMILL = {origin:${inline(SAWMILL.origin)},views:${inline(SAWMILL.views)},${SAWMILL.previewMask.toString()}};`,
+  motion.replace(/^import .*\n/gm, '').replace(/^const runtime = .*\n/gm, '').replace(/\bexport /g, ''), viewer,
 ].join('\n');
 let html = await readFile(join(out, 'index.html'), 'utf8');
 html = html.replace('</head>', `<style>${css}</style></head>`);
@@ -74,15 +93,15 @@ await writeFile(join(out, 'preview-mask.json'), JSON.stringify({
 }, null, 2) + '\n');
 await writeFile(join(out, 'preview-manifest.json'), JSON.stringify({
   schema: 1, world: snapshot.world, capturedAt: snapshot.capturedAt,
-  source: 'Sanitized live native block snapshot; display animation is authored concept, not runtime export.',
+  source: 'CedarSawmillGeometry resource + compiled CedarSawmillAnimation sample at10Hz; native ItemsAdder model faces include the nativeY180 base.',
+  runtimeExportSha256: createHash('sha256').update(runtimeText).digest('hex'),
+  sourceClassSha256,
+  nativeModels: Object.fromEntries(Object.entries(runtime.nativeModels).map(([kind, model]) => [kind, model.sha256])),
+  partCount: runtime.parts.length,
   snapshotSha256: createHash('sha256').update(snapshotText).digest('hex'),
   staticBlockCount: snapshot.blocks.length, previewMaskedProps: hidden.length,
-  cycleSeconds: CYCLE_DURATION_FROM_SOURCE(motion), nativeVersion: snapshot.minecraftVersion,
+  cycleSeconds: runtime.cycleSeconds, nativeVersion: snapshot.minecraftVersion,
   renderer: 'Location Atelier vanilla block model + texture baker, Three 0.128.0',
-  limitations: ['No server writes', 'No Minecraft native client acceptance', 'No resource-pack or native-particle/audio simulation'],
+  limitations: ['No server writes', 'No Minecraft native client acceptance', 'Workshop lighting is an offline approximation', 'Native model loading, packet delivery and sound require live validation'],
 }, null, 2) + '\n');
 console.log(`Animated preview: ${join(out, 'index.html')} (${hidden.length} interior props masked only in preview)`);
-
-function CYCLE_DURATION_FROM_SOURCE(source) {
-  return Number(source.match(/CYCLE_SECONDS\s*=\s*([\d.]+)/)?.[1]);
-}

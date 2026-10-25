@@ -1,0 +1,38 @@
+info:
+  namespace: arc_farms
+items:
+  cedar_sawmill_raw:
+    display_name: Бревно пилорамы
+    resource:
+      material: PAPER
+      model_id: 271001
+      generate: false
+      model_path: sawmill/cedar_sawmill_raw
+  cedar_sawmill_sawn:
+    display_name: Бревно с продольным спилом
+    resource:
+      material: PAPER
+      model_id: 271002
+      generate: false
+      model_path: sawmill/cedar_sawmill_sawn
+  cedar_sawmill_slab:
+    display_name: Горбыль пилорамы
+    resource:
+      material: PAPER
+      model_id: 271003
+      generate: false
+      model_path: sawmill/cedar_sawmill_slab
+  cedar_sawmill_blade:
+    display_name: Пильный диск пилорамы
+    resource:
+      material: PAPER
+      model_id: 271004
+      generate: false
+      model_path: sawmill/cedar_sawmill_blade
+  cedar_sawmill_pulley:
+    display_name: Шкив пилорамы
+    resource:
+      material: PAPER
+      model_id: 271005
+      generate: false
+      model_path: sawmill/cedar_sawmill_pulley

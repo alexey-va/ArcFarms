@@ -7,7 +7,7 @@ plugins {
     jacoco
 }
 group = "ru.ruscrafting"
-version = "0.45.58"
+version = "0.45.59"
 description = "Shared farm, lumbermill, and mine activities for RusCrafting"
 
 val integrationTestSourceSet = sourceSets.create("integrationTest") {
@@ -80,6 +80,14 @@ dependencies {
 }
 
 tasks {
+    register<JavaExec>("validateCedarSawmill") {
+        group = "verification"
+        description = "Validates stable native sawmill parts and exports the packaged runtime poses."
+        dependsOn("classes")
+        classpath = sourceSets.main.get().runtimeClasspath + sourceSets.main.get().compileClasspath
+        mainClass.set("ru.ruscrafting.farms.paper.lumber.sawmill.CedarSawmillExport")
+        args(layout.buildDirectory.file("reports/sawmill-preview/runtime-export.json").get().asFile.absolutePath)
+    }
     register<JavaExec>("validateMineDisplayModels") {
         group = "verification"
         description = "Rejects coplanar display faces in authored mine models and sampled animation poses."
@@ -122,7 +130,7 @@ tasks {
     }
     jar { archiveClassifier.set("plain") }
     shadowJar {
-        dependsOn("validateMineDisplayModels")
+        dependsOn("validateMineDisplayModels", "validateCedarSawmill")
         archiveClassifier.set("")
         mergeServiceFiles()
         exclude("org/slf4j/**")
