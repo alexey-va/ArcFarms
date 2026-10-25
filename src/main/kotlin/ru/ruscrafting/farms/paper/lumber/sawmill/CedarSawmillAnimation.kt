@@ -2,6 +2,7 @@ package ru.ruscrafting.farms.paper.lumber.sawmill
 
 import org.joml.Quaternionf
 import org.joml.Vector3f
+import ru.ruscrafting.farms.paper.lumber.sawmill.CedarSawmillGeometry.SCENE_SCALE
 import kotlin.math.PI
 import kotlin.math.floor
 import kotlin.math.max
@@ -93,10 +94,11 @@ internal object CedarSawmillAnimation {
                     rotation.rotationXYZ((age * 8).toFloat(), (seed * 7).toFloat(), (age * 5).toFloat())
                 }
             }
-            Pose(part.id, center, size, rotation, visible)
+            Pose(part.id, center.mul(SCENE_SCALE), size.mul(SCENE_SCALE), rotation, visible)
         }
         return Frame(state.time, state.contact, state.time >= DURATION_SECONDS, poses,
-            state.carriageZ, state.forwardZ, state.lateral, state.cutThreshold, state.outputZ, state.split)
+            state.carriageZ * SCENE_SCALE, state.forwardZ * SCENE_SCALE, state.lateral * SCENE_SCALE,
+            state.cutThreshold * SCENE_SCALE, state.outputZ * SCENE_SCALE, state.split)
     }
 
     private fun state(time: Double): State {

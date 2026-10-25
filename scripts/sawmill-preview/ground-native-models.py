@@ -21,6 +21,7 @@ native = project / 'scripts/sawmill-preview/native-models'
 manifest = json.loads((native / 'models.manifest.json').read_text())
 kinds = list(manifest['models'])
 export = json.loads((args.export or out.parent / 'runtime-export.json').read_text())
+scene_scale = export.get('sceneScale', 1)
 root = out / 'ItemsAdder'
 content = root / 'contents/arc_farms'
 (content / 'configs').mkdir(parents=True, exist_ok=True)
@@ -74,7 +75,7 @@ for time, part_id in cases:
     stem = f'{part_id}-{time:g}'
     report = out / f'{stem}.json'
     rotor = part_id in ['blade-rotor', 'pulley-upper', 'pulley-lower']
-    plane = (f'blade_collar:x:max:{export["origin"][0] + .2975}' if part_id == 'blade-rotor' else f'axial_bearing:x:min:{export["origin"][0] + 1.74}')
+    plane = (f'blade_collar:x:max:{export["origin"][0] + .2975 * scene_scale}' if part_id == 'blade-rotor' else f'axial_bearing:x:min:{export["origin"][0] + 1.74 * scene_scale}')
     contact_args = ['--contact-plane', plane] if rotor else ['--surface-y', str(export['origin'][1] + export['logBottom'])]
     command = ['python3', '-B', str(args.skill / 'scripts/analyze_itemsadder_display.py'),
                '--itemsadder-root', str(root), '--resource-pack', str(pack),
@@ -120,7 +121,7 @@ for frame in export['frames']:
         assert abs(qx) < 1e-7 and abs(qy) < 1e-7
         norm = qz * qz + qw * qw
         sine, cosine = 2 * qz * qw / norm, 1 - 2 * qz * qz / norm
-        transformed_min = min(sine * x + cosine * y for box in manifest['models'][kind]['boxes']
+        transformed_min = min(sine * x * pose[5] + cosine * y * pose[6] for box in manifest['models'][kind]['boxes']
                               for x in [box['min'][0], box['max'][0]] for y in [box['min'][1], box['max'][1]])
         clearance = pose[3] + transformed_min - export['logBottom']
         minimum_clearance = min(minimum_clearance, clearance)
@@ -132,7 +133,7 @@ for frame in export['frames']:
     'scope': 'Offline exact model and compiled runtime poses; active client pack is not yet verified.',
     'nativeItemDisplayBaseY': 180, 'assetBakedY': 180,
     'clientJarSha256': hashlib.sha256(args.client_jar.read_bytes()).hexdigest(),
-    'supportEvidence': 'Canonical supports: stockY=1.27; blade collar rearX=.2975; upper bearing frontX=1.74; lower motor housing frontX=1.74. Entity origin[188.5,73,180.5]; pose centers are native Display translations.',
+    'supportEvidence': f'Canonical local supports scaled by {scene_scale}: stockY={export["logBottom"]}; blade collar rearX={.2975 * scene_scale}; bearing/motor frontX={1.74 * scene_scale}. Entity origin{export["origin"]}; pose centers are native Display translations.',
     'sampledFrames': len(export['frames']), 'minimumTransferClearance': minimum_clearance, 'cases': summary,
 }, ensure_ascii=False, indent=2) + '\n')
 (out / 'native-item-faces.json').write_text(json.dumps(meshes, separators=(',', ':')))

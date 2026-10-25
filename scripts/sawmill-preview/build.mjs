@@ -54,7 +54,13 @@ const parts = makeParts();
 if (JSON.stringify(parts) !== JSON.stringify(runtime.parts)) throw Error('Runtime geometry changed; rerun the compiled Kotlin export.');
 for (const part of parts) if (part.block) material(part.block);
 for (const state of ['minecraft:spruce_log[axis=z]', 'minecraft:stripped_spruce_log[axis=z]', 'minecraft:spruce_planks', 'minecraft:light_gray_concrete']) material(state);
-const views = SAWMILL.views.map(view => ({ ...view, camera: local(view.camera), target: local(view.target) }));
+// Step back with the larger footprint while preserving the authored player eye height.
+const views = SAWMILL.views.map(view => ({ ...view,
+  camera: local(view.camera.map((value, axis) => axis === 1 ? value
+    : SAWMILL.origin[axis] + (value - SAWMILL.origin[axis]) * runtime.sceneScale)),
+  target: local(view.target.map((value, axis) => SAWMILL.origin[axis]
+    + (value - SAWMILL.origin[axis]) * runtime.sceneScale)),
+}));
 const recipe = {
   version: 1, seed: 251026, title: 'Кедровый двор · рабочая пилорама',
   subtitle: 'Один полный цикл в существующем цехе',
@@ -98,6 +104,7 @@ await writeFile(join(out, 'preview-manifest.json'), JSON.stringify({
   sourceClassSha256,
   nativeModels: Object.fromEntries(Object.entries(runtime.nativeModels).map(([kind, model]) => [kind, model.sha256])),
   partCount: runtime.parts.length,
+  sceneScale: runtime.sceneScale,
   snapshotSha256: createHash('sha256').update(snapshotText).digest('hex'),
   staticBlockCount: snapshot.blocks.length, previewMaskedProps: hidden.length,
   cycleSeconds: runtime.cycleSeconds, nativeVersion: snapshot.minecraftVersion,

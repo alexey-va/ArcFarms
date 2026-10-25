@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { makeParts } from './machine.mjs';
-import { CYCLE_SECONDS, LOG_BOTTOM, LOG_HEIGHT, sampleCycle } from './motion.mjs';
+import { CYCLE_SECONDS, LOG_BOTTOM, LOG_HEIGHT, SCENE_SCALE, sampleCycle } from './motion.mjs';
 
 const EPSILON = 1e-7;
 const bounds = part => ({
@@ -47,7 +47,9 @@ const originalTable = [
 ];
 assert.ok(exposedCoplanarFaces(originalTable).length > 0, 'detector must reproduce the original z-fighting');
 
-const parts = makeParts();
+const parts = makeParts().map(part => ({ ...part,
+  center: part.center.map(value => value * SCENE_SCALE), size: part.size.map(value => value * SCENE_SCALE),
+}));
 assert.deepEqual(exposedCoplanarFaces(parts), [], 'fixed exposed surfaces must not fight for depth');
 for (const part of parts) {
   assert.ok([...part.center, ...part.size].every(Number.isFinite), `non-finite geometry: ${part.name}`);

@@ -6,6 +6,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import org.joml.Quaternionf
 import org.joml.Vector3f
+import ru.ruscrafting.farms.paper.lumber.sawmill.CedarSawmillGeometry.SCENE_SCALE
 import kotlin.math.abs
 import kotlin.math.hypot
 import kotlin.math.round
@@ -24,8 +25,9 @@ internal object CedarSawmillExport {
         val document = CedarSawmillGeometry.sourceDocument()
         document.addProperty("cycleSeconds", CedarSawmillAnimation.DURATION_SECONDS)
         document.addProperty("sampleSeconds", CedarSawmillAnimation.SAMPLE_SECONDS)
-        document.addProperty("logBottom", CedarSawmillAnimation.LOG_BOTTOM)
-        document.addProperty("logHeight", CedarSawmillAnimation.LOG_HEIGHT)
+        document.addProperty("logLength", CedarSawmillAnimation.LOG_LENGTH * SCENE_SCALE)
+        document.addProperty("logBottom", CedarSawmillAnimation.LOG_BOTTOM * SCENE_SCALE)
+        document.addProperty("logHeight", CedarSawmillAnimation.LOG_HEIGHT * SCENE_SCALE)
         val frames = JsonArray()
         var previousThreshold = Double.POSITIVE_INFINITY
         val partIds = CedarSawmillGeometry.parts.map { it.id }
@@ -80,7 +82,8 @@ internal object CedarSawmillExport {
                 val a = before.poses[index]
                 val b = after.poses[index]
                 val center = Vector3f(a.center).lerp(b.center, fraction)
-                check(center.distance(part.pivot) < 1e-5f) { "Rotor center follows a chord: ${part.id}" }
+                val pivot = Vector3f(part.pivot).mul(SCENE_SCALE)
+                check(center.distance(pivot) < 1e-5f) { "Rotor center follows a chord: ${part.id}" }
                 val rotation = Quaternionf(a.rotation).slerp(b.rotation, fraction)
                 val size = Vector3f(a.size).lerp(b.size, fraction)
                 val kind = part.itemModel!!.substringAfterLast('_')
@@ -89,7 +92,7 @@ internal object CedarSawmillExport {
                     val point = box.asJsonObject.getAsJsonArray(end)
                     val local = Vector3f(point[0].asFloat, point[1].asFloat, point[2].asFloat).mul(size)
                     val radius = hypot(local.y, local.z)
-                    val transformed = Vector3f(local).rotate(rotation).add(center).sub(part.pivot)
+                    val transformed = Vector3f(local).rotate(rotation).add(center).sub(pivot)
                     check(abs(hypot(transformed.y, transformed.z) - radius) < 1e-5f) { "Rotor deforms between frames: ${part.id}" }
                 }
             }

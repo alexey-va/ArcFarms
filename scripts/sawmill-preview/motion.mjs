@@ -2,8 +2,9 @@
 import { readFileSync } from 'node:fs';
 const runtime = JSON.parse(readFileSync(new URL('../../build/reports/sawmill-preview/runtime-export.json', import.meta.url), 'utf8'));
 export const CYCLE_SECONDS = runtime.cycleSeconds;
-export const CUT_PLANES = [.27];
-export const LOG_LENGTH = 4.4;
+export const SCENE_SCALE = runtime.sceneScale;
+export const CUT_PLANES = [.27 * SCENE_SCALE];
+export const LOG_LENGTH = runtime.logLength;
 export const LOG_BOTTOM = runtime.logBottom;
 export const LOG_HEIGHT = runtime.logHeight;
 export const PHASES = [

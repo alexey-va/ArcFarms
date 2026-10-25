@@ -95,7 +95,7 @@ function poseMill(seconds) {
   $('millPhaseDetail').textContent = state.phase.description;
   $('millFrameLabel').textContent = millAsBuilt ? 'Исходный интерьер · снимок живого мира' : state.t===0&&!millPlaying ? 'Нажмите рычаг на станке, чтобы запустить пилу' : `${state.phase.label} · ${kerf}`;
   for (const button of document.querySelectorAll('[data-beat]')) button.setAttribute('aria-current', String(Number(button.dataset.beat) === state.phase.at));
-  $('millStatus').textContent = `Подача: ${(state.forwardZ + 5.8).toFixed(2)} м · ${state.contact ? 'рез' : 'холостой ход'} · ${millAsBuilt ? 'исходный интерьер' : 'дисплеи'}`;
+  $('millStatus').textContent = `Масштаб ${SCENE_SCALE}× · Подача: ${(state.forwardZ + 5.8 * SCENE_SCALE).toFixed(2)} м · ${state.contact ? 'рез' : 'холостой ход'} · ${millAsBuilt ? 'исходный интерьер' : 'дисплеи'}`;
   renderer.shadowMap.needsUpdate = true;
 }
 

@@ -8,11 +8,13 @@ import org.joml.Vector3f
 
 /** One authored scene. Block poses are cuboid centers; item poses are model origins. */
 internal object CedarSawmillGeometry {
+    // Scale the complete authored machine about its floor anchor, including all controls.
+    const val SCENE_SCALE = 1.5f
     private val document: JsonObject = checkNotNull(javaClass.getResourceAsStream("/sawmill/cedar-machine.json"))
         .bufferedReader().use { JsonParser.parseReader(it).asJsonObject }
     val origin: Vector3f = document.getAsJsonArray("origin").vector()
-    val interactionCenter: Vector3f = document.getAsJsonArray("leverCenter").vector()
-    val interactionSize: Vector3f = document.getAsJsonArray("leverSize").vector()
+    val interactionCenter: Vector3f = document.getAsJsonArray("leverCenter").vector().mul(SCENE_SCALE)
+    val interactionSize: Vector3f = document.getAsJsonArray("leverSize").vector().mul(SCENE_SCALE)
     const val BODY_BLOCK_LIGHT = 12
     const val BODY_SKY_LIGHT = 12
     const val VIEW_RANGE_BLOCKS = 48.0
@@ -67,6 +69,11 @@ internal object CedarSawmillGeometry {
                 Vector3f(high.x, low.y, 0f), Vector3f(high.x, high.y, 0f))
         }
 
-    internal fun sourceDocument(): JsonObject = document.deepCopy()
+    internal fun sourceDocument(): JsonObject = document.deepCopy().also { export ->
+        export.addProperty("sceneScale", SCENE_SCALE)
+        for (key in listOf("leverCenter", "leverSize")) export.add(key, JsonArray().apply {
+            document.getAsJsonArray(key).forEach { add(it.asFloat * SCENE_SCALE) }
+        })
+    }
     private fun JsonArray.vector() = Vector3f(this[0].asFloat, this[1].asFloat, this[2].asFloat)
 }
