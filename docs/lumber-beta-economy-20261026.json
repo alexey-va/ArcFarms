@@ -1,0 +1,160 @@
+{
+  "version": 1,
+  "title": "Closed lumbermill beta, no external economy",
+  "assumptions": [
+    "Permission default false; 1/5/10 explicitly admitted testers. These are scenarios, not measured activity.",
+    "1/8/60 complete workpiece rounds per tester-day; zero grant at every rate including unlimited retries.",
+    "No Vault/tokens/playerXP/inventory boards; cargo and completedRounds are local LumberState only.",
+    "No global WorksiteStatsPort completion/contribution, workday seals, network completion, enterprise or reward ledger grants.",
+    "Actual terrain unchanged; accepted virtual chopping cancels native break before drops. SELL and future SELL-to-contract transition remain unchanged.",
+    "No purchases, prices, boosts or progression entitlements are introduced."
+  ],
+  "participants": [
+    1,
+    5,
+    10
+  ],
+  "currencies": {
+    "vault": {
+      "minor_per_unit": 100,
+      "flows": [
+        {
+          "id": "closed_lumber_vault",
+          "kind": "mint",
+          "source": "LumberController: beta round completion is local-only; no rewards/stats/network completion or real block drops",
+          "basis": "Logical display cargo only; zero external entitlement or payment",
+          "before": {
+            "enabled": false,
+            "amount_per_event": {
+              "value": "0",
+              "unit": "major"
+            },
+            "events_per_player_day": [
+              1,
+              8,
+              60
+            ]
+          },
+          "after": {
+            "enabled": true,
+            "amount_per_event": {
+              "value": "0",
+              "unit": "major"
+            },
+            "events_per_player_day": [
+              1,
+              8,
+              60
+            ]
+          }
+        }
+      ]
+    },
+    "tokens": {
+      "minor_per_unit": 1,
+      "flows": [
+        {
+          "id": "closed_lumber_tokens",
+          "kind": "mint",
+          "source": "LumberController: beta round completion is local-only; no rewards/stats/network completion or real block drops",
+          "basis": "Logical display cargo only; zero external entitlement or payment",
+          "before": {
+            "enabled": false,
+            "amount_per_event": {
+              "value": "0",
+              "unit": "major"
+            },
+            "events_per_player_day": [
+              1,
+              8,
+              60
+            ]
+          },
+          "after": {
+            "enabled": true,
+            "amount_per_event": {
+              "value": "0",
+              "unit": "major"
+            },
+            "events_per_player_day": [
+              1,
+              8,
+              60
+            ]
+          }
+        }
+      ]
+    },
+    "xp": {
+      "minor_per_unit": 1,
+      "flows": [
+        {
+          "id": "closed_lumber_xp",
+          "kind": "item",
+          "source": "LumberController: beta round completion is local-only; no rewards/stats/network completion or real block drops",
+          "basis": "Logical display cargo only; zero external entitlement or payment",
+          "before": {
+            "enabled": false,
+            "amount_per_event": {
+              "value": "0",
+              "unit": "major"
+            },
+            "events_per_player_day": [
+              1,
+              8,
+              60
+            ]
+          },
+          "after": {
+            "enabled": true,
+            "amount_per_event": {
+              "value": "0",
+              "unit": "major"
+            },
+            "events_per_player_day": [
+              1,
+              8,
+              60
+            ]
+          }
+        }
+      ]
+    },
+    "inventory_boards": {
+      "minor_per_unit": 1,
+      "flows": [
+        {
+          "id": "closed_lumber_inventory_boards",
+          "kind": "item",
+          "source": "LumberController: beta round completion is local-only; no rewards/stats/network completion or real block drops",
+          "basis": "Logical display cargo only; zero external entitlement or payment",
+          "before": {
+            "enabled": false,
+            "amount_per_event": {
+              "value": "0",
+              "unit": "major"
+            },
+            "events_per_player_day": [
+              1,
+              8,
+              60
+            ]
+          },
+          "after": {
+            "enabled": true,
+            "amount_per_event": {
+              "value": "0",
+              "unit": "major"
+            },
+            "events_per_player_day": [
+              1,
+              8,
+              60
+            ]
+          }
+        }
+      ]
+    }
+  },
+  "prices": []
+}

@@ -266,7 +266,7 @@ debug:
 
 destinations:
   farm: {server: spawn, world: sp11, x: 201.65, y: 49.0, z: 453.46, yaw: -45.97, pitch: 2.55}
-  lumber: {server: spawn, world: world, x: 255.69, y: 54.0, z: -1482.37, yaw: 41.33, pitch: -1.04}
+  lumber: {server: spawn, world: rc_atelier_cedar_sawmill, x: 144.5, y: 73.0, z: 206.5, yaw: 90.0, pitch: 0.0}
   mine: {server: spawn, world: sp11, x: 417.74, y: 29.0, z: 338.98, yaw: -70.72, pitch: 4.65}
 
 farm-zones:
@@ -831,6 +831,20 @@ farm-zones:
         incident-types: [NIGHT_SHIFT, PROCESSING, BARN_FIRE, FROST, BOAR_BREAKOUT, RIVAL_RAID, TORNADO, MARKET, BIRDS, FOOD_DELIVERY, GIANT_CROP, PESTS, DROUGHT]
         customer: BAKER
         cart-load: {material: BREAD, custom-model-data: 0}
+
+# Closed beta: only server-id=spawn and players with arcfarms.lumber.beta.
+# Terrain stays unchanged; tree overlays and cargo are private packet displays.
+lumbermill:
+  world: rc_atelier_cedar_sawmill
+  forest: {min-x: 94, min-y: 64, min-z: 158, max-x: 147, max-y: 92, max-z: 215}
+  worksite: {min-x: 90, min-y: 64, min-z: 150, max-x: 260, max-y: 100, max-z: 290}
+  cart: {x: 144.5, y: 73.0, z: 206.5, yaw: 0.0}
+  warehouse: {x: 226.5, y: 74.0, z: 182.5, yaw: 180.0}
+  chop-hits: 5
+  fall-ticks: 60
+  interaction-radius: 5.5
+  delivery-radius: 2.5
+  action-cooldown-millis: 300
 
 lumber-zones: {}
 

@@ -34,6 +34,7 @@ internal class WorksiteEventRouter(
     fun onBucketFill(event: org.bukkit.event.player.PlayerBucketFillEvent): Boolean = registry.onBucketFill(event)
 
     fun onBlockPlace(event: BlockPlaceEvent): Boolean = registry.onBlockPlace(event)
+    fun onSwing(event: org.bukkit.event.player.PlayerAnimationEvent): Boolean = registry.onSwing(event)
 
     fun onBreakMonitor(event: BlockBreakEvent) = registry.onBreakMonitor(event)
 

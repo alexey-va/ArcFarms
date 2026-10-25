@@ -71,6 +71,10 @@ internal interface WorksitePlayerInteractHandler {
     fun onInteract(event: PlayerInteractEvent, player: Player): Boolean
 }
 
+internal interface WorksiteArmSwingHandler {
+    fun onSwing(event: org.bukkit.event.player.PlayerAnimationEvent): Boolean
+}
+
 internal interface WorksiteMoveHandler {
     fun onMove(from: Location, to: Location, player: Player): Boolean
 }
@@ -177,6 +181,9 @@ internal class WorksiteModuleRegistry(
 
     fun onPlayerInteract(event: PlayerInteractEvent, player: Player): Boolean =
         modulesInOrder.filterIsInstance<WorksitePlayerInteractHandler>().any { it.onInteract(event, player) }
+
+    fun onSwing(event: org.bukkit.event.player.PlayerAnimationEvent): Boolean =
+        modulesInOrder.filterIsInstance<WorksiteArmSwingHandler>().any { it.onSwing(event) }
 
     fun onMove(from: Location, to: Location, player: Player): Boolean {
         var handled = false

@@ -84,47 +84,16 @@ internal class MineFactoryCarts(private val plugin: Plugin, private val visuals:
         if(cart.unloaded) return true
         val to = player.location
         if(to.world !== cart.at.world || to.distanceSquared(cart.at) > 100 || kotlin.math.abs(to.y-cart.at.y)>3) return false
-        val previousPlayer = cart.lastPlayer
-        val playerDx = to.x - previousPlayer.x
-        val playerDz = to.z - previousPlayer.z
-        if (playerDx * playerDx + playerDz * playerDz > PLAYER_TRANSLATION_EPSILON) {
-            val direction = horizontalDirection(player)
-            cart.pushDirectionX = direction.first
-            cart.pushDirectionZ = direction.second
-        }
+        val previous = ru.ruscrafting.farms.paper.worksite.WorksiteCartMotion.Frame(
+            cart.at.x, cart.at.y, cart.at.z, cart.yaw, cart.phase, cart.lastPlayer.x, cart.lastPlayer.z,
+            cart.pushDirectionX, cart.pushDirectionZ,
+        )
+        val next = ru.ruscrafting.farms.paper.worksite.WorksiteCartMotion.advance(previous, to.x, to.y, to.z, to.yaw)
         cart.lastPlayer = to.clone()
-
-        val targetX = to.x + cart.pushDirectionX * CART_DISTANCE
-        val targetZ = to.z + cart.pushDirectionZ * CART_DISTANCE
-        val dx = targetX - cart.at.x
-        val dz = targetZ - cart.at.z
-        val horizontalDistance = hypot(dx, dz)
-        val verticalDistance = to.y - cart.at.y
-        var moved = false
-        if (horizontalDistance > POSITION_EPSILON) {
-            val step = min(horizontalDistance, MAX_STEP)
-            val beforeX = cart.at.x
-            val beforeZ = cart.at.z
-            cart.at.add(dx / horizontalDistance * step, verticalDistance.coerceIn(-MAX_VERTICAL_STEP, MAX_VERTICAL_STEP),
-                dz / horizontalDistance * step)
-            val travelX = cart.at.x - beforeX
-            val travelZ = cart.at.z - beforeZ
-            val towardPlayerX = to.x - cart.at.x
-            val towardPlayerZ = to.z - cart.at.z
-            val towardPlayerLength = hypot(towardPlayerX, towardPlayerZ)
-            if (towardPlayerLength > DIRECTION_EPSILON) {
-                cart.phase += ((travelX * towardPlayerX + travelZ * towardPlayerZ) /
-                    towardPlayerLength / WHEEL_ROLL_DISTANCE).toFloat()
-            }
-            moved = true
-        } else if (kotlin.math.abs(verticalDistance) > POSITION_EPSILON) {
-            cart.at.y += verticalDistance.coerceIn(-MAX_VERTICAL_STEP, MAX_VERTICAL_STEP)
-            moved = true
-        }
-
-        val beforeYaw = cart.yaw
-        cart.yaw = steerYaw(cart.yaw, handleYaw(cart.at, to, cart.yaw))
-        if (moved || cart.yaw != beforeYaw) {
+        cart.pushDirectionX = next.pushX; cart.pushDirectionZ = next.pushZ
+        cart.at.x = next.x; cart.at.y = next.y; cart.at.z = next.z
+        cart.yaw = next.yaw; cart.phase = next.wheelPhase
+        if (next.x != previous.x || next.y != previous.y || next.z != previous.z || next.yaw != previous.yaw) {
             render(cart)
             if(now>=cart.nextSound && plugin.config.getBoolean("ui.sounds",true)) {
                 cart.nextSound=now+650

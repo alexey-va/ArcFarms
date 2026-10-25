@@ -54,6 +54,8 @@ data class ArcFarmsState(
     // Nullable so Gson can read state files written before durable admin pauses existed.
     val pausedFarmZones: Set<String>? = emptySet(),
     val mines: Map<String, MineShiftState> = emptyMap(),
+    // Nullable because Gson bypasses Kotlin defaults when loading pre-beta schema-1 snapshots.
+    val lumbermills: Map<String, ru.ruscrafting.farms.domain.lumber.LumberState>? = emptyMap(),
     val stats: Map<UUID, PlayerActivityStats> = emptyMap(),
     val pendingFarmRewards: List<PendingFarmReward> = emptyList(),
     val claimedFarmRewardSequences: Map<String, Long> = emptyMap(),

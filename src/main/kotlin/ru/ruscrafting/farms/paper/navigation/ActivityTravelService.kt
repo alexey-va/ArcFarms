@@ -4,6 +4,7 @@ import org.bukkit.Bukkit
 import org.bukkit.Location
 import org.bukkit.entity.Player
 import ru.ruscrafting.farms.config.ArcFarmsConfig
+import ru.ruscrafting.farms.config.LumbermillSettings
 import ru.ruscrafting.farms.config.MessageKey
 import ru.ruscrafting.farms.domain.ActivityKind
 import ru.ruscrafting.farms.network.ActivityNetworkGateway
@@ -36,11 +37,12 @@ internal class ActivityTravelService(
         ActivityKind.LUMBER, ActivityKind.MINE -> auxiliary.isAvailable(kind)
     }
 
-    fun canAccess(player: Player, kind: ActivityKind): Boolean = if (!isAvailable(kind)) {
-        settings().network.enabled
-    } else when (kind) {
-        ActivityKind.FARM -> farms.snapshot().any { access.hasAccess(player, it.settings.permission) }
-        ActivityKind.LUMBER, ActivityKind.MINE -> auxiliary.canAccess(player, kind)
+    fun canAccess(player: Player, kind: ActivityKind): Boolean {
+        if (!betaAllows(player, kind)) return false
+        return if (!isAvailable(kind)) settings().network.enabled else when (kind) {
+            ActivityKind.FARM -> farms.snapshot().any { access.hasAccess(player, it.settings.permission) }
+            ActivityKind.LUMBER, ActivityKind.MINE -> auxiliary.canAccess(player, kind)
+        }
     }
 
     fun travel(player: Player, kind: ActivityKind) {
@@ -63,6 +65,7 @@ internal class ActivityTravelService(
             if (!access.isOperational()) return@whenComplete
             tasks.runSync(lifecycle) {
                 if (!access.isOperational() || !player.isOnline) return@runSync
+                if (!betaAllows(player, kind)) return@runSync
                 if (failure != null || created != true || !transfer.connect(player, destination.server)) {
                     debug.event(
                         "travel_transfer_failed", "player" to player.name, "activity" to kind,
@@ -89,6 +92,7 @@ internal class ActivityTravelService(
                     return@runLater
                 }
                 ticket?.let {
+                    if (!betaAllows(player, it.activity)) return@let
                     debug.event("travel_claimed", "player" to player.name, "activity" to it.activity, "server" to settings().serverId)
                     teleportLocal(player, it.activity)
                 }
@@ -97,6 +101,7 @@ internal class ActivityTravelService(
     }
 
     private fun teleportLocal(player: Player, kind: ActivityKind) {
+        if (!betaAllows(player, kind)) return
         val destination = points.destination(kind, farms.snapshot())
         val world = Bukkit.getWorld(destination.world)
         if (world == null) {
@@ -127,6 +132,9 @@ internal class ActivityTravelService(
             }
         }
     }
+
+    private fun betaAllows(player: Player, kind: ActivityKind): Boolean =
+        kind != ActivityKind.LUMBER || player.hasPermission(LumbermillSettings.BETA_PERMISSION)
 
     private val ActivityKind.configKey: String
         get() = when (this) {

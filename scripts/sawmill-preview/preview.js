@@ -57,7 +57,7 @@ function buildMill() {
 const originalBlockBuilder = buildMesh;
 buildMesh = function() {
   const original = model;
-  if (!millAsBuilt) {
+  if (!millAsBuilt && query.get('mode') !== 'lumber') {
     const hidden = (x, y, z, state) => SAWMILL.previewMask([x, y, z].map((v, i) => v + SAWMILL_CAPTURE.origin[i]), state);
     const masked = new Set(original.blocks.filter(([x, y, z, id]) => hidden(x, y, z, original.materials[id].block)).map(([x, y, z]) => `${x},${y},${z}`));
     model = { ...original, blocks: original.blocks.filter(([x, y, z]) => !masked.has(`${x},${y},${z}`)),
@@ -97,7 +97,7 @@ function poseMill(seconds) {
   $('millPhase').textContent = `${millPass + 1}-й распил · ${state.finished ? 'Готово' : state.phase.label}`;
   $('millPhaseDetail').textContent = state.finished ? (millPass === 0
     ? 'Горбыль на столе. Рычаг начнёт второй распил этого же бревна.'
-    : 'Вся древесина на выходном столе. Следующее нажатие загрузит новое бревно.')
+    : 'Вся древесина на выходном столе. В рабочем режиме её забирают на склад.')
     : millPass === 0 ? state.phase.description : state.t >= 16.2
       ? 'Последний брус ложится поверх снятых деталей. Каретка возвращается пустой.'
       : state.t >= 14 ? 'Новая доска укладывается поверх первого горбыля.'
@@ -132,7 +132,7 @@ $('sceneSubtitle').textContent = 'Классическая круговая пи
 
 function setMillPlaying(value) {
   millPlaying = value; millLastFrame = null;
-  $('millPlay').textContent = value ? 'Пауза просмотра' : millTime >= CYCLE_SECONDS ? (millPass === 0 ? 'Следующий распил' : 'Новое бревно') : millTime===0 ? 'Пуск' : 'Продолжить просмотр';
+  $('millPlay').textContent = value ? 'Пауза просмотра' : millTime >= CYCLE_SECONDS ? (millPass === 0 ? 'Следующий распил' : 'Повторить просмотр') : millTime===0 ? 'Пуск' : 'Продолжить просмотр';
   $('millPlay').setAttribute('aria-pressed', String(value));
 }
 function chooseMillView(id) {
@@ -177,7 +177,7 @@ function hoverLever(value) {
   for(const {part,object} of millParts)if(part.motion==='lever')object.traverse(child=>{
     if(child.material?.emissive){child.material.emissive.set(value?'#5a3911':'#000000');child.material.emissiveIntensity=value?.45:0;}
   });
-  $('millFrameLabel').textContent=value?(millPlaying?'Распил идёт':millTime>=25&&millPass===1?'Рычаг · новое бревно':'Рычаг · следующий распил'):millTime===0?'Нажмите рычаг на станке, чтобы запустить пилу':sampleCycle(millTime,millPass).phase.label;
+  $('millFrameLabel').textContent=value?(millPlaying?'Распил идёт':millTime>=25&&millPass===1?'Повторить просмотр':'Рычаг · следующий распил'):millTime===0?'Нажмите рычаг на станке, чтобы запустить пилу':sampleCycle(millTime,millPass).phase.label;
   render();
 }
 renderer.domElement.addEventListener('pointerdown',event=>{if(event.button===0)millPointerDown={x:event.clientX,y:event.clientY};});

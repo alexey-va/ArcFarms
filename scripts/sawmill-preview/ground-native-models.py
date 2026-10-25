@@ -80,7 +80,8 @@ for pass_index, time, part_id in cases:
     stem = f'pass{pass_index + 1}-{part_id}-{time:g}'
     report = out / f'{stem}.json'
     rotor = part_id in ['blade-rotor', 'pulley-upper', 'pulley-lower']
-    plane = (f'blade_collar:x:max:{export["origin"][0] + .2975 * scene_scale}' if part_id == 'blade-rotor' else f'axial_bearing:x:min:{export["origin"][0] + 1.74 * scene_scale}')
+    turned = export.get('sceneYawDegrees', 0) == 180
+    plane = (f'blade_collar:x:{"min" if turned else "max"}:{export["origin"][0] + (-1 if turned else 1) * .2975 * scene_scale}' if part_id == 'blade-rotor' else f'axial_bearing:x:{"max" if turned else "min"}:{export["origin"][0] + (-1 if turned else 1) * 1.74 * scene_scale}')
     support_y = export['origin'][1] + export['logBottom'] + ((.175 + .28) * scene_scale if part_id.startswith('timber-final') and time >= 18.2 else 0)
     contact_args = ['--contact-plane', plane] if rotor else ['--surface-y', str(support_y)]
     command = ['python3', '-B', str(args.skill / 'scripts/analyze_itemsadder_display.py'),
@@ -124,12 +125,13 @@ for pass_index, frames in enumerate(export['passes']):
             if kind not in ['raw', 'sawn', 'slab']:
                 continue
             qx, qy, qz, qw = pose[8:12]
-            # These models only have the authored semantic slab rotation around Z.
-            assert abs(qx) < 1e-7 and abs(qy) < 1e-7
-            norm = qz * qz + qw * qw
-            sine, cosine = 2 * qz * qw / norm, 1 - 2 * qz * qz / norm
-            transformed_min = min(sine * x * pose[5] + cosine * y * pose[6] for box in manifest['models'][kind]['boxes']
-                                  for x in [box['min'][0], box['max'][0]] for y in [box['min'][1], box['max'][1]])
+            # Full quaternion includes the single display-scene Y180 layout turn.
+            norm = qx*qx+qy*qy+qz*qz+qw*qw
+            xy, yy, zy = 2*(qx*qy+qw*qz)/norm, 1-2*(qx*qx+qz*qz)/norm, 2*(qy*qz-qw*qx)/norm
+            transformed_min = min(xy*x*pose[5]+yy*y*pose[6]+zy*z*pose[7]
+                                  for box in manifest['models'][kind]['boxes']
+                                  for x in [box['min'][0],box['max'][0]] for y in [box['min'][1],box['max'][1]]
+                                  for z in [box['min'][2],box['max'][2]])
             clearance = pose[3] + transformed_min - export['logBottom']
             minimum_clearance = min(minimum_clearance, clearance)
             assert clearance >= -1e-4, (frame[0], part['id'], clearance)

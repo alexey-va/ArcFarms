@@ -27,23 +27,37 @@ for (const descriptor of Object.values(runtime.nativeModels)) {
     throw Error(`Stale native model export: ${descriptor.itemModel}; regenerate models, compiled export and grounding faces.`);
   }
 }
-const classes = join(project, 'build/classes/kotlin/main/ru/ruscrafting/farms/paper/lumber/sawmill');
 const sourceClassSha256 = {};
-for (const filename of (await readdir(classes)).filter(name => /^CedarSawmill(?:Geometry|Animation)(?:\$|\.)/.test(name)).sort()) {
-  sourceClassSha256[filename] = createHash('sha256').update(await readFile(join(classes, filename))).digest('hex');
+for (const [directory, pattern] of [
+  ['paper/lumber/sawmill', /^CedarSawmill(?:Geometry|Animation)(?:\$|\.)/],
+  ['paper/lumber/scene', /^(?:Lumber|PacketLumber)/],
+  ['domain/lumber', /^Lumber/],
+]) {
+  const classes = join(project, 'build/classes/kotlin/main/ru/ruscrafting/farms', directory);
+  for (const filename of (await readdir(classes)).filter(name => pattern.test(name)).sort()) {
+    sourceClassSha256[`${directory}/${filename}`] = createHash('sha256').update(await readFile(join(classes, filename))).digest('hex');
+  }
 }
-const snapshotText = await readFile(join(own, 'room.snapshot.json'), 'utf8');
+const lumberText = await readFile(join(out, 'lumber-export.json'), 'utf8');
+const lumber = JSON.parse(lumberText);
+const snapshotText = await readFile(join(own, 'lumber-area.snapshot.json'), 'utf8');
 const snapshot = JSON.parse(snapshotText);
+const readbackText = await readFile(join(own, 'lumber-live-readback.json'), 'utf8');
+const readback = JSON.parse(readbackText);
+if (readback.world !== snapshot.world || readback.baseCaptureSha256 !== snapshot.sourceSha256) throw Error('Mismatched live readback provenance');
+const confirmedAir = new Set(readback.air.map(point => point.join(',')));
+snapshot.blocks = snapshot.blocks.filter(point => !confirmedAir.has(point.slice(0,3).join(',')));
 if (snapshot.missingCells !== 0) throw Error('The captured room contains missing cells');
 const [min, max] = [snapshot.bounds.min, snapshot.bounds.max];
 const local = point => point.map((n, i) => n - min[i]);
 const palette = {};
 const materials = new Map();
+const renderState = state => /^minecraft:(?:decorated_pot|waxed_copper_chest)\[/.test(state) ? state.split('[')[0] : /^minecraft:waxed_(?:lightning_rod|copper_chain)/.test(state) ? state.replace(',waterlogged=false','').replace(',powered=false','') : state;
 const material = state => {
   if (!materials.has(state)) {
     const key = `m${materials.size}`;
     materials.set(state, key);
-    palette[key] = { block: state, color: '#877b63', name: state.replace('minecraft:', '') };
+    palette[key] = { block: renderState(state), color: '#877b63', name: state.replace('minecraft:', '') };
   }
   return materials.get(state);
 };
@@ -53,20 +67,27 @@ const operations = snapshot.blocks.map(([x, y, z, state]) => ({
 const parts = makeParts();
 if (JSON.stringify(parts) !== JSON.stringify(runtime.parts)) throw Error('Runtime geometry changed; rerun the compiled Kotlin export.');
 for (const part of parts) if (part.block) material(part.block);
-for (const state of ['minecraft:spruce_log[axis=z]', 'minecraft:stripped_spruce_log[axis=z]', 'minecraft:spruce_planks', 'minecraft:light_gray_concrete']) material(state);
+for (const state of [...new Set(lumber.frames.flatMap(frame => frame.parts.map(part => part.block).filter(Boolean))), 'minecraft:spruce_log[axis=z]', 'minecraft:stripped_spruce_log[axis=z]', 'minecraft:spruce_planks', 'minecraft:light_gray_concrete']) material(state);
 // Keep all presets inside the open aisle, independent of the machine's floor scaling.
 const framing = {
-  overview: [[194.6,76.4,188.5],[188.7,74.8,181.2],78],
-  operator: [[194.5,74.62,186.4],[189.5,75.35,182.2],70],
-  infeed: [[194.5,74.62,172.5],[188.7,75.2,178.0],74],
-  drive: [[194.6,74.62,182.2],[189.4,75.1,181.8],70],
-  output: [[194.6,74.62,191.9],[190.4,75.4,187.5],72],
+  overview: [[184.3,76.4,173.5],[190.2,74.8,179.8],78],
+  operator: [[185.2,74.62,175.6],[190.3,75.7,178.8],76],
+  infeed: [[184.4,74.62,188.5],[190.2,75.2,183],74],
+  drive: [[184.3,74.62,178.8],[189.5,75.1,179.2],70],
+  output: [[194.8,75.0,178.0],[188.7,75.7,172.7],72],
 };
+const lumberViews = [
+  {id:'forest',label:'Лес · дерево',camera:[149,76,207],target:[140.5,75,198.5],fov:74},
+  {id:'cart',label:'Телега · вход',camera:[185.5,75,200.5],target:[190.4,74,195],fov:76},
+  {id:'dock',label:'Телега · подача',camera:[187.7,74.62,199],target:[190.4,75.3,189],fov:78},
+  {id:'warehouse',label:'Лесосклад',camera:[229,76.62,190],target:[225,75,180],fov:75},
+  {id:'route',label:'Весь маршрут',camera:[190,125,239],target:[182,73,192],fov:72},
+];
 const views = SAWMILL.views.map(view => ({ ...view, camera: local(framing[view.id][0]),
-  target: local(framing[view.id][1]), fov: framing[view.id][2] }));
+  target: local(framing[view.id][1]), fov: framing[view.id][2] })).concat(lumberViews.map(view=>({...view,camera:local(view.camera),target:local(view.target)})));
 const recipe = {
-  version: 1, seed: 251026, title: 'Кедровый двор · рабочая пилорама',
-  subtitle: 'Два распила одного бревна',
+  version: 1, seed: 251026, title: 'Кедровый двор · работа лесоруба',
+  subtitle: 'Закрытая beta · один полный рабочий круг',
   concept: 'Первый проход снимает горбыль. Следующее нажатие распиливает остаток; доска и последний брус остаются на выходном столе.',
   size: max.map((n, i) => n - min[i] + 1), palette, operations,
   preview: { defaultView: 'overview', views },
@@ -81,13 +102,16 @@ const [motion, machine, viewer, css] = await Promise.all([
   readFile(join(own, 'motion.mjs'), 'utf8'), readFile(join(own, 'machine.mjs'), 'utf8'),
   readFile(join(own, 'preview.js'), 'utf8'), readFile(join(own, 'preview.css'), 'utf8'),
 ]);
+const lumberViewer = await readFile(join(own, 'lumber-preview.js'), 'utf8');
 const inline = value => JSON.stringify(value).replace(/</g, '\\u003c');
 const script = [
   `const SAWMILL_CAPTURE = ${inline({ world: snapshot.world, capturedAt: snapshot.capturedAt, origin: min, sha256: createHash('sha256').update(snapshotText).digest('hex') })};`,
   `const runtime = ${runtimeText};`,
+  `const LUMBER = ${lumberText};`,
+  `const LUMBER_VIEWS = ${inline(lumberViews)};`,
   `const NATIVE_ITEM_FACES = ${inline(nativeFaces)};`,
   `const SAWMILL = {origin:${inline(SAWMILL.origin)},views:${inline(SAWMILL.views)},${SAWMILL.previewMask.toString()}};`,
-  motion.replace(/^import .*\n/gm, '').replace(/^const runtime = .*\n/gm, '').replace(/\bexport /g, ''), viewer,
+  motion.replace(/^import .*\n/gm, '').replace(/^const runtime = .*\n/gm, '').replace(/\bexport /g, ''), viewer, lumberViewer,
 ].join('\n');
 let html = await readFile(join(out, 'index.html'), 'utf8');
 html = html.replace('</head>', `<style>${css}</style></head>`);
@@ -109,9 +133,13 @@ await writeFile(join(out, 'preview-manifest.json'), JSON.stringify({
   partCount: runtime.parts.length,
   sceneScale: runtime.sceneScale,
   snapshotSha256: createHash('sha256').update(snapshotText).digest('hex'),
+  liveReadbackSha256: createHash('sha256').update(readbackText).digest('hex'),
+  confirmedAirCells: readback.air.length,
   staticBlockCount: snapshot.blocks.length, previewMaskedProps: hidden.length,
   cycleSeconds: runtime.cycleSeconds, nativeVersion: snapshot.minecraftVersion,
   renderer: 'Location Atelier vanilla block model + texture baker, Three 0.128.0',
-  limitations: ['No server writes', 'No Minecraft native client acceptance', 'Workshop lighting is an offline approximation', 'Native model loading, packet delivery and sound require live validation'],
+  lumberExportSha256: createHash('sha256').update(lumberText).digest('hex'),
+  lumberRoundSeconds: lumber.seconds,
+  limitations: ['Representative player/cart paths are authored fixture inputs, not live movement acceptance', 'Captured square stem rounds into existing raw profile during lift with unchanged7.48m length', 'No server writes', 'No Minecraft native client acceptance', 'Workshop lighting is an offline approximation', 'Native model loading, packet delivery and sound require live validation'],
 }, null, 2) + '\n');
 console.log(`Animated preview: ${join(out, 'index.html')} (${hidden.length} interior props masked only in preview)`);

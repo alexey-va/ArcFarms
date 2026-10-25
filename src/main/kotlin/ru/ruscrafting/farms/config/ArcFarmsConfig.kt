@@ -1204,6 +1204,7 @@ class ArcFarmsConfig private constructor(
     val enterprises: Map<ActivityKind, WorksiteEnterpriseSettings>,
     val farms: List<FarmZoneSettings>,
     val mines: List<MineZoneSettings>,
+    val lumbermill: LumbermillSettings,
 ) {
     init {
         require(taskHintCooldownMillis in 250L..5_000L) { "ui.task-hint-cooldown-millis must be in 250..5000" }
@@ -2722,6 +2723,7 @@ class ArcFarmsConfig private constructor(
                 enterprises = enterprises,
                 farms = farms,
                 mines = mines.sortedByDescending(MineZoneSettings::priority),
+                lumbermill = LumbermillSettings.parse(config),
             )
         }
 

@@ -297,21 +297,23 @@ class ArcFarmsArchitectureContractTest : FunSpec({
         source.contains("mineModule.onMove") shouldBe false
     }
 
-    test("lumber worksite remains unavailable while its authored demonstration owns only sawmill runtime") {
+    test("lumber beta owns one virtual zero-economy lifecycle without legacy world mutation or reward paths") {
         val versioned = Files.readString(lumberVersionedPath)
         val lumberSources = Files.walk(lumberVersionedPath.parent).use { paths ->
             paths.filter { Files.isRegularFile(it) && it.toString().endsWith(".kt") }.toList()
         }
 
-        lumberSources.all { it == lumberVersionedPath || it.startsWith(lumberVersionedPath.parent.resolve("sawmill")) } shouldBe true
         Files.exists(repositoryRoot.resolve("src/main/kotlin/ru/ruscrafting/farms/config/LumberConfig.kt")) shouldBe false
         Files.exists(repositoryRoot.resolve("src/main/kotlin/ru/ruscrafting/farms/domain/LumberShift.kt")) shouldBe false
         versioned.contains("class LumbermillVersionedModule") shouldBe true
-        versioned.contains("override val zoneCount: Int = 0") shouldBe true
-        versioned.contains("override fun isAvailable(): Boolean = false") shouldBe true
+        versioned.contains("WorksiteModule<LumberState>") shouldBe true
         versioned.contains("LumbermillComponentGraph") shouldBe false
         versioned.contains("LumberShiftEngine") shouldBe false
-        versioned.contains("CedarSawmillController(") shouldBe true
+        val sources = lumberSources.joinToString("\n", transform = Files::readString)
+        listOf("WorksiteTemporaryBlockOwner", ".setBlockData(", ".setType(", "recordContribution(",
+            "recordCompletion(", "rewardGrants", "network.complete(", "createExplosion(").forEach { forbidden ->
+            sources.contains(forbidden) shouldBe false
+        }
     }
 
     test("mine V2 cannot enter the legacy runtime") {

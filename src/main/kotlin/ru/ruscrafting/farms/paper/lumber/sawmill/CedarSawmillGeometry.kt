@@ -13,7 +13,9 @@ internal object CedarSawmillGeometry {
     private val document: JsonObject = checkNotNull(javaClass.getResourceAsStream("/sawmill/cedar-machine.json"))
         .bufferedReader().use { JsonParser.parseReader(it).asJsonObject }
     val origin: Vector3f = document.getAsJsonArray("origin").vector()
-    val interactionCenter: Vector3f = document.getAsJsonArray("leverCenter").vector().mul(SCENE_SCALE)
+    val sceneRotation = Quaternionf().rotationY(Math.toRadians(document["sceneYawDegrees"]?.asDouble ?: 0.0).toFloat())
+    val sceneYaw: Float = (document["sceneYawDegrees"]?.asFloat ?: 0f)
+    val interactionCenter: Vector3f = document.getAsJsonArray("leverCenter").vector().mul(SCENE_SCALE).rotate(sceneRotation)
     val interactionSize: Vector3f = document.getAsJsonArray("leverSize").vector().mul(SCENE_SCALE)
     const val BODY_BLOCK_LIGHT = 12
     const val BODY_SKY_LIGHT = 12
@@ -71,8 +73,8 @@ internal object CedarSawmillGeometry {
 
     internal fun sourceDocument(): JsonObject = document.deepCopy().also { export ->
         export.addProperty("sceneScale", SCENE_SCALE)
-        for (key in listOf("leverCenter", "leverSize")) export.add(key, JsonArray().apply {
-            document.getAsJsonArray(key).forEach { add(it.asFloat * SCENE_SCALE) }
+        for ((key, vector) in listOf("leverCenter" to interactionCenter, "leverSize" to interactionSize)) export.add(key, JsonArray().apply {
+            add(vector.x); add(vector.y); add(vector.z)
         })
     }
     private fun JsonArray.vector() = Vector3f(this[0].asFloat, this[1].asFloat, this[2].asFloat)

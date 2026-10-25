@@ -19,14 +19,10 @@ placement cannot move the delivery destination away from the test map.
 Mineflayer lacks horse physics, so the mounted part sends normal client vehicle
 movement packets while Paper validates the rider and route.
 
-The lumber scenario indexes actual logs, fells them, picks up a bundle, rejoins
-to release its lease, carries it into the station, fixes a saw jam in switch
-order, repairs two conveyor anchors, alternates saw controls, places a plank,
-completes the rush order and dispatches the load. It checks both rejected
-out-of-order/repeated controls and the durable reward claim after rejoining.
-Two logs, one bundle, two cuts and one plank keep the map small; all three
-mandatory incidents remain. Unchanged reward settings with the normal 133%
-difficulty multiplier produce 239 XP and seven reward logs.
+The legacy lumber scenario and its reward expectations are retired. The new
+permission-gated Cedar Sawmill beta uses focused domain, lifecycle, permission
+and packet-scene checks. Its complete native-player journey remains a separate
+acceptance step after activation; a source preview is not server E2E evidence.
 
 Mine and mine-lift E2E scenarios are removed while those mechanics are unfinished.
 The disposable E2E configuration has no mine zones. Production mine code and

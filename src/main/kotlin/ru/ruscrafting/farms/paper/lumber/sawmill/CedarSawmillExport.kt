@@ -17,6 +17,8 @@ internal object CedarSawmillExport {
     fun main(args: Array<String>) {
         require(args.size == 1) { "Supply the sawmill export JSON path" }
         write(args[0])
+        val fixture = Path.of("scripts/sawmill-preview/lumber-tree.snapshot.json")
+        if (Files.exists(fixture)) ru.ruscrafting.farms.paper.lumber.scene.LumberSceneExport.write(fixture, Path.of(args[0]).resolveSibling("lumber-export.json"))
     }
 
     @JvmStatic
@@ -100,7 +102,7 @@ internal object CedarSawmillExport {
                     val a = before.poses[index]
                     val b = after.poses[index]
                     val center = Vector3f(a.center).lerp(b.center, fraction)
-                    val pivot = Vector3f(part.pivot).mul(SCENE_SCALE)
+                    val pivot = Vector3f(part.pivot).mul(SCENE_SCALE).rotate(CedarSawmillGeometry.sceneRotation)
                     check(center.distance(pivot) < 1e-5f) { "Rotor center follows a chord: ${part.id}" }
                     val rotation = Quaternionf(a.rotation).slerp(b.rotation, fraction)
                     val size = Vector3f(a.size).lerp(b.size, fraction)

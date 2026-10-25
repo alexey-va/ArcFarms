@@ -179,7 +179,9 @@ class ArcFarmsService(
         viewerParticles = viewerParticles,
     )
     private val worksiteRewards = WorksiteRewardGrantService(farm.rewards)
-    private val lumbermillModule = LumbermillVersionedModule(plugin, initialSettings.serverId, displays)
+    private val lumbermillModule = LumbermillVersionedModule(plugin, initialSettings.serverId, displays,
+        initialSettings.lumbermill, locale, worksitePorts.access, worksitePorts.audience, worksitePorts.state,
+        worksitePorts.tasks, worksiteServiceItems, clock)
     private val minePointService = MinePointService(mineLocationRepository)
     private val mineModule = MineVersionedModule(
         plugin, initialSettings.serverId, initialSettings.mines, regionGateway, locale, mineJournal, worksitePorts,
@@ -365,6 +367,7 @@ class ArcFarmsService(
     }
     fun onBreakHigh(event: BlockBreakEvent) = worksiteEvents.onBreakHigh(event)
     fun onBlockDamage(event: org.bukkit.event.block.BlockDamageEvent) = worksiteEvents.onBlockDamage(event)
+    fun onSwing(event: org.bukkit.event.player.PlayerAnimationEvent) = worksiteEvents.onSwing(event)
     fun onBucketFill(event: org.bukkit.event.player.PlayerBucketFillEvent) = worksiteEvents.onBucketFill(event)
     fun onBreakMonitor(event: BlockBreakEvent) = worksiteEvents.onBreakMonitor(event)
     fun onBlockDrop(event: BlockDropItemEvent) = farm.events.onBlockDrop(event)
@@ -590,12 +593,14 @@ class ArcFarmsService(
         farm.module.rebuild(persisted)
         val cooldownMillis = settings.completedCooldownSeconds * 1_000L
         mineModule.rebuild(settings.mines, persisted.mines, cooldownMillis)
+        lumbermillModule.rebuild(settings.lumbermill, persisted.lumbermills.orEmpty())
     }
 
     private fun reconfigure(persisted: ArcFarmsState) {
         farm.module.reconfigure(persisted)
         val cooldownMillis = settings.completedCooldownSeconds * 1_000L
         mineModule.reconfigure(settings.mines, persisted.mines, cooldownMillis)
+        lumbermillModule.reconfigure(settings.lumbermill, persisted.lumbermills.orEmpty())
     }
 
     private fun startTasks() {
@@ -674,6 +679,7 @@ class ArcFarmsService(
             farms = farm.runtimes.snapshot().associate { it.settings.id to it.state },
             pausedFarmZones = farm.orderCycle.snapshot(),
             mines = mineModule.states(),
+            lumbermills = lumbermillModule.states(),
             stats = stats.snapshot(),
             pendingFarmRewards = rewards.pending,
             claimedFarmRewardSequences = rewards.claimed,

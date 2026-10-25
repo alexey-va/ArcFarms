@@ -54,6 +54,7 @@ class ArcFarmsStateRepository(dataRoot: Path) : AutoCloseable {
         type = ArcFarmsState::class.java,
         emptyValue = ::ArcFarmsState,
         validate = ::validateState,
+        gson = LumberStateJson.gson,
     )
     private val writer = CoalescingAsyncWriter<ArcFarmsState> { state -> store.saveAsync(state) }
     private val pendingRequests = AtomicInteger()
@@ -65,7 +66,7 @@ class ArcFarmsStateRepository(dataRoot: Path) : AutoCloseable {
     @Volatile private var preparedState: ArcFarmsState? = null
 
     fun load(): ArcFarmsState = preparedState ?: loadPrepared().let { state ->
-        state.copy(stats = state.stats.toPersistentMap(), farmPerks = state.farmPerks.orEmpty().toPersistentMap(),
+        state.copy(stats = state.stats.toPersistentMap(), lumbermills = state.lumbermills.orEmpty().toPersistentMap(), farmPerks = state.farmPerks.orEmpty().toPersistentMap(),
             claimedFarmRewardSequences = state.claimedFarmRewardSequences.toPersistentMap(),
             farmRewardMoneyDeliveries = state.farmRewardMoneyDeliveries.orEmpty().toPersistentMap(),
             pendingFarmRewards = state.pendingFarmRewards.toPersistentList())
@@ -127,13 +128,14 @@ class ArcFarmsStateRepository(dataRoot: Path) : AutoCloseable {
         return if (
             stats == state.stats && farms == state.farms && mines == state.mines && pausedFarmZones == state.pausedFarmZones &&
             farmPerks == state.farmPerks && worksiteEnterprise == state.worksiteEnterprise &&
-            rewardMoney == state.farmRewardMoneyDeliveries
+            rewardMoney == state.farmRewardMoneyDeliveries && state.lumbermills != null
         ) {
             state
         } else {
             state.copy(
                 farms = farms,
                 mines = mines,
+                lumbermills = state.lumbermills.orEmpty(),
                 pausedFarmZones = pausedFarmZones,
                 stats = stats,
                 farmPerks = farmPerks,
@@ -192,6 +194,10 @@ class ArcFarmsStateRepository(dataRoot: Path) : AutoCloseable {
             require(state.mines.keys.all(ZONE_ID::matches)) { "ArcFarms state contains an invalid mine zone id" }
             state.farms.values.forEach(::validateFarm)
             state.mines.values.forEach(::validateMine)
+            require(state.lumbermills.orEmpty().size <= 1 && state.lumbermills.orEmpty().keys.all(ZONE_ID::matches)) {
+                "ArcFarms lumber state contains invalid zones"
+            }
+            state.lumbermills.orEmpty().values.forEach(ru.ruscrafting.farms.domain.lumber.LumberStateValidation::validate)
             state.stats.values.forEach(::validateStats)
             WorksiteEnterpriseLedger().replace(state.worksiteEnterprise ?: WorksiteEnterpriseSnapshot())
             WorksiteEnterpriseCapitalLedger().replace(state.worksiteEnterprise?.financing)

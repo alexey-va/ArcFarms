@@ -132,7 +132,8 @@ internal object CedarSawmillAnimation {
                     rotation.rotationXYZ((age * 8).toFloat(), (seed * 7).toFloat(), (age * 5).toFloat())
                 }
             }
-            Pose(part.id, center.mul(SCENE_SCALE), size.mul(SCENE_SCALE), rotation, visible)
+            Pose(part.id, center.mul(SCENE_SCALE).rotate(CedarSawmillGeometry.sceneRotation), size.mul(SCENE_SCALE),
+                rotation.premul(CedarSawmillGeometry.sceneRotation), visible)
         }
         return Frame(state.time, state.contact, state.time >= DURATION_SECONDS, poses,
             state.carriageZ * SCENE_SCALE, state.forwardZ * SCENE_SCALE, state.lateral * SCENE_SCALE,

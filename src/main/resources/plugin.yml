@@ -18,6 +18,9 @@ permissions:
     default: true
   arcfarms.lumber:
     default: true
+  arcfarms.lumber.beta:
+    description: Participate in the closed lumbermill worksite
+    default: false
   arcfarms.mine:
     default: true
   arcfarms.admin:

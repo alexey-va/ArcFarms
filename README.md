@@ -13,7 +13,8 @@ before the next one becomes available.
 ## Public completion event
 
 `ru.ruscrafting.farms.api.WorkShiftCompletedEvent` is emitted after a real
-farm, lumbermill, or mine shift completes. Its immutable API exposes
+farm or mine shift completes. The closed lumber beta records local rounds only
+and does not emit this event. Its immutable API exposes
 `eventId`, `kind`, `contributors`, and `zoneId`. The event ID is
 `<server-id>:<kind>:<zone-id>:<sequence>` and is stable for the persisted
 shift sequence, including after a plugin restart. Admin-forced completion
@@ -499,15 +500,42 @@ relayed between Paper servers through Redis, but player-facing network
 announcements are disabled by default. When enabled, calls include a clickable
 route to the configured worksite.
 
-Every completed farm, lumber, or mine shift stamps the persistent network
+Every completed public farm or mine shift stamps the persistent network
 workday. All three different stamps complete one cycle, trigger a cosmetic
 network celebration when announcements are enabled, and immediately open the
 next cycle. Atomic Redis compare-and-set prevents duplicate cross-server stamps.
+Closed lumber beta rounds do not stamp the workday or grant rewards.
+
+## Closed lumber beta
+
+The Cedar Sawmill worksite runs only on `server-id=spawn` in
+`rc_atelier_cedar_sawmill`. Every admission and gameplay input requires
+`arcfarms.lumber.beta` (default false); `arcfarms.admin` is not a substitute.
+Players without that permission keep normal event handling, building and
+interaction behavior. They receive no beta tools, fake blocks, scene or HUD.
+
+The shared round follows an existing tree through chopping, falling, three
+branch cuts, cart loading and hauling, two circular-saw passes, board pickup
+and warehouse delivery. The saw uses the existing five models at scale 1.7;
+the old public, infinitely replenishing demonstration is retired. Each lever
+press advances one pass and returns to OFF after that pass.
+
+Trees and cargo are private packet displays. Tree removal is a per-viewer
+block overlay above a two-block stump; no terrain blocks are written.
+Cleanup restores the current world block data, including edits made by other
+players. State is stored under the nullable `lumbermills` field of schema 1;
+old state files remain readable. Rejoining, dying or losing access releases
+owned tools and cargo. Restart recovery releases carriers and stops the saw.
+
+This beta grants no money, tokens, XP, inventory items, enterprise income,
+global contribution or network completion. The zero-grant assessment is
+`docs/lumber-beta-economy-20261026.json`. This delivery must not restart or
+reload the server; on-disk installation and active runtime are separate.
 
 ## Commands
 
-Console operators with `arcfarms.admin` can inspect and rebuild mine/lumber
-indexes with `/arcfarms admin worksite <mine|lumber> <zone> status` and
+Console operators with `arcfarms.admin` can inspect and rebuild mine
+indexes with `/arcfarms admin worksite mine <zone> status` and
 `reindex start|tick|cancel`. Starting a shift or forcing an incident still
 requires a player. Relocate only idle mines with an empty block-recovery
 journal, retain their zone IDs, and finish reindexing after changing world or
@@ -683,7 +711,8 @@ The reusable worksite layer is split by ownership:
   optional block/interact/movement event capabilities;
 - `PaperWorksiteAdapter` implements the narrow access, audience, state, task,
   statistics, and network ports; `WorksitePorts` groups them only at composition roots;
-- `LumbermillController` owns every lumber zone and its two-stage state machine;
+- `LumbermillVersionedModule` composes the closed-beta `LumberController`,
+  durable `LumberEngine`, bounded tree index and private packet presentation;
 - `MineController` owns every mine zone, reservations, journal reconciliation,
   extraction, and block recovery;
 - `FarmRuntimeFactory` and `ArcFarmsRuntimeValidator` centralize multi-zone farm
@@ -718,6 +747,8 @@ fixtures. The player-bot session exposes only the fixed `arcfarms` operations
 `pest-stability`, `farm`, `lumber`, `mine`, `status`, and `fixture-cleanup` on
 the lab port and documented OP QA identities; it accepts no command or target
 arguments. Always clean the scene after a smoke run.
+The legacy `lumber` fixture operation targets retired mechanics and is not an
+acceptance scenario for the closed Cedar Sawmill beta; see `src/test/e2e/README.md`.
 
 ### Farm upgrades and automatic equipment
 

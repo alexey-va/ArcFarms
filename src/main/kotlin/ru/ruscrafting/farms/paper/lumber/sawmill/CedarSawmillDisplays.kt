@@ -30,20 +30,13 @@ internal class CedarSawmillDisplays(
         part.blockData?.let { part.id to Bukkit.createBlockData(it) }
     }.toMap()
     private val items = parts.values.mapNotNull { part ->
-        part.itemModel?.let { model ->
-            part.id to ItemStack(Material.PAPER).also { item ->
-                val meta = item.itemMeta
-                meta.itemModel = requireNotNull(NamespacedKey.fromString(model)) { "Invalid sawmill item model: $model" }
-                meta.setCustomModelData(CUSTOM_MODEL_DATA.getValue(model))
-                item.itemMeta = meta
-            }
-        }
+        part.itemModel?.let { model -> part.id to item(model) }
     }.toMap()
 
     val blockCount: Int get() = blocks.size
     val itemCount: Int get() = items.size
 
-    fun render(frame: CedarSawmillAnimation.Frame, smooth: Boolean) {
+    fun render(frame: CedarSawmillAnimation.Frame, smooth: Boolean, audience: SceneAudience) {
         require(frame.poses.size == parts.size && frame.poses.map { it.partId }.toSet() == parts.keys) {
             "The sawmill frame must retain every authored part key"
         }
@@ -68,7 +61,7 @@ internal class CedarSawmillDisplays(
                 ScenePart.Block(part.id, at, style, blocks.getValue(part.id), pose.visible)
             }
         }
-        scene.apply(SceneFrame(rendered, AUDIENCE, 0))
+        scene.apply(SceneFrame(rendered, audience, 0))
     }
 
     fun entityIds(): Map<String, Int?> = parts.keys.associateWith(scene::entityId)
@@ -76,8 +69,13 @@ internal class CedarSawmillDisplays(
     override fun close() = scene.close()
 
     companion object {
-        val AUDIENCE: SceneAudience = SceneAudience.Public(null)
-        private val CUSTOM_MODEL_DATA = mapOf(
+        internal fun item(model: String): ItemStack = ItemStack(Material.PAPER).also { item ->
+            val meta = item.itemMeta
+            meta.itemModel = requireNotNull(NamespacedKey.fromString(model)) { "Invalid sawmill item model: $model" }
+            meta.setCustomModelData(CUSTOM_MODEL_DATA.getValue(model))
+            item.itemMeta = meta
+        }
+        internal val CUSTOM_MODEL_DATA = mapOf(
             "arc_farms:cedar_sawmill_raw" to 271001,
             "arc_farms:cedar_sawmill_sawn" to 271002,
             "arc_farms:cedar_sawmill_slab" to 271003,
