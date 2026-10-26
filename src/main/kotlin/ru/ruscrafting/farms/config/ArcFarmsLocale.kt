@@ -155,6 +155,7 @@ enum class MessageKey(val path: String) {
     LUMBER_DELIMBING_HINT("lumber.hints.delimbing"),
     LUMBER_LOADING_CART_HINT("lumber.hints.loading-cart"),
     LUMBER_HAULING_HINT("lumber.hints.hauling"),
+    LUMBER_HAULING_HELD_HINT("lumber.hints.hauling-held"),
     LUMBER_LOADING_SAWMILL_HINT("lumber.hints.loading-sawmill"),
     LUMBER_SAWING_HINT("lumber.hints.sawing"),
     LUMBER_COLLECTING_BOARDS_HINT("lumber.hints.collecting-boards"),

@@ -194,12 +194,16 @@ internal class LumberController(
                 at.x, at.z, -kotlin.math.sin(radians), kotlin.math.cos(radians))
             val moved = WorksiteCartMotion.advance(frame, at.x, at.y, at.z, at.yaw, LumberSceneGeometry.CART_FOLLOW_DISTANCE)
             val nextPose = LumberPose(rules.world, moved.x, moved.y, moved.z, moved.yaw + 180f)
-            if (!cartClearance.allows(pose, nextPose)) {
+            val accepted = cartClearance.resolve(pose, nextPose)
+            val actual = accepted ?: pose
+            // Consume this carrier input even when blocked; only accepted movement reaches the cart.
+            cartMotion = moved.copy(x = actual.x, y = actual.y, z = actual.z, yaw = actual.yaw - 180f,
+                wheelPhase = if (actual.x == pose.x && actual.z == pose.z) frame.wheelPhase else moved.wheelPhase)
+            if (accepted == null) {
                 if (access.allowInteraction("lumber-cart-blocked:$id", 1_500L)) audience.sendActionBar(player, MessageKey.LUMBER_CART_BLOCKED)
                 return@let
             }
-            cartMotion = moved
-            committed = committed.copy(cart = nextPose)
+            committed = committed.copy(cart = accepted)
             state = committed
             if (docked(committed.cart))
                 stage(LumberEngine.act(committed, LumberInput(LumberAction.LOAD_SAWMILL), id, effectiveNow(now), rules.chopHits))
@@ -353,6 +357,12 @@ internal class LumberController(
         val phase = locale.render(PHASE_KEYS.getValue(committed.phase), player)
         val progress = locale.render(MessageKey.LUMBER_PROGRESS, player,
             mapOf("done" to locale.text(done), "total" to locale.text(total)))
+        val cartHeld = committed.phase == LumberPhase.HAULING && committed.cartCarrier != null
+        val hint = when {
+            cartHeld && committed.cartCarrier == playerId -> MessageKey.LUMBER_HAULING_HELD_HINT
+            cartHeld -> MessageKey.LUMBER_CART_BUSY
+            else -> HINT_KEYS.getValue(committed.phase)
+        }
         val target = when (committed.phase) {
             LumberPhase.CHOPPING -> committed.tree?.root?.let { LumberPose(it.world, it.x + .5, it.y + 1.0, it.z + .5) }
             LumberPhase.DELIMBING -> committed.tree?.let(LumberSceneGeometry::branchTargets)?.getOrNull(
@@ -368,10 +378,11 @@ internal class LumberController(
                 Location(world, pose.x, pose.y, pose.z), Color.fromRGB(255, 200, 87), bright = true))
         } }.orEmpty()
         return WorksiteGuidanceView("lumber:${LumberEngine.ZONE_ID}", committed.progressVersion,
-            locale.render(MessageKey.LUMBER_TITLE, player), locale.render(HINT_KEYS.getValue(committed.phase), player),
+            locale.render(MessageKey.LUMBER_TITLE, player), locale.render(hint, player),
             phase.append(net.kyori.adventure.text.Component.space()).append(progress), done.toFloat() / total,
             BossBar.Color.YELLOW, targets, listOf(phase, progress,
-                locale.render(MessageKey.LUMBER_COMPLETED, player, mapOf("count" to locale.text(committed.completedRounds)))))
+                locale.render(MessageKey.LUMBER_COMPLETED, player, mapOf("count" to locale.text(committed.completedRounds)))),
+            quietProgress = cartHeld)
     }
 
     fun updateGuidance(expected: MutableSet<ActivityBarKey>) = guidance.updateHud(clock(), expected)

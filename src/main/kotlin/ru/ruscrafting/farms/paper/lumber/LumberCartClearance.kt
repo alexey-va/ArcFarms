@@ -12,15 +12,21 @@ import kotlin.math.sin
 
 /** Checks the authored cart and stock against exact native collision shapes without loading chunks. */
 internal class LumberCartClearance(private val space: PaperSpatialSpace = PaperSpatialSpace()) {
+    /** A blocked turn must not veto a clear escape translation (or a clear turn in place). */
+    fun resolve(from: LumberPose, proposed: LumberPose): LumberPose? {
+        if (!boundedStep(from, proposed)) return null
+        if (allows(from, proposed)) return proposed
+        val translation = proposed.copy(yaw = from.yaw)
+        if (translation != from && allows(from, translation)) return translation
+        val rotation = from.copy(yaw = proposed.yaw)
+        return rotation.takeIf { it != from && allows(from, it) }
+    }
+
     fun allows(from: LumberPose, to: LumberPose): Boolean {
-        if (from.world != to.world) return false
+        if (!boundedStep(from, to)) return false
         val world = Bukkit.getWorld(to.world) ?: return false
         val dx = to.x - from.x; val dy = to.y - from.y; val dz = to.z - from.z
-        if (dx * dx + dy * dy + dz * dz > 1.0) return false
-        var yaw = (to.yaw - from.yaw) % 360f
-        if (yaw <= -180f) yaw += 360f
-        if (yaw > 180f) yaw -= 360f
-        if (abs(yaw) > 45f) return false
+        val yaw = yawDelta(from, to)
         // Eight short sweeps include rotation about the cart origin. Padding stays horizontal so wheels retain floor contact.
         var previous = LumberSceneGeometry.cartClearance(from)
         val radius = previous.maxOf { part ->
@@ -47,6 +53,18 @@ internal class LumberCartClearance(private val space: PaperSpatialSpace = PaperS
             previous = next
         }
         return true
+    }
+
+    private fun boundedStep(from: LumberPose, to: LumberPose): Boolean {
+        val dx = to.x - from.x; val dy = to.y - from.y; val dz = to.z - from.z
+        return from.world == to.world && dx * dx + dy * dy + dz * dz <= 1.0 && abs(yawDelta(from, to)) <= 45f
+    }
+
+    private fun yawDelta(from: LumberPose, to: LumberPose): Float {
+        var yaw = (to.yaw - from.yaw) % 360f
+        if (yaw <= -180f) yaw += 360f
+        if (yaw > 180f) yaw -= 360f
+        return yaw
     }
 
     private fun Vector3f.double() = Vector3d(x.toDouble(), y.toDouble(), z.toDouble())
