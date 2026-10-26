@@ -64,7 +64,7 @@ in the body; informational cards open a detail screen. Back and Escape follow
 the actual visited screens, while a fresh `/arcfarms` command starts a new flow;
 the root keeps an explicit Close footer and links to `arc help`.
 
-Native dialogs use the shared ARC Core 2.7.4 runtime, including footer-only detail
+Native dialogs use the shared ARC Core 2.7.69 runtime, including footer-only detail
 screens and runtime-owned history.
 
 `ui.menu-presentation: DIALOG` is the default. `INVENTORY` explicitly selects the

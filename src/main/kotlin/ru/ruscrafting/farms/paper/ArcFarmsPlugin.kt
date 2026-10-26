@@ -19,6 +19,7 @@ import ru.ruscrafting.farms.paper.mine.lift.MineLiftRuntimeManager
 import ru.arc.observability.RuntimeHealthContribution
 import ru.arc.observability.RuntimeHealthState
 import ru.arc.paper.runtime.PaperPluginRuntime
+import ru.arc.paper.runtime.PaperPluginHotload
 import ru.arc.paper.api.ArcSidebarPriorities
 import ru.arc.paper.api.ArcSidebarService
 import ru.arc.paper.redis.PaperRedisClient
@@ -75,9 +76,19 @@ open class ArcFarmsPlugin : JavaPlugin() {
     override fun getDefaultWorldGenerator(worldName: String, id: String?): ChunkGenerator? =
         if (worldName == MineExpeditionWorldGenerator.WORLD_NAME) MineExpeditionWorldGenerator() else null
 
+    private val hotload = PaperPluginHotload(this) {
+        // During onDisable Bukkit has already marked the plugin disabled. Ordinary
+        // server shutdown may retain worlds; administrative code replacement may not.
+        val worlds = if (isEnabled) mineGeneratorReplacementBarrier(server.worlds) else CompletableFuture.completedFuture(Unit)
+        stopRuntime()
+        linkedMapOf("runtime" to shutdownDrain, "native" to nativeDisplayDrain, "worlds" to worlds)
+    }
+
     override fun onEnable() {
         check(!lifecycleOpen) { "Plugin lifecycle is already open" }
         try {
+            hotload.beginGeneration()
+            hotload.register()
             check(shutdownDrain.isDone) { "Previous runtime cleanup is still pending" }
             shutdownDrain.getNow(Unit)
             lifecycleOpen = true
@@ -169,7 +180,6 @@ open class ArcFarmsPlugin : JavaPlugin() {
                 val redisConfig = requireNotNull(prepared.redisConfig)
                 redisRuntimeSettings = RedisRuntimeSettings.from(redisConfig)
                 val manager = requireNotNull(prepared.redis)
-                lifecycle.own(AutoCloseable { io.submit { manager.close() } })
                 redis = manager
                 val networkService = ArcFarmsNetworkService(
                     plugin = this,
@@ -320,6 +330,11 @@ open class ArcFarmsPlugin : JavaPlugin() {
     }
 
     override fun onDisable() {
+        hotload.prepare()
+        hotload.close()
+    }
+
+    private fun stopRuntime() {
         if (!lifecycleOpen) return
         lifecycleOpen = false
         // Only accepted storage IO is joined here. Native retirement needs future server ticks.
@@ -335,6 +350,7 @@ open class ArcFarmsPlugin : JavaPlugin() {
                 generationDrain.completeExceptionally(failure)
                 logger.log(Level.SEVERE, "Could not finish ArcFarms cleanup", failure)
             }
+
         }
     }
 
@@ -342,7 +358,15 @@ open class ArcFarmsPlugin : JavaPlugin() {
     protected open fun closeGeneration(): CompletableFuture<Unit> {
         val retiring = pluginRuntime
         pluginRuntime = null
-        val nativeFailure = runCatching { retiring?.close() }.exceptionOrNull()
+        var nativeFailure: Throwable? = null
+        for (close in listOf<() -> Unit>(
+            { retiring?.close() },
+            { hotload.retireGameplayRegistrations() },
+        )) {
+            try { close() } catch (failure: Throwable) {
+                if (nativeFailure == null) nativeFailure = failure else nativeFailure.addSuppressed(failure)
+            }
+        }
         nativeFailure?.let { logger.log(Level.SEVERE, "Could not close ArcFarms runtime", it) }
         pluginRuntime = null
         menu = null
@@ -372,7 +396,11 @@ open class ArcFarmsPlugin : JavaPlugin() {
             failure?.let { throw it }
         } else CompletableFuture.completedFuture(Unit)
         Tasks.reset()
-        return drain.thenApply { nativeFailure?.let { throw it }; Unit }
+        return drain.handle { _, failure ->
+            nativeFailure?.let { problem -> failure?.let(problem::addSuppressed); throw problem }
+            failure?.let { throw it }
+            Unit
+        }
     }
 
     private fun reloadPlugin(): CompletableFuture<Unit> {
@@ -499,4 +527,16 @@ private data class RedisRuntimeSettings(
             mainServer = config.mainServer,
         )
     }
+}
+
+/** Loaded worlds retain their generators and therefore this plugin's classloader. */
+internal fun mineGeneratorReplacementBarrier(worlds: Iterable<org.bukkit.World>): CompletableFuture<Unit> {
+    val retained = worlds.filter { world ->
+        val generator = world.generator
+        generator is MineExpeditionWorldGenerator
+    }.map { it.name }.sorted()
+    return if (retained.isEmpty()) CompletableFuture.completedFuture(Unit)
+    else CompletableFuture.failedFuture(IllegalStateException(
+        "Code replacement requires coordinated restart or separately validated world evacuation and unload: ${retained.joinToString()}",
+    ))
 }

@@ -7,7 +7,7 @@ plugins {
     jacoco
 }
 group = "ru.ruscrafting"
-version = "0.47.0"
+version = "0.47.1"
 description = "Shared farm, lumbermill, and mine activities for RusCrafting"
 
 val integrationTestSourceSet = sourceSets.create("integrationTest") {
@@ -29,7 +29,7 @@ repositories {
 java { toolchain { languageVersion.set(JavaLanguageVersion.of(25)) } }
 kotlin { jvmToolchain(25) }
 
-val arcCoreVersion = "2.7.67"
+val arcCoreVersion = "2.7.69"
 
 dependencies {
     implementation(kotlin("stdlib"))
