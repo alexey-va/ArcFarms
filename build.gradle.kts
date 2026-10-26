@@ -208,6 +208,7 @@ plugwright {
                 .replace("particles: true", "particles: false")
                 .replace("debug:\n  enabled: false", "debug:\n  enabled: true")
                 .replace("world: sp11", "world: world")
+                .replace("lumber: {server: spawn, world: rc_atelier_cedar_sawmill,", "lumber: {server: spawn, world: world,")
                 .replace("preparation-patch-size: 100", "preparation-patch-size: 1")
                 .replace("preparation-patch-max-size: 256", "preparation-patch-max-size: 1")
                 .replace("field-completion-percent: 90", "field-completion-percent: 100")
