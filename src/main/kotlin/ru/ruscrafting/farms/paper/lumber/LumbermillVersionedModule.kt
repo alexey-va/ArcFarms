@@ -38,7 +38,7 @@ internal class LumbermillVersionedModule(
     WorksitePlayerInteractHandler, WorksiteArmSwingHandler, WorksiteMoveHandler,
     WorksiteParticipantOwner, WorksiteServiceItemOwner, WorksiteAdminHandler {
     private var rules = initialSettings
-    private var controller = create(LumberState())
+    private var controller: LumberController = create(LumberState())
     private var retired = false
 
     override val kind: ActivityKind = ActivityKind.LUMBER
@@ -59,7 +59,9 @@ internal class LumbermillVersionedModule(
     }
     fun reconfigure(settings: LumbermillSettings, persisted: Map<String, LumberState>) = rebuild(settings, persisted)
     private fun create(state: LumberState) = LumberController(rules, serverId, locale, access, audience, storage, tasks,
-        serviceItems, PacketLumberPresentation(plugin, displays, rules.world, LumbermillSettings.BETA_PERMISSION, rules.warehouse), state, clock)
+        serviceItems, PacketLumberPresentation(plugin, displays, rules.world, LumbermillSettings.BETA_PERMISSION, rules.warehouse) { player ->
+            controller.onDisplayInteract(player)
+        }, state, clock)
     override fun activateLoadedState() {
         if (retired) { controller = create(controller.state); retired = false }
         controller.activate()

@@ -69,6 +69,8 @@ internal object CedarSawmillExport {
                         } ?: listOf(listOf(Vector3f(-.5f), Vector3f(.5f)))
                         for ((low, high) in hulls) for (x in listOf(low.x, high.x)) for (y in listOf(low.y, high.y)) for (z in listOf(low.z, high.z)) {
                             val point = Vector3f(x, y, z).mul(pose.size).rotate(pose.rotation).add(pose.center).add(CedarSawmillGeometry.origin)
+                            if (point.z > 194.0) check((part.id.startsWith("carriage-rail-") || part.id.startsWith("rail-sleeper-")) &&
+                                point.x in 187f..192f && point.y < 73.4f) { "Only doorway-aligned track may extend into the receiving yard: ${part.id} / $point" }
                             sweptMin.min(point)
                             sweptMax.max(point)
                         }
@@ -127,7 +129,7 @@ internal object CedarSawmillExport {
                 abs(abs(a.rotation.dot(b.rotation)) - 1) < 1e-5) { "Material jumped between passes: ${a.partId}" }
         }
         check(sweptMin.x >= 183 && sweptMin.y >= 73 - 1e-5 && sweptMin.z >= 167 &&
-            sweptMax.x <= 196 && sweptMax.y < 78 && sweptMax.z <= 194) { "Sawmill escapes the captured hall: $sweptMin / $sweptMax" }
+            sweptMax.x <= 196 && sweptMax.y < 78 && sweptMax.z <= 201) { "Sawmill escapes the captured hall and receiving apron: $sweptMin / $sweptMax" }
         document.add("sweptBounds", Gson().toJsonTree(mapOf("min" to listOf(sweptMin.x, sweptMin.y, sweptMin.z), "max" to listOf(sweptMax.x, sweptMax.y, sweptMax.z))))
         document.add("passes", passes)
         document.add("frames", passes[0])

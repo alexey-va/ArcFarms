@@ -26,6 +26,7 @@ import ru.arc.paper.scene.SpatialControlController
 import ru.arc.paper.scene.SpatialControlFrame
 import ru.arc.paper.scene.SpatialHitPlane
 import ru.arc.paper.scene.SpatialInputProfile
+import ru.arc.paper.scene.SpatialNativeTarget
 import ru.arc.paper.scene.SpatialReach
 import ru.arc.paper.scene.SpatialSceneKey
 import ru.arc.paper.scene.SpatialSceneScope
@@ -40,13 +41,14 @@ import ru.ruscrafting.farms.paper.lumber.sawmill.CedarSawmillDisplays
 import ru.ruscrafting.farms.paper.lumber.sawmill.CedarSawmillGeometry
 import java.util.UUID
 
-/** Packet-only scene; qualified axe input is routed by the worksite before any event cancellation. */
+/** Packet visuals with private right-click proxies; axe input remains owned by the worksite. */
 internal class PacketLumberPresentation(
     plugin: Plugin,
     private val displays: PaperPacketDisplays,
     private val worldName: String,
     private val permission: String,
     private val warehouse: LumberPose,
+    private val onUse: (Player) -> Unit,
 ) : SpatialControlController<Long, LumberInput>(), LumberPresentation {
     private var viewers: Set<UUID> = emptySet()
     private val group = displays.createAudienceGroup { it.hasPermission(permission) && it.world.name == worldName && it.uniqueId in viewers }
@@ -54,6 +56,7 @@ internal class PacketLumberPresentation(
     private val scene = PacketDisplayScene<String>(displays)
     private val controls = PaperSpatialControls(plugin, displays, this)
     private val carriedBoards = LumberBoardCarry(displays, group)
+    private val logTether = LumberLogTether(plugin)
     private var mill: CedarSawmillController? = null
     private var worldId: UUID? = null
     private var view: LumberVisualView? = null
@@ -77,9 +80,12 @@ internal class PacketLumberPresentation(
         val parts = LumberSceneGeometry.sample(view)
         scene.apply(SceneFrame(parts.map { rendered(world, it, view) }, audience, 0))
         carriedBoards.render(view, world)
+        logTether.render(view, view.viewers.mapNotNull(Bukkit::getPlayer).filter(::eligible))
         frame = SpatialControlFrame(view.state.roundId, audience, SpatialSceneScope.World,
-            targets(view, parts).map { part -> SpatialControl(part.id, requireNotNull(part.action), planes(world, part), null, true, true) },
-            SpatialInputProfile.EXTERNAL_RAY, SpatialReach.NativeInteraction, true, emptyList())
+            targets(view, parts).flatMap { part -> lumberControls(world, part) },
+            // Existing worksite profile accepts owned targets in protected regions;
+            // every activation still re-enters the beta-gated controller.
+            SpatialInputProfile.ENTITY_BOTH, SpatialReach.NativeInteraction, true, emptyList())
         controls.apply(KEY, requireNotNull(frame))
     }
 
@@ -91,8 +97,10 @@ internal class PacketLumberPresentation(
     override fun current(player: Player, scene: SpatialSceneKey): SpatialControlFrame<Long, LumberInput>? =
         frame?.takeIf { scene == KEY && eligible(player) && it.context == view?.state?.roundId }
 
-    // Only target() is used: accepted actions belong to LumberController, never to a visual callback.
-    override fun activate(player: Player, scene: SpatialSceneKey, context: Long, action: LumberInput) = Unit
+    // The owner re-targets the current frame and rechecks authority before accepting a transition.
+    override fun activate(player: Player, scene: SpatialSceneKey, context: Long, action: LumberInput) {
+        if (scene == KEY && context == view?.state?.roundId && eligible(player)) onUse(player)
+    }
 
     override fun blocksRay(player: Player, context: Long, block: Block): Boolean =
         WorksitePosition(block.world.name, block.x, block.y, block.z) !in masked
@@ -100,6 +108,7 @@ internal class PacketLumberPresentation(
     override fun release(player: Player) {
         viewers = viewers - player.uniqueId
         if (view?.state?.boardsCarrier == player.uniqueId) carriedBoards.clear()
+        logTether.release(player)
     }
 
     override fun cleanup(reason: String) {
@@ -109,6 +118,7 @@ internal class PacketLumberPresentation(
         controls.clear(KEY)
         controls.close()
         carriedBoards.clear()
+        logTether.clear()
         scene.close()
         mill?.close()
         mill = null
@@ -127,8 +137,9 @@ internal class PacketLumberPresentation(
         val translation = Vector3f(part.center).sub(anchor.x.toFloat(), anchor.y.toFloat(), anchor.z.toFloat())
         if (part.itemModel == null) translation.add(part.rotation.transform(Vector3f(part.size).mul(-.5f)))
         val pose = ScenePose(anchor, Transformation(translation, Quaternionf(part.rotation), Vector3f(part.size), Quaternionf()))
-        val style = STYLE.copy(glowing = part.action?.action == LumberAction.CUT_BRANCH,
-            glowColor = if (part.action?.action == LumberAction.CUT_BRANCH) Color.fromRGB(0xffc857) else null)
+        val glowing = part.action?.action in setOf(LumberAction.CUT_BRANCH, LumberAction.LOAD_CART,
+            LumberAction.TAKE_CART, LumberAction.LOAD_SAWMILL)
+        val style = STYLE.copy(glowing = glowing, glowColor = if (glowing) Color.fromRGB(0xffc857) else null)
         return if (part.itemModel != null) ScenePart.Item(part.id, pose, style, items.getValue(part.itemModel), ItemDisplay.ItemDisplayTransform.NONE, part.visible)
         else ScenePart.Block(part.id, pose, style, blocks.getOrPut(requireNotNull(part.block)) { Bukkit.createBlockData(part.block) }, part.visible)
     }
@@ -144,15 +155,15 @@ internal class PacketLumberPresentation(
                 box("trunk", LumberPose(root.world, root.x + .5, root.y + 1.0, root.z + .5), Vector3f(1f, 2f, 1f), LumberAction.CHOP_TREE)
             }
             LumberPhase.DELIMBING -> addAll(parts.filter { it.action?.action == LumberAction.CUT_BRANCH })
-            LumberPhase.LOADING_CART -> state.tree?.let { box("load-log", LumberSceneGeometry.felledStock(it), Vector3f(1.1f, 1.1f, LumberSceneGeometry.STOCK_LENGTH.toFloat()), LumberAction.LOAD_CART) }
+            LumberPhase.LOADING_CART -> state.tree?.let {
+                add(LumberSceneGeometry.pickupTarget(LumberSceneGeometry.felledStock(it), LumberAction.LOAD_CART))
+            }
             LumberPhase.HAULING -> {
-                addAll(parts.filter { it.id == "cart-handle" }.map { part ->
-                    val dock = LumberSceneGeometry.sawCartDock()
-                    val cart = state.cart
-                    if (cart != null && kotlin.math.hypot(cart.x - dock.x, cart.z - dock.z) <= .75)
-                        part.copy(action = LumberInput(LumberAction.LOAD_SAWMILL)) else part
-                })
-                box("mill-intake", LumberSceneGeometry.sawIntake().copy(y = LumberSceneGeometry.sawIntake().y - .8), Vector3f(2.0f, .45f, 2.5f), LumberAction.LOAD_SAWMILL)
+                if (state.cartCarrier == null) state.cart?.let {
+                    add(LumberSceneGeometry.pickupTarget(LumberSceneGeometry.draggedStock(it), LumberAction.TAKE_CART))
+                }
+                box("receiving-zone", LumberSceneGeometry.receivingCenter().copy(y = LumberSceneGeometry.receivingCenter().y + .75),
+                    Vector3f(6f, 1.5f, 6f), LumberAction.LOAD_SAWMILL)
             }
             LumberPhase.SAWING -> if (!state.sawRunning) {
                 val controlIds = CedarSawmillGeometry.parts.filter { it.control }.mapTo(hashSetOf()) { it.id }
@@ -167,24 +178,47 @@ internal class PacketLumberPresentation(
         }
     }
 
-    /** Full visible cuboid faces, with no native entity or unrelated-world cancellation. */
-    private fun planes(world: World, part: LumberSceneGeometry.Part): List<SpatialHitPlane> {
-        val basis = listOf(Vector3f(1f, 0f, 0f), Vector3f(0f, 1f, 0f), Vector3f(0f, 0f, 1f)).map { part.rotation.transform(it) }
-        val sizes = listOf(part.size.x, part.size.y, part.size.z)
-        return (0..2).flatMap { axis ->
-            val right = if (axis == 0) 2 else 0
-            val up = if (axis == 1) 2 else 1
-            listOf(-1f, 1f).map { side ->
-                val point = Vector3f(basis[axis]).mul(side * sizes[axis] / 2).add(part.center)
-                SpatialHitPlane(Location(world, point.x.toDouble(), point.y.toDouble(), point.z.toDouble()),
-                    basis[right].vector(), basis[up].vector(), sizes[right].toDouble(), sizes[up].toDouble(), false)
-            }
-        }
-    }
-
-    private fun Vector3f.vector() = Vector(x.toDouble(), y.toDouble(), z.toDouble())
     private companion object {
         val KEY = SpatialSceneKey("cedar-lumber-workpiece")
         val STYLE = SceneDisplayStyle(Display.Billboard.FIXED, Display.Brightness(12, 12), 0, 2, 1.25f, 0f, 0f, 0f, 0f, false, null)
     }
 }
+
+/** Six small client targets cover the log without a single oversized square interaction. */
+internal fun lumberControls(world: World, part: LumberSceneGeometry.Part): List<SpatialControl<LumberInput>> {
+    val action = requireNotNull(part.action)
+    val planes = lumberHitPlanes(world, part)
+    if (action.action in setOf(LumberAction.CHOP_TREE, LumberAction.CUT_BRANCH, LumberAction.LOAD_SAWMILL))
+        return listOf(SpatialControl(part.id, action, planes, null))
+    val count = if (action.action in setOf(LumberAction.LOAD_CART, LumberAction.TAKE_CART)) 6 else 1
+    return (0 until count).map { index ->
+        val size = Vector3f(part.size.x, part.size.y, part.size.z / count)
+        val center = Vector3f(0f, 0f, -part.size.z / 2 + size.z * (index + .5f)).rotate(part.rotation).add(part.center)
+        val corners = (0..7).map { bits -> Vector3f(
+            if (bits and 1 == 0) -size.x / 2 else size.x / 2,
+            if (bits and 2 == 0) -size.y / 2 else size.y / 2,
+            if (bits and 4 == 0) -size.z / 2 else size.z / 2).rotate(part.rotation).add(center) }
+        val width = maxOf(corners.maxOf { it.x } - corners.minOf { it.x }, corners.maxOf { it.z } - corners.minOf { it.z })
+        val bottom = corners.minOf { it.y }
+        val target = SpatialNativeTarget(Location(world, center.x.toDouble(), bottom.toDouble(), center.z.toDouble()),
+            width, corners.maxOf { it.y } - bottom)
+        SpatialControl("${part.id}-$index", action, planes, target)
+    }
+}
+
+/** Full cuboid faces used by both qualified input and its endpoint/side ray regression. */
+internal fun lumberHitPlanes(world: World, part: LumberSceneGeometry.Part): List<SpatialHitPlane> {
+    val basis = listOf(Vector3f(1f, 0f, 0f), Vector3f(0f, 1f, 0f), Vector3f(0f, 0f, 1f)).map { part.rotation.transform(it) }
+    val sizes = listOf(part.size.x, part.size.y, part.size.z)
+    return (0..2).flatMap { axis ->
+        val right = if (axis == 0) 2 else 0
+        val up = if (axis == 1) 2 else 1
+        listOf(-1f, 1f).map { side ->
+            val point = Vector3f(basis[axis]).mul(side * sizes[axis] / 2).add(part.center)
+            SpatialHitPlane(Location(world, point.x.toDouble(), point.y.toDouble(), point.z.toDouble()),
+                basis[right].vector(), basis[up].vector(), sizes[right].toDouble(), sizes[up].toDouble(), false)
+        }
+    }
+}
+
+private fun Vector3f.vector() = Vector(x.toDouble(), y.toDouble(), z.toDouble())

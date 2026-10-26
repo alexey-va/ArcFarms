@@ -16,14 +16,11 @@ import ru.ruscrafting.farms.paper.worksite.WorksiteTaskPort
 
 /** Bounded immutable forest index. No block search occurs in a tick or on the Paper thread. */
 internal class LumberTreeIndex(private val tasks: WorksiteTaskPort) {
-    data class Report(val roots: Int = 0, val tallTrunks: Int = 0, val clearCorridors: Int = 0, val usableCarts: Int = 0,
+    data class Report(val roots: Int = 0, val tallTrunks: Int = 0, val clearCorridors: Int = 0, val usableLogs: Int = 0,
         val rejectedFallSamples: List<String> = emptyList())
     private data class Discovery(val candidates: List<Candidate>, val report: Report)
     private data class Candidate(val root: WorksitePosition, val logs: List<WorksitePosition>, val leaves: List<WorksitePosition>,
-        val fallX: Int, val fallZ: Int, val cart: ru.ruscrafting.farms.domain.lumber.LumberPose, val clearance: List<WorksitePosition>,
-        val cartFloor: List<WorksitePosition>, val cartSpace: List<WorksitePosition>)
-    private data class CartPlacement(val pose: ru.ruscrafting.farms.domain.lumber.LumberPose,
-        val floor: List<WorksitePosition>, val space: List<WorksitePosition>)
+        val fallX: Int, val fallZ: Int, val stock: ru.ruscrafting.farms.domain.lumber.LumberPose, val clearance: List<WorksitePosition>)
     private var candidates: List<Candidate> = emptyList()
     private var generation: Any = Any()
     var ready: Boolean = false
@@ -53,7 +50,7 @@ internal class LumberTreeIndex(private val tasks: WorksiteTaskPort) {
         fun attempt() {
             if (!ordered.hasNext()) { complete(Result.success(null)); return }
             val candidate = ordered.next()
-            val positions = (candidate.logs + candidate.leaves + candidate.clearance + candidate.cartFloor + candidate.cartSpace).distinct().iterator()
+            val positions = (candidate.logs + candidate.leaves + candidate.clearance).distinct().iterator()
             val captured = mutableListOf<LumberBlockSnapshot>()
             var valid = true
             tasks.capture(token, { generation === request }) {
@@ -63,9 +60,6 @@ internal class LumberTreeIndex(private val tasks: WorksiteTaskPort) {
                     else {
                         val block = world.getBlockAt(point.x, point.y, point.z)
                         when {
-                            // Cart constraints take priority if a cell also belongs to the decorative fall sweep.
-                            point in candidate.cartFloor -> if (!block.type.isSolid) valid = false
-                            point in candidate.cartSpace -> if (!walkable(block.type)) valid = false
                             point in candidate.clearance -> if (!fallPassable(block.type)) valid = false
                             point in candidate.logs -> if (!isLog(block.type)) valid = false else captured += LumberBlockSnapshot(point, block.blockData.asString)
                             point in candidate.leaves -> if (!isLeaves(block.type)) valid = false else captured += LumberBlockSnapshot(point, block.blockData.asString)
@@ -79,7 +73,7 @@ internal class LumberTreeIndex(private val tasks: WorksiteTaskPort) {
                 if (failure != null) complete(Result.failure(failure))
                 else if (!valid) attempt()
                 else complete(Result.success(LumberTreeSnapshot(candidate.root,
-                    captured.take(candidate.logs.size), captured.drop(candidate.logs.size), candidate.fallX, candidate.fallZ, candidate.cart)))
+                    captured.take(candidate.logs.size), captured.drop(candidate.logs.size), candidate.fallX, candidate.fallZ, candidate.stock)))
             } }
         }
         attempt()
@@ -94,7 +88,7 @@ internal class LumberTreeIndex(private val tasks: WorksiteTaskPort) {
         val roots = mutableListOf<WorksitePosition>()
         var tallTrunks = 0
         var clearCorridors = 0
-        var usableCarts = 0
+        var usableLogs = 0
         val rejectedFallSamples = mutableListOf<String>()
         for (x in b.minX..b.maxX) for (z in b.minZ..b.maxZ) for (y in b.minY..b.maxY) {
             val point = WorksitePosition(settings.world, x, y, z)
@@ -142,44 +136,21 @@ internal class LumberTreeIndex(private val tasks: WorksiteTaskPort) {
                     return@firstNotNullOfOrNull null
                 }
                 clearCorridors++
-                val cart = cartPose(snapshot, directedTree) ?: return@firstNotNullOfOrNull null
-                usableCarts++
-                Candidate(root, logs.toList(), leaves, dx, dz, cart.pose, clearance, cart.floor, cart.space)
+                usableLogs++
+                Candidate(root, logs.toList(), leaves, dx, dz, LumberSceneGeometry.groundStock(directedTree), clearance)
             } ?: continue
             covered += logs
             found += selected
-            if (found.size == MAX_TREES) return Discovery(found, Report(roots.size, tallTrunks, clearCorridors, usableCarts, rejectedFallSamples.toList()))
+            if (found.size == MAX_TREES) return Discovery(found, Report(roots.size, tallTrunks, clearCorridors, usableLogs, rejectedFallSamples.toList()))
         }
-        return Discovery(found, Report(roots.size, tallTrunks, clearCorridors, usableCarts, rejectedFallSamples.toList()))
-    }
-
-    private fun cartPose(snapshot: WorksiteBlockSnapshot, tree: LumberTreeSnapshot): CartPlacement? {
-        val root = tree.root
-        val dx = tree.fallX; val dz = tree.fallZ
-        val stock = LumberSceneGeometry.felledStock(tree)
-        for (side in listOf(3.0, -3.0, 4.0, -4.0, 5.0, -5.0)) {
-            val x = stock.x - dz * side
-            val z = stock.z + dx * side
-            val floorY = root.y - 1
-            val floor = (-4..4).flatMap { along -> (-1..1).map { cross ->
-                WorksitePosition(root.world, kotlin.math.floor(x + dx * along - dz * cross).toInt(),
-                    floorY, kotlin.math.floor(z + dz * along + dx * cross).toInt())
-            } }
-            // Feet are floorY+1; the 1.524 m hull and 1.8 m worker fit below floorY+3.
-            val space = floor.flatMap { point -> (1..2).map { point.copy(y = floorY + it) } }
-            if (floor.all { snapshot.type(it)?.isSolid == true } && space.all { walkable(snapshot.type(it)) })
-                return CartPlacement(ru.ruscrafting.farms.domain.lumber.LumberPose(root.world, x, root.y.toDouble(), z,
-                    stock.yaw), floor, space)
-        }
-        return null
+        return Discovery(found, Report(roots.size, tallTrunks, clearCorridors, usableLogs, rejectedFallSamples.toList()))
     }
 
     private fun isLog(type: Material?): Boolean = type in LOGS
     private fun isLeaves(type: Material?): Boolean = type?.name?.endsWith("_LEAVES") == true
     // Decorative falling timber may brush through soft crowns. Foreign leaves are never claimed, masked or removed.
-    // This policy is deliberately separate from strict cart/native collision and placement clearance.
+    // The dragged display log does not need a separate cart footprint or a terrain collision gate.
     private fun fallPassable(type: Material?) = type != null && (!type.isSolid || isLeaves(type))
-    private fun walkable(type: Material?) = type != null && !type.isSolid && type != Material.WATER && type != Material.LAVA
 
     private companion object {
         const val MAX_TREES = 64

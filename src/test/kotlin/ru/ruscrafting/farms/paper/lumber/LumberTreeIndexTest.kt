@@ -16,7 +16,7 @@ import ru.ruscrafting.farms.paper.worksite.WorksiteTaskPort
 import java.util.concurrent.CompletableFuture
 
 class LumberTreeIndexTest : FunSpec({
-    test("captured forest discover and select accept the existing north-falling tree and side-three cart") {
+    test("captured forest discover and select accept the existing north-falling tree without a separate cart footprint") {
         MockBukkitTestRuntime.open().use { paper ->
             val captured = com.google.gson.JsonParser.parseString(java.nio.file.Files.readString(
                 java.nio.file.Path.of("scripts/sawmill-preview/lumber-area.snapshot.json"))).asJsonObject
@@ -60,7 +60,7 @@ class LumberTreeIndexTest : FunSpec({
             selected!!.fallX shouldBe 0
             selected!!.fallZ shouldBe -1
             val stock = LumberSceneGeometry.felledStock(selected!!)
-            selected!!.cartHome shouldBe stock.copy(x = stock.x + 3.0, y = selected!!.root.y.toDouble())
+            selected!!.cartHome shouldBe stock.copy(y = selected!!.root.y.toDouble())
             selected!!.logs.size shouldBe 15
             selected!!.leaves.size shouldBe 114
             val brush = ru.ruscrafting.farms.domain.worksite.WorksitePosition(worldName, 139, 76, 200)
@@ -77,7 +77,7 @@ class LumberTreeIndexTest : FunSpec({
         }
     }
 
-    test("canopy ownership and two-block cart headroom preserve neighbouring trunks and current edits") {
+    test("canopy ownership preserves neighbouring trunks and ignores obsolete cart headroom") {
         MockBukkitTestRuntime.open().use { paper ->
             val world = paper.server.addSimpleWorld("cedar")
             for (x in 5..8) for (z in 10..12) world.getChunkAt(x, z)
@@ -113,12 +113,12 @@ class LumberTreeIndexTest : FunSpec({
             tree!!.logs.any { it.position.x == 109 && it.position.z == 181 } shouldBe false
             tree!!.leaves.any { it.position.x == 109 && it.position.z == 181 } shouldBe false
             val stock = LumberSceneGeometry.felledStock(tree!!)
-            val cart = stock.copy(y = tree!!.root.y.toDouble(), z = stock.z + 3.0)
+            val cart = stock.copy(y = tree!!.root.y.toDouble())
             tree!!.cartHome shouldBe cart
             for (height in 73..74) {
                 world.getBlockAt(114, height, 183).type = Material.STONE
                 index.select(world, 2) { tree = it.getOrThrow() }
-                tree shouldBe null
+                tree!!.cartHome shouldBe cart
                 world.getBlockAt(114, height, 183).type = Material.AIR
             }
             index.select(world, 3) { tree = it.getOrThrow() }

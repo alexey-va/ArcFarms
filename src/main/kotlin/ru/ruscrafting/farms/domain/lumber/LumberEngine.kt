@@ -39,10 +39,10 @@ object LumberEngine {
             }
             LumberAction.LOAD_CART -> {
                 if (current.phase != LumberPhase.LOADING_CART) return current
-                current.copy(phase = LumberPhase.HAULING)
+                current.copy(phase = LumberPhase.HAULING, cartCarrier = player)
             }
             LumberAction.TAKE_CART -> {
-                if (current.phase != LumberPhase.HAULING || current.cartCarrier != null || now - current.phaseStartedAt < LumberTiming.CART_LOAD_TICKS * 50L) return current
+                if (current.phase != LumberPhase.HAULING || current.cartCarrier != null) return current
                 current.copy(cartCarrier = player)
             }
             LumberAction.LOAD_SAWMILL -> {

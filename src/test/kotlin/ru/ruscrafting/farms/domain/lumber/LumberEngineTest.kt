@@ -34,12 +34,13 @@ class LumberEngineTest : FunSpec({
         state.phase shouldBe LumberPhase.LOADING_CART
         act(LumberAction.LOAD_CART)
         act(LumberAction.TAKE_CART)
-        state.cartCarrier shouldBe null
-        now += 3_000; act(LumberAction.TAKE_CART)
+        state.cartCarrier shouldBe worker
+        act(LumberAction.TAKE_CART, other)
+        state.cartCarrier shouldBe worker
         act(LumberAction.LOAD_SAWMILL, other)
         state.phase shouldBe LumberPhase.HAULING
         act(LumberAction.LOAD_SAWMILL)
-        now += 3_000; state = LumberEngine.tick(state, now, 60, branches)
+        now += LumberTiming.SAWMILL_LOAD_TICKS * 50L; state = LumberEngine.tick(state, now, 60, branches)
         repeat(2) {
             act(LumberAction.SAW_LEVER)
             val running = state

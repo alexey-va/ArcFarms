@@ -7,7 +7,7 @@ import java.util.UUID
 object LumberTiming {
     const val FALL_TICKS = 60
     const val CART_LOAD_TICKS = 60
-    const val SAWMILL_LOAD_TICKS = 60
+    const val SAWMILL_LOAD_TICKS = 120
     const val BOARD_PICKUP_TICKS = 20
     const val SAW_PASS_TICKS = 500
 }
@@ -35,7 +35,7 @@ data class LumberTreeSnapshot(
 
 data class LumberPose(val world: String, val x: Double, val y: Double, val z: Double, val yaw: Float = 0f)
 
-/** One shared round and workpiece. Carries are leases, never inventory resources or rewards. */
+/** One shared workpiece. Legacy cart/cartCarrier fields now store the dragged log and its leash holder. */
 data class LumberState(
     val roundId: Long = 0L,
     val phase: LumberPhase = LumberPhase.IDLE,

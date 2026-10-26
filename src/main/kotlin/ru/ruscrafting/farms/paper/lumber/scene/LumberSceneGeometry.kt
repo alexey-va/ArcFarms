@@ -1,7 +1,5 @@
 package ru.ruscrafting.farms.paper.lumber.scene
 
-import org.bukkit.util.BoundingBox
-import ru.arc.paper.display.DisplayOrientedVolume
 import org.joml.Quaternionf
 import org.joml.Vector3f
 import ru.ruscrafting.farms.domain.lumber.LumberAction
@@ -25,7 +23,8 @@ import kotlin.math.sin
 internal object LumberSceneGeometry {
     const val FALL_TICKS = LumberTiming.FALL_TICKS
     private const val FALL_TURN_TICKS = FALL_TICKS * 11 / 15
-    const val CART_FOLLOW_DISTANCE = 4.0
+    const val LOG_FOLLOW_DISTANCE = 5.25
+    const val RECEIVING_RADIUS = 3.0
     const val BRANCH_COUNT = 3
     val STOCK_LENGTH = CedarSawmillAnimation.LOG_LENGTH * CedarSawmillGeometry.SCENE_SCALE
     private val raw = CedarSawmillAnimation.sample(0.0).poses.filter { it.partId.endsWith("-raw") }
@@ -44,8 +43,20 @@ internal object LumberSceneGeometry {
     )
 
     fun sawIntake(): LumberPose = pose(rawCenter, CedarSawmillGeometry.sceneYaw)
-    fun sawCartDock(): LumberPose = LumberPose("rc_atelier_cedar_sawmill", 190.387, 73.0, 195.12, 180f)
+    fun receivingCenter(): LumberPose = LumberPose("rc_atelier_cedar_sawmill", 189.5, 73.0, 199.5)
+    fun groundStock(tree: LumberTreeSnapshot): LumberPose = felledStock(tree).copy(y = tree.root.y.toDouble())
+    fun draggedStock(at: LumberPose): LumberPose = at.copy(y = at.y + .612)
+    fun leashAnchor(at: LumberPose): LumberPose {
+        val yaw = Math.toRadians(at.yaw.toDouble())
+        return at.copy(x = at.x - sin(yaw) * 3.5, y = at.y + .25, z = at.z + cos(yaw) * 3.5)
+    }
     fun outputPickup(): LumberPose = pose(outputCenter, CedarSawmillGeometry.sceneYaw)
+
+    /** A forgiving full-log hull, independent of each ItemDisplay section's model scale. */
+    fun pickupTarget(at: LumberPose, action: LumberAction): Part = Part("pickup-log", vector(at),
+        Vector3f(if (action == LumberAction.LOAD_CART) 1.3f else 1.8f,
+            if (action == LumberAction.LOAD_CART) 1.3f else 1.5f, STOCK_LENGTH.toFloat() + .3f),
+        Quaternionf().rotationY(Math.toRadians(-at.yaw.toDouble()).toFloat()), action = LumberInput(action))
 
     fun felledStock(tree: LumberTreeSnapshot): LumberPose = LumberPose(tree.root.world,
         tree.root.x + .5 + tree.fallX * (STOCK_LENGTH / 2 + .5),
@@ -88,7 +99,8 @@ internal object LumberSceneGeometry {
                     relative.y -= (1f - size.y) / 2
                 }
                 val center = relative.rotate(rotation).add(hinge).add(0f, -drop, 0f)
-                add(Part("tree-$index", center, size, Quaternionf(rotation), block.blockData))
+                add(Part("tree-$index", center, size, Quaternionf(rotation), block.blockData,
+                    action = if (state.phase == LumberPhase.LOADING_CART && selectedStem) LumberInput(LumberAction.LOAD_CART) else null))
             }
             if (!falling && state.phase == LumberPhase.DELIMBING) branchTargets(tree).forEachIndexed { index, at ->
                 if (index !in completed) {
@@ -99,33 +111,55 @@ internal object LumberSceneGeometry {
                 }
             }
         }
-        state.cart?.let { cart ->
-            if (state.phase in setOf(LumberPhase.LOADING_CART, LumberPhase.HAULING, LumberPhase.LOADING_SAWMILL)) {
-                addAll(cart(cart))
-                if (state.phase != LumberPhase.LOADING_CART) {
-                    val start = tree?.let(::felledStock) ?: cart
-                    val target = cart.copy(y = cart.y + .912)
-                    val stock = when (state.phase) {
-                        LumberPhase.HAULING -> blend(start, target, view.phaseAgeTicks.toDouble() / LumberTiming.CART_LOAD_TICKS, .55)
-                        LumberPhase.LOADING_SAWMILL -> {
-                            val progress = view.phaseAgeTicks.toDouble() / LumberTiming.SAWMILL_LOAD_TICKS
-                            // Lift before the leading end reaches the interior stock rack. Keep the
-                            // height monotonic so the full native hull stays below the top-slab lintel.
-                            blend(target, sawIntake(), progress).copy(y = blend(target, sawIntake(), progress / .45).y)
-                        }
-                        else -> target
-                    }
-                    addAll(rawStock(stock, if (state.phase == LumberPhase.HAULING) view.phaseAgeTicks.toDouble() / LumberTiming.CART_LOAD_TICKS else 1.0))
-                    if (state.phase == LumberPhase.LOADING_SAWMILL) for (side in listOf(-1f, 1f)) {
-                        val from = Vector3f(rawCenter).add(side * 1.1f, -.4f, 0f)
-                        val to = vector(stock).add(side * .9f, .05f, 0f)
-                        val line = Vector3f(to).sub(from)
-                        add(Part("loading-chain-$side", Vector3f(from).add(to).mul(.5f), Vector3f(.55f, line.length(), .55f),
-                            Quaternionf().rotationTo(Vector3f(0f, 1f, 0f), line.normalize()), "minecraft:iron_chain[axis=y]"))
-                    }
+        if (state.phase in setOf(LumberPhase.LOADING_CART, LumberPhase.HAULING, LumberPhase.LOADING_SAWMILL)) {
+            addAll(receivingMarkers())
+        }
+        state.cart?.let { anchor ->
+            if (state.phase in setOf(LumberPhase.HAULING, LumberPhase.LOADING_SAWMILL)) {
+                val stock = if (state.phase == LumberPhase.LOADING_SAWMILL)
+                    loadingStock(anchor, view.phaseAgeTicks.toDouble() / LumberTiming.SAWMILL_LOAD_TICKS)
+                else draggedStock(anchor)
+                val pickup = state.phase == LumberPhase.HAULING && state.cartCarrier == null
+                addAll(rawStock(stock).map { if (pickup) it.copy(action = LumberInput(LumberAction.TAKE_CART)) else it })
+                if (state.phase == LumberPhase.LOADING_SAWMILL) for (side in listOf(-1f, 1f)) {
+                    val from = Vector3f(rawCenter).add(side * 1.1f, -.4f, 0f)
+                    val to = vector(stock).add(side * .9f, .05f, 0f)
+                    val line = Vector3f(to).sub(from)
+                    add(Part("loading-chain-$side", Vector3f(from).add(to).mul(.5f), Vector3f(.55f, line.length(), .55f),
+                        Quaternionf().rotationTo(Vector3f(0f, 1f, 0f), line.normalize()), "minecraft:iron_chain[axis=y]"))
                 }
             }
         }
+    }
+
+    /** The actual trailing pose is retained; alignment and lift finish outside the doorway. */
+    fun loadingStock(from: LumberPose, progress: Double): LumberPose {
+        val start = draggedStock(from)
+        val intake = sawIntake()
+        val aligned = intake.copy(x = receivingCenter().x, y = receivingCenter().y + .612, z = 200.5)
+        val raised = aligned.copy(y = intake.y)
+        val inside = raised.copy(z = 191.0)
+        return when {
+            progress < .30 -> blend(start, aligned, progress / .30, .12)
+            progress < .45 -> blend(aligned, raised, (progress - .30) / .15)
+            progress < .85 -> blend(raised, inside, (progress - .45) / .40)
+            else -> blend(inside, intake, (progress - .85) / .15)
+        }
+    }
+
+    private fun receivingMarkers(): List<Part> = buildList {
+        val at = receivingCenter()
+        fun strip(id: String, x: Double, z: Double, sx: Float, sz: Float, yaw: Float = 0f) {
+            add(Part("receiving-$id", Vector3f(x.toFloat(), (at.y + .035).toFloat(), z.toFloat()),
+                Vector3f(sx, .07f, sz), Quaternionf().rotationY(yaw), "minecraft:yellow_terracotta",
+                action = LumberInput(LumberAction.LOAD_SAWMILL)))
+        }
+        for (x in listOf(-1, 1)) for (z in listOf(-1, 1)) {
+            strip("corner-$x-$z-x", at.x + x * 2.45, at.z + z * 2.93, 1.1f, .14f)
+            strip("corner-$x-$z-z", at.x + x * 2.93, at.z + z * 2.45, .14f, 1.1f)
+        }
+        for (z in listOf(at.z + 2.5, at.z + 1.7)) for (side in listOf(-1, 1))
+            strip("arrow-$z-$side", at.x + side * .20, z, .12f, .60f, side * -.65f)
     }
 
     fun rawStock(at: LumberPose, roundedProfile: Double = 1.0): List<Part> {
@@ -133,8 +167,8 @@ internal object LumberSceneGeometry {
         val profile = smooth(roundedProfile).toFloat()
         return raw.map { source ->
             val center = Vector3f(source.center).add(CedarSawmillGeometry.origin).sub(rawCenter).rotate(Quaternionf(CedarSawmillGeometry.sceneRotation).conjugate()).rotate(turn).add(vector(at))
-            // Closed-beta stylisation: the square captured stem rolls into the existing rounded profile;
-            // Longitudinal length and section ordering remain unchanged throughout this three-second lift.
+            // Closed-beta stylisation keeps the captured stem's length and section order
+            // when it becomes the existing rounded stock model at pickup.
             val size = Vector3f(source.size).mul(1f / 1.632f + (1f - 1f / 1.632f) * profile,
                 1f / 1.224f + (1f - 1f / 1.224f) * profile, 1f)
             Part(source.partId, center, size, Quaternionf(turn).mul(Quaternionf(CedarSawmillGeometry.sceneRotation).conjugate()).mul(source.rotation),
@@ -194,43 +228,6 @@ internal object LumberSceneGeometry {
             Part(source.partId, Vector3f(source.center).add(CedarSawmillGeometry.origin).sub(outputCenter).rotate(Quaternionf(CedarSawmillGeometry.sceneRotation).conjugate()).rotate(turn).add(vector(at)),
                 Vector3f(source.size), Quaternionf(turn).mul(Quaternionf(CedarSawmillGeometry.sceneRotation).conjugate()).mul(source.rotation), original.blockData, original.itemModel)
         }
-    }
-
-    /** Conservative native-model hull plus exact chassis cuboids for the shared real-block sweep. */
-    fun cartClearance(at: LumberPose): List<Part> = cart(at) + Part("cart-stock-hull",
-        vector(at.copy(y = at.y + .912)), Vector3f(1.632f, 1.224f, STOCK_LENGTH.toFloat()),
-        Quaternionf().rotationY(Math.toRadians(-at.yaw.toDouble()).toFloat()))
-
-    private val stationaryMachineBounds: List<BoundingBox> by lazy {
-        val fixed = CedarSawmillGeometry.parts.filter { it.motion == "fixed" }.mapTo(hashSetOf()) { it.id }
-        CedarSawmillAnimation.sample(0.0).poses.filter { it.partId in fixed }.map { part ->
-            val low = Vector3f(Float.POSITIVE_INFINITY)
-            val high = Vector3f(Float.NEGATIVE_INFINITY)
-            for (x in listOf(-.5f, .5f)) for (y in listOf(-.5f, .5f)) for (z in listOf(-.5f, .5f)) {
-                val point = Vector3f(x, y, z).mul(part.size).rotate(part.rotation).add(part.center).add(CedarSawmillGeometry.origin)
-                low.min(point); high.max(point)
-            }
-            BoundingBox(low.x.toDouble(), low.y.toDouble(), low.z.toDouble(), high.x.toDouble(), high.y.toDouble(), high.z.toDouble())
-        }
-    }
-
-    /** Same shared OBB test as real blocks; conservative only for the two sloping drive belts. */
-    fun clearOfMachine(volume: DisplayOrientedVolume): Boolean = stationaryMachineBounds.none(volume::overlaps)
-
-    private fun cart(at: LumberPose): List<Part> = buildList {
-        val turn = Quaternionf().rotationY(Math.toRadians(-at.yaw.toDouble()).toFloat())
-        fun part(id: String, x: Float, y: Float, z: Float, sx: Float, sy: Float, sz: Float, material: String) {
-            add(Part("cart-$id", Vector3f(x, y, z).rotate(turn).add(vector(at)), Vector3f(sx, sy, sz), Quaternionf(turn), material,
-                action = LumberInput(LumberAction.TAKE_CART)))
-        }
-        part("bed", 0f, .22f, 0f, 1.45f, .08f, 2.3f, "minecraft:spruce_planks")
-        for (z in listOf(-.8f, .8f)) {
-            part("bolster-$z", 0f, .26f, z, 1.55f, .08f, .18f, "minecraft:stripped_spruce_log[axis=x]")
-            part("axle-$z", 0f, .16f, z, 1.55f, .10f, .10f, "minecraft:polished_deepslate")
-            for (x in listOf(-.72f, .72f)) part("wheel-$x-$z", x, .18f, z, .14f, .36f, .36f, "minecraft:dark_oak_log[axis=x]")
-        }
-        for (x in listOf(-.55f, .55f)) part("shaft-$x", x, .60f, -2.45f, .09f, .09f, 2.8f, "minecraft:spruce_planks")
-        part("handle", 0f, .60f, -3.85f, 1.2f, .10f, .10f, "minecraft:stripped_spruce_log[axis=x]")
     }
 
     fun blend(from: LumberPose, to: LumberPose, progress: Double, lift: Double = 0.0): LumberPose {

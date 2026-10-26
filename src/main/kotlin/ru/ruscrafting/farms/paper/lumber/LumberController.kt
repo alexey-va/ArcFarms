@@ -5,6 +5,9 @@ import org.bukkit.Bukkit
 import org.bukkit.Color
 import org.bukkit.Location
 import org.bukkit.Material
+import org.bukkit.NamespacedKey
+import org.bukkit.attribute.Attribute
+import org.bukkit.attribute.AttributeModifier
 import org.bukkit.entity.Player
 import org.bukkit.event.block.BlockBreakEvent
 import org.bukkit.event.block.BlockDamageEvent
@@ -45,7 +48,6 @@ internal class LumberController(
     private val clock: () -> Long = System::currentTimeMillis,
     private val index: LumberTreeIndex = LumberTreeIndex(tasks),
     private val masks: LumberBlockMask = LumberBlockMask(tasks, storage),
-    private val cartClearance: LumberCartClearance = LumberCartClearance(),
 ) : WorksiteGuidanceSource {
     var state: LumberState = LumberEngine.recover(initial, initial.tree?.cartHome ?: initial.cart ?: rules.cart, clock())
         private set
@@ -61,7 +63,7 @@ internal class LumberController(
     private val participantIds = linkedSetOf<UUID>()
     private val lastActions = mutableMapOf<UUID, Long>()
     private var cartHome = initial.tree?.cartHome ?: initial.cart ?: rules.cart
-    private var cartMotion: WorksiteCartMotion.Frame? = null
+    private var slowedCarrier: UUID? = null
     private var ownedBlocks = state.tree?.blocks.orEmpty().mapTo(hashSetOf()) { it.position }
     var indexStatus: LumberIndexStatus = LumberIndexStatus.PENDING
         private set
@@ -140,6 +142,8 @@ internal class LumberController(
         return true
     }
 
+    fun onDisplayInteract(player: Player): Boolean = handle(player, axeOnly = false)
+
     fun onSwing(event: PlayerAnimationEvent): Boolean {
         if (!hasBeta(event.player)) return false
         return handle(event.player, axeOnly = true)
@@ -166,13 +170,15 @@ internal class LumberController(
         if (now - (lastActions[player.uniqueId] ?: Long.MIN_VALUE / 2) < rules.actionCooldownMillis) return true
         if (!withinActionReach(player, input)) return true
         lastActions[player.uniqueId] = now
-        val next = LumberEngine.act(committed, input, player.uniqueId, effectiveNow(now), rules.chopHits)
+        var next = LumberEngine.act(committed, input, player.uniqueId, effectiveNow(now), rules.chopHits)
+        if (input.action == LumberAction.LOAD_CART && next != committed)
+            next = next.copy(cart = committed.tree?.let(LumberSceneGeometry::groundStock) ?: cartHome)
         if (next != committed) stage(next)
         return true
     }
 
     private fun withinActionReach(player: Player, input: LumberInput): Boolean {
-        if (input.action == LumberAction.LOAD_SAWMILL) return docked(committed.cart)
+        if (input.action == LumberAction.LOAD_SAWMILL) return inReceivingZone(player.location)
         val target = when (input.action) {
             LumberAction.DELIVER_BOARDS -> rules.warehouse
             else -> return true // Presentation already checked the exact current ray and planes.
@@ -185,28 +191,18 @@ internal class LumberController(
             val player = Bukkit.getPlayer(id) ?: return@let
             val pose = committed.cart ?: cartHome
             val at = player.location
-            if (at.world.name != pose.world || squared(at.x - pose.x, at.z - pose.z) > 100.0 || kotlin.math.abs(at.y - pose.y) > 3) {
+            if (at.world.name != pose.world || squared(at.x - pose.x, at.z - pose.z) > 256.0 || kotlin.math.abs(at.y - pose.y) > 3) {
                 releasePlayer(player)
                 return@let
             }
-            val radians = Math.toRadians(at.yaw.toDouble())
-            val frame = cartMotion ?: WorksiteCartMotion.Frame(pose.x, pose.y, pose.z, pose.yaw - 180f, 0f,
-                at.x, at.z, -kotlin.math.sin(radians), kotlin.math.cos(radians))
-            val moved = WorksiteCartMotion.advance(frame, at.x, at.y, at.z, at.yaw, LumberSceneGeometry.CART_FOLLOW_DISTANCE)
-            val nextPose = LumberPose(rules.world, moved.x, moved.y, moved.z, moved.yaw + 180f)
-            val accepted = cartClearance.resolve(pose, nextPose)
-            val actual = accepted ?: pose
-            // Consume this carrier input even when blocked; only accepted movement reaches the cart.
-            cartMotion = moved.copy(x = actual.x, y = actual.y, z = actual.z, yaw = actual.yaw - 180f,
-                wheelPhase = if (actual.x == pose.x && actual.z == pose.z) frame.wheelPhase else moved.wheelPhase)
-            if (accepted == null) {
-                if (access.allowInteraction("lumber-cart-blocked:$id", 1_500L)) audience.sendActionBar(player, MessageKey.LUMBER_CART_BLOCKED)
+            if (inReceivingZone(at)) {
+                stage(LumberEngine.act(committed, LumberInput(LumberAction.LOAD_SAWMILL), id, effectiveNow(now), rules.chopHits))
                 return@let
             }
-            committed = committed.copy(cart = accepted)
+            val nextPose = LumberLogMotion.advance(pose,
+                LumberPose(rules.world, at.x, at.y, at.z, at.yaw), LumberSceneGeometry.LOG_FOLLOW_DISTANCE)
+            committed = committed.copy(cart = nextPose)
             state = committed
-            if (docked(committed.cart))
-                stage(LumberEngine.act(committed, LumberInput(LumberAction.LOAD_SAWMILL), id, effectiveNow(now), rules.chopHits))
         }
         committed.boardsCarrier?.let { id ->
             val player = Bukkit.getPlayer(id) ?: return@let
@@ -247,8 +243,8 @@ internal class LumberController(
                 participants().forEach { audience.sendActionBar(it, MessageKey.LUMBER_NO_TREE) }
                 return@select
             }
-            // Empty cart is local to the selected tree; it never relocates authored terrain.
-            cartHome = requireNotNull(tree.cartHome) { "Indexed lumber tree has no validated cart footprint" }
+            // The first leash pickup starts at the actual fallen stem.
+            cartHome = LumberSceneGeometry.groundStock(tree)
             stage(LumberEngine.start(committed, tree, cartHome, clock()))
         }
     }
@@ -281,7 +277,7 @@ internal class LumberController(
                 committed = state
                 hasCommitted = true
                 pending = false
-                cartMotion = null
+                refreshHaulingSpeed()
                 participants().forEach { player ->
                     ensureTool(player)
                     if (completed) audience.showScreenTitle(player, MessageKey.LUMBER_COMPLETE)
@@ -300,7 +296,10 @@ internal class LumberController(
 
     private fun admit(player: Player) {
         if (!eligible(player)) return
-        if (participantIds.add(player.uniqueId)) ensureTool(player)
+        if (participantIds.add(player.uniqueId)) {
+            setHaulingSpeed(player, committed.cartCarrier == player.uniqueId)
+            ensureTool(player)
+        }
     }
 
     private fun ensureTool(player: Player) {
@@ -315,6 +314,8 @@ internal class LumberController(
     fun releasePlayer(player: Player) {
         val owned = participantIds.remove(player.uniqueId)
         if (!owned && state.cartCarrier != player.uniqueId && state.boardsCarrier != player.uniqueId) return
+        setHaulingSpeed(player, false)
+        if (slowedCarrier == player.uniqueId) slowedCarrier = null
         val next = LumberEngine.release(state, player.uniqueId, cartHome)
         if (next != state) stage(next)
         serviceItems.identities(player).filter { it.activity == ActivityKind.LUMBER }
@@ -329,6 +330,8 @@ internal class LumberController(
     }
 
     fun releaseIdentity(playerId: UUID) {
+        Bukkit.getPlayer(playerId)?.let { setHaulingSpeed(it, false) }
+        if (slowedCarrier == playerId) slowedCarrier = null
         val next = LumberEngine.release(state, playerId, cartHome)
         if (next != state) stage(next)
     }
@@ -368,7 +371,7 @@ internal class LumberController(
             LumberPhase.DELIMBING -> committed.tree?.let(LumberSceneGeometry::branchTargets)?.getOrNull(
                 committed.branches?.targets?.indexOfFirst { it.status != ObjectiveTargetStatus.COMPLETED } ?: 0)
             LumberPhase.LOADING_CART -> committed.tree?.let(LumberSceneGeometry::felledStock)
-            LumberPhase.HAULING -> if (committed.cartCarrier == playerId) LumberSceneGeometry.sawCartDock() else committed.cart
+            LumberPhase.HAULING -> if (committed.cartCarrier == playerId) LumberSceneGeometry.receivingCenter() else committed.cart
             LumberPhase.COLLECTING_BOARDS -> LumberSceneGeometry.outputPickup()
             LumberPhase.DELIVERING -> if (committed.boardsCarrier == playerId) rules.warehouse else null
             else -> null
@@ -396,6 +399,8 @@ internal class LumberController(
         index.clear()
         masks.cleanup()
         presentation.cleanup(reason)
+        slowedCarrier?.let(Bukkit::getPlayer)?.let { setHaulingSpeed(it, false) }
+        slowedCarrier = null
         participantIds.clear()
         lastActions.clear()
         committed = state
@@ -406,18 +411,34 @@ internal class LumberController(
     private fun position(pose: LumberPose) = WorksitePosition(pose.world, floor(pose.x).toInt(), floor(pose.y).toInt(), floor(pose.z).toInt())
     private fun near(at: Location, target: LumberPose, radius: Double) = at.world.name == target.world &&
         kotlin.math.abs(at.y - target.y) <= radius && squared(at.x - target.x, at.z - target.z) <= radius * radius
-    private fun docked(cart: LumberPose?): Boolean {
-        if (cart == null) return false
-        val dock = LumberSceneGeometry.sawCartDock()
-        var yaw = (cart.yaw - dock.yaw) % 360f
-        if (yaw <= -180f) yaw += 360f
-        if (yaw > 180f) yaw -= 360f
-        return cart.world == dock.world && squared(cart.x - dock.x, cart.z - dock.z) <= .75 * .75 &&
-            kotlin.math.abs(cart.y - dock.y) <= .25 && kotlin.math.abs(yaw) <= 12f
+    private fun inReceivingZone(at: Location): Boolean {
+        val center = LumberSceneGeometry.receivingCenter()
+        return at.world.name == rules.world && kotlin.math.abs(at.y - center.y) <= 2.0 &&
+            kotlin.math.abs(at.x - center.x) <= LumberSceneGeometry.RECEIVING_RADIUS &&
+            kotlin.math.abs(at.z - center.z) <= LumberSceneGeometry.RECEIVING_RADIUS
+    }
+
+    private fun refreshHaulingSpeed() {
+        val next = committed.cartCarrier?.takeIf { id -> Bukkit.getPlayer(id)?.let(::eligible) == true }
+        if (next == slowedCarrier) return
+        slowedCarrier?.let(Bukkit::getPlayer)?.let { setHaulingSpeed(it, false) }
+        slowedCarrier = next
+        next?.let(Bukkit::getPlayer)?.let { setHaulingSpeed(it, true) }
+    }
+
+    private fun setHaulingSpeed(player: Player, hauling: Boolean) {
+        val speed = player.getAttribute(Attribute.MOVEMENT_SPEED) ?: return
+        val existing = speed.modifiers.firstOrNull { it.key == HAULING_SPEED_KEY }
+        if (!hauling) {
+            if (existing != null) speed.removeModifier(existing)
+        } else if (existing == null) {
+            speed.addTransientModifier(AttributeModifier(HAULING_SPEED_KEY, -.45, AttributeModifier.Operation.MULTIPLY_SCALAR_1))
+        }
     }
     private fun squared(x: Double, z: Double) = x * x + z * z
 
     private companion object {
+        val HAULING_SPEED_KEY = NamespacedKey("arcfarms", "lumber_hauling")
         val PHASE_KEYS = LumberPhase.entries.associateWith { MessageKey.valueOf("LUMBER_${it.name}") }
         val HINT_KEYS = LumberPhase.entries.associateWith { MessageKey.valueOf("LUMBER_${it.name}_HINT") }
     }

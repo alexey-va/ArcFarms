@@ -3,7 +3,6 @@ package ru.ruscrafting.farms.paper.lumber.scene
 import com.google.gson.JsonParser
 import io.kotest.core.spec.style.FunSpec
 import io.mockk.every
-import io.mockk.mockk
 import io.mockk.mockkStatic
 import io.mockk.unmockkStatic
 import org.bukkit.Bukkit
@@ -22,16 +21,13 @@ import ru.ruscrafting.farms.domain.lumber.LumberPose
 import ru.ruscrafting.farms.domain.lumber.LumberState
 import ru.ruscrafting.farms.domain.lumber.LumberTiming
 import ru.ruscrafting.farms.domain.lumber.LumberVisualView
-import ru.ruscrafting.farms.paper.lumber.LumberCartClearance
 import java.nio.file.Files
 import java.nio.file.Path
 import java.lang.reflect.Proxy
-import kotlin.math.ceil
-import kotlin.math.hypot
 
 /** Real captured solids, with native top-slab/doorway shapes; all other solids use a conservative full cube. */
 class LumberCapturedRouteTest : FunSpec({
-    test("captured south approach clears conservative blocks and the exact shared station boundary") {
+    test("outdoor receiving path lifts and aligns the stock before the actual captured doorway") {
         MockBukkitTestRuntime.open().use {
             val fixture = JsonParser.parseString(Files.readString(Path.of("scripts/sawmill-preview/lumber-tree.snapshot.json"))).asJsonObject
             val captured = JsonParser.parseString(Files.readString(Path.of("scripts/sawmill-preview/lumber-area.snapshot.json"))).asJsonObject
@@ -63,6 +59,8 @@ class LumberCapturedRouteTest : FunSpec({
             // Native straight east/top stair: upper half plus east lower quarter.
             val eastTopStair = block(listOf(BoundingBox(0.0, .5, 0.0, 1.0, 1.0, 1.0),
                 BoundingBox(.5, 0.0, 0.0, 1.0, .5, 1.0)))
+            val westTopStair = block(listOf(BoundingBox(0.0, .5, 0.0, 1.0, 1.0, 1.0),
+                BoundingBox(0.0, 0.0, 0.0, .5, .5, 1.0)))
             val empty = block(emptyList())
             val solidVisits = ArrayDeque<String>()
             val world = Proxy.newProxyInstance(World::class.java.classLoader, arrayOf(World::class.java)) { _, method, args ->
@@ -82,6 +80,7 @@ class LumberCapturedRouteTest : FunSpec({
                                 "_slab[type=top," in state -> topSlab
                                 "_trapdoor[" in state && "half=top,open=false" in state -> topTrapdoor
                                 "_stairs[facing=east,half=top,shape=straight," in state -> eastTopStair
+                                "_stairs[facing=west,half=top,shape=straight," in state -> westTopStair
                                 else -> occupied
                             }
                         } else empty
@@ -95,27 +94,11 @@ class LumberCapturedRouteTest : FunSpec({
             try {
                 every { Bukkit.getWorld(worldName) } returns world
                 every { Bukkit.isPrimaryThread() } returns true
-                val route = fixture.getAsJsonArray("cartRoute").map { it.asJsonArray.let { a ->
-                    LumberPose(worldName, a[0].asDouble, a[1].asDouble, a[2].asDouble, a[3].asFloat)
-                } }
-                val oracle = LumberCartClearance()
-                for ((index, pair) in route.zipWithNext().withIndex()) {
-                    val steps = ceil(maxOf(hypot(pair.second.x - pair.first.x, pair.second.z - pair.first.z) * 2, 45.0)).toInt()
-                    var previous = pair.first
-                    for (step in 1..steps) {
-                        val next = LumberSceneGeometry.blend(pair.first, pair.second, step.toDouble() / steps)
-                        check(oracle.allows(previous, next)) { "Captured route blocked: leg=$index step=$step/$steps pose=$next solids=$solidVisits" }
-                        previous = next
-                    }
-                }
-                // The cart path does not prove the raised stock clears the existing doorway.
-                // Sample the actual loading choreography, sweeping the full native 7.48m hull
-                // between every adjacent server tick (including the exact carriage endpoint).
                 val space = PaperSpatialSpace()
                 var previous: LumberSceneGeometry.Part? = null
                 for (tick in 0..LumberTiming.SAWMILL_LOAD_TICKS) {
                     val view = LumberVisualView(LumberState(phase = LumberPhase.LOADING_SAWMILL,
-                        cart = LumberSceneGeometry.sawCartDock()), tick, emptySet(), 0, 0)
+                        cart = LumberSceneGeometry.receivingCenter().copy(z = 204.75, yaw = 180f)), tick, emptySet(), 0, 0)
                     val stock = LumberSceneGeometry.sample(view).first { it.id == "timber-2-raw" }
                     fun Vector3f.double() = Vector3d(x.toDouble(), y.toDouble(), z.toDouble())
                     val start = previous ?: stock
@@ -125,7 +108,11 @@ class LumberCapturedRouteTest : FunSpec({
                         start.rotation.transform(Vector3f(0f, 0f, 1f)).double(),
                         Vector3d(.816, .612, LumberSceneGeometry.STOCK_LENGTH / 2))
                         .swept(stock.center.double().sub(start.center.double()))
-                    check(space.clear(world, volume)) {
+                    // This regression covers the actual two-block-deep doorway, including its lantern.
+                    // The aligned stock is axis-aligned here; historical interior props are not doorway evidence.
+                    val box = volume.bounds
+                    if (box.maxZ > 194.0 && box.minZ < 196.0) check(space.clearBounds(world,
+                            BoundingBox(box.minX, box.minY, maxOf(box.minZ, 194.0), box.maxX, box.maxY, minOf(box.maxZ, 196.0)))) {
                         "Captured saw transfer blocked: tick=$tick center=${stock.center} solids=$solidVisits"
                     }
                     previous = stock

@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "origin": [
-    190.387,
+    188.429,
     73,
     178.8
   ],
@@ -551,12 +551,12 @@
       "center": [
         -1.13,
         0.13,
-        -1.4
+        -3.35
       ],
       "size": [
         0.085,
         0.09,
-        15
+        18.9
       ],
       "motion": "fixed",
       "id": "carriage-rail-1",
@@ -568,12 +568,12 @@
       "center": [
         -0.13,
         0.13,
-        -1.4
+        -3.35
       ],
       "size": [
         0.085,
         0.09,
-        15
+        18.9
       ],
       "motion": "fixed",
       "id": "carriage-rail-2",
@@ -2243,6 +2243,57 @@
       ],
       "motion": "timber-board",
       "section": 4,
+      "control": false
+    },
+    {
+      "name": "rail-sleeper",
+      "block": "minecraft:dark_oak_planks",
+      "center": [
+        -0.63,
+        0.05,
+        -9.85
+      ],
+      "size": [
+        1.9,
+        0.1,
+        0.22
+      ],
+      "motion": "fixed",
+      "id": "rail-sleeper-13",
+      "control": false
+    },
+    {
+      "name": "rail-sleeper",
+      "block": "minecraft:dark_oak_planks",
+      "center": [
+        -0.63,
+        0.05,
+        -11.1
+      ],
+      "size": [
+        1.9,
+        0.1,
+        0.22
+      ],
+      "motion": "fixed",
+      "id": "rail-sleeper-14",
+      "control": false
+    },
+    {
+      "name": "rail-sleeper",
+      "block": "minecraft:dark_oak_planks",
+      "center": [
+        -0.63,
+        0.05,
+        -12.35
+      ],
+      "size": [
+        1.9,
+        0.1,
+        0.22
+      ],
+      "motion": "fixed",
+      "id": "rail-sleeper-15",
       "control": false
     }
   ],

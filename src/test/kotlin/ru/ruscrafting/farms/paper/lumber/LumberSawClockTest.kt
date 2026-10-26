@@ -35,7 +35,7 @@ class LumberSawClockTest : FunSpec({
             initial = LumberEngine.act(initial, LumberInput(LumberAction.LOAD_CART), player.uniqueId, 3000, 5)
             initial = LumberEngine.act(initial, LumberInput(LumberAction.TAKE_CART), player.uniqueId, 6000, 5)
             initial = LumberEngine.act(initial, LumberInput(LumberAction.LOAD_SAWMILL), player.uniqueId, 6000, 5)
-            initial = LumberEngine.tick(initial, 9000, 60, emptyList())
+            initial = LumberEngine.tick(initial, 6000 + LumberTiming.SAWMILL_LOAD_TICKS * 50L, 60, emptyList())
             initial.phase shouldBe LumberPhase.SAWING
             val writes = ArrayDeque<CompletableFuture<Unit>>()
             val storage = mockk<WorksiteStatePort>(relaxed = true) {

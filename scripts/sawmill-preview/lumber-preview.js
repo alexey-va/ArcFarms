@@ -6,20 +6,20 @@ if (query.get('mode') === 'lumber') {
   let lumberBeta = query.get('beta') !== '0', treeMasked = null;
   const treeCells = new Set([...LUMBER.fixture.logs.filter(p => p[1] >= LUMBER.fixture.root[1] + 2), ...LUMBER.fixture.leaves]
     .map(p => p.slice(0,3).map((n,i)=>n-SAWMILL_CAPTURE.origin[i]).join(',')));
-  const labels = {IDLE:'Станок пуст · круг завершён',CHOPPING:'Срубить выбранное дерево',FALLING:'Падение дерева',DELIMBING:'Снять три ветви',LOADING_CART:'Загрузить это бревно',HAULING:'Телега к пилораме',LOADING_SAWMILL:'Затянуть бревно на подающий стол',SAWING:'Два распила',COLLECTING_BOARDS:'Забрать готовый штабель',DELIVERING:'Отнести на лесосклад'};
-  const phaseHint = {IDLE:'Новая заготовка появляется только после выбора и рубки следующего дерева.',CHOPPING:'Пять ударов выданным топором по настоящему стволу.',FALLING:'Сохраняются два блока пня; исходные блоки дерева вращаются вокруг среза.',DELIMBING:'Три отдельные цели снимают ветви и крону этого дерева.',LOADING_CART:'Подойти к стволу и нажать: одно бревно переходит на телегу.',HAULING:'Три секунды бревно укладывается на телегу. Затем игрок берёт ручку и ведёт её вперёд.',LOADING_SAWMILL:'Передаётся тот же идентификатор заготовки. Последний кадр совпадает с пятью raw-секциями станка.',SAWING:'Каждый проход требует отдельного нажатия рычага; между ними станок выключен.',COLLECTING_BOARDS:'Сохраняются все пятнадцать деталей готового штабеля.',DELIVERING:'Штабель несут на открытую площадку существующего лесосклада. Наград и валют в beta нет.'};
+  const labels = {IDLE:'Станок пуст · круг завершён',CHOPPING:'Срубить выбранное дерево',FALLING:'Падение дерева',DELIMBING:'Снять три ветви',LOADING_CART:'Подсвеченное бревно · ПКМ',HAULING:'Бревно на поводке',LOADING_SAWMILL:'Затянуть бревно на подающий стол',SAWING:'Два распила',COLLECTING_BOARDS:'Забрать готовый штабель',DELIVERING:'Отнести на лесосклад'};
+  const phaseHint = {IDLE:'Новая заготовка появляется только после выбора и рубки следующего дерева.',CHOPPING:'Пять ударов выданным топором по настоящему стволу.',FALLING:'Сохраняются два блока пня; исходные блоки дерева вращаются вокруг среза.',DELIMBING:'Три отдельные цели снимают ветви и крону этого дерева.',LOADING_CART:'ПКМ по подсвеченному стволу сразу берёт это бревно на поводок.',HAULING:'Игрок идёт впереди; бревно следует сзади. Для сдачи достаточно войти в золотую зону перед цехом.',LOADING_SAWMILL:'Передаётся тот же идентификатор заготовки. Последний кадр совпадает с пятью raw-секциями станка.',SAWING:'Каждый проход требует отдельного нажатия рычага; между ними станок выключен.',COLLECTING_BOARDS:'Сохраняются все пятнадцать деталей готового штабеля.',DELIVERING:'Штабель несут на открытую площадку существующего лесосклада. Наград и валют в beta нет.'};
   panel.innerHTML = `<h2>Полный рабочий круг</h2>
-    <p class="sawmill-note">Один ствол · три ветви · телега · два распила · лесосклад</p>
+    <p class="sawmill-note">Один ствол · поводок · приёмная зона · два распила · лесосклад</p>
     <div class="sawmill-play-row"><button id="millPlay" class="primary">Смотреть</button><button id="millReplay">С начала</button></div>
     <div class="sawmill-time"><label for="millTimeline">Время</label><output id="millClock"></output></div>
-    <input id="millTimeline" type="range" min="0" max="170" step=".05" value="0" aria-label="Время полного рабочего круга">
+    <input id="millTimeline" type="range" min="0" max="${LUMBER.seconds}" step=".05" value="0" aria-label="Время полного рабочего круга">
     <div class="field"><label for="millSpeed">Скорость</label><select id="millSpeed"><option value=".25">0,25×</option><option value=".5">0,5×</option><option value="1" selected>1×</option><option value="2">2×</option></select></div>
     <div class="field"><label for="lumberBeat">Этап</label><select id="lumberBeat">${LUMBER.beats.map(b=>`<option value="${b.at}">${b.at.toFixed(1)} с · ${labels[b.phase.split(':')[0]]}${b.phase.startsWith('SAWING')?' · '+(Number(b.phase.split(':')[1])+1):''}</option>`).join('')}</select></div>
     <h3 class="phase-title" id="millPhase"></h3><p class="phase-detail" id="millPhaseDetail"></p>
     <div class="sawmill-views">${[...LUMBER_VIEWS,...SAWMILL.views].map(v=>`<button data-mill-view="${v.id}">${v.label}</button>`).join('')}</div>
     <div class="field"><label for="lumberPrivate">Зритель без права beta</label><input id="lumberPrivate" type="checkbox"></div>
     <div class="field"><label for="millDust">Опилки у пропила</label><input id="millDust" type="checkbox" checked></div>
-    <div class="sawmill-separator"><p class="sawmill-note">Пакетные позы и переходы экспортированы из Kotlin. Маршрут — проверяемая постановочная последовательность, управление и коллизии клиента здесь не симулируются.</p><p class="sawmill-note">Профиль ствола округляется при подъёме: приближение beta, длина 7,48 м сохраняется. Пять моделей станка прежние.</p><p class="sawmill-note" id="millStatus"></p></div>`;
+    <div class="sawmill-separator"><p class="sawmill-note">Пакетные позы и переходы экспортированы из Kotlin. Путь игрока задан для просмотра; за ним работает настоящий Kotlin follower. Контур подсветки и изгиб нативного поводка в Minecraft проверяются отдельно.</p><p class="sawmill-note">Профиль ствола округляется при подборе: приближение beta, длина 7,48 м сохраняется. Пять моделей станка прежние.</p><p class="sawmill-note" id="millStatus"></p></div>`;
   $('lumberPrivate').checked = !lumberBeta;
   $('sceneSubtitle').textContent = 'Закрытая beta · полный цикл лесоруба';
   const previousBuilder = buildMesh;
@@ -29,6 +29,34 @@ if (query.get('mode') === 'lumber') {
       get:(x,y,z)=>treeCells.has(`${x},${y},${z}`)?0:original.get(x,y,z)};
     previousBuilder(); model = original; millRoot.visible = lumberBeta; lumberRoot.visible = lumberBeta;
   };
+  let lumberCameraMode = ['haul-forward','haul-back'].includes(query.get('view')) ? query.get('view') : null;
+  const normalChooseMillView = chooseMillView;
+  chooseMillView = function(id) {lumberCameraMode=['haul-forward','haul-back'].includes(id)?id:null;normalChooseMillView(id);};
+  const carrierFigure=new THREE.Group();world.add(carrierFigure);
+  for(const [size,at,color] of [[[.5,.75,.28],[0,1.05,0],'#467d85'],[[.45,.45,.45],[0,1.65,0],'#b58f6c'],[[.18,.7,.22],[-.13,.35,0],'#364b5e'],[[.18,.7,.22],[.13,.35,0],'#364b5e']]){
+    const mesh=new THREE.Mesh(new THREE.BoxGeometry(...size),new THREE.MeshStandardMaterial({color,roughness:1}));mesh.position.set(...at);carrierFigure.add(mesh);
+  }
+  const ropeGroup=new THREE.Group();lumberRoot.add(ropeGroup);
+  const ropeGeometry=new THREE.CylinderGeometry(.025,.025,1,4),ropeMaterial=new THREE.MeshStandardMaterial({color:'#86613a',roughness:1});
+  const ropeSegments=Array.from({length:20},()=>{const mesh=new THREE.Mesh(ropeGeometry,ropeMaterial);ropeGroup.add(mesh);return mesh;});
+  function poseCarrier(a,b,alpha){
+    const player=a.logCarrier,other=b.logCarrier||player;
+    carrierFigure.visible=!!player;ropeGroup.visible=!!(player&&a.leash);
+    if(!player)return;
+    const at=new THREE.Vector3(player.x+(other.x-player.x)*alpha,player.y+(other.y-player.y)*alpha,player.z+(other.z-player.z)*alpha);
+    const yaw=player.yaw*Math.PI/180,forward=new THREE.Vector3(-Math.sin(yaw),0,Math.cos(yaw));
+    carrierFigure.position.copy(at).sub(new THREE.Vector3(...SAWMILL_CAPTURE.origin));carrierFigure.rotation.y=-yaw;
+    if(a.leash){
+      const from=new THREE.Vector3(a.leash.x,a.leash.y+.35,a.leash.z),to=at.clone().add(new THREE.Vector3(Math.cos(yaw)*.35,1.1,Math.sin(yaw)*.35));
+      const point=t=>from.clone().lerp(to,t).add(new THREE.Vector3(0,-Math.sin(Math.PI*t)*.22,0)).sub(new THREE.Vector3(...SAWMILL_CAPTURE.origin));
+      ropeSegments.forEach((mesh,i)=>{const p=point(i/20),q=point((i+1)/20),delta=q.clone().sub(p);mesh.position.copy(p).add(q).multiplyScalar(.5);mesh.scale.set(1,delta.length(),1);mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),delta.normalize());});
+    }
+    if(lumberCameraMode){
+      const eye=at.clone().add(new THREE.Vector3(0,1.62,0)).sub(new THREE.Vector3(...SAWMILL_CAPTURE.origin));
+      camera.position.copy(eye);controls.target.copy(eye).add(forward.multiplyScalar(lumberCameraMode==='haul-back'?-6:8));
+      if(lumberCameraMode==='haul-back')controls.target.y-=1.0;camera.lookAt(controls.target);controls.update();carrierFigure.visible=false;
+    }
+  }
   function transform(object, part, next, alpha) {
     const q = new THREE.Quaternion(...part.rotation).normalize().slerp(new THREE.Quaternion(...next.rotation).normalize(),alpha);
     const size = part.size.map((n,i)=>n+(next.size[i]-n)*alpha);
@@ -45,10 +73,12 @@ if (query.get('mode') === 'lumber') {
     const index=Math.min(LUMBER.frames.length-1,Math.floor(lumberTime*10+1e-6));
     const a=LUMBER.frames[index],b=LUMBER.frames[Math.min(index+1,LUMBER.frames.length-1)],alpha=lumberTime*10-index;
     const next=new Map(b.parts.map(p=>[p.id,p]));
+    poseCarrier(a,b,alpha);
     for(const object of lumberParts.values())object.visible=false;
     for(const p of a.parts){
-      if(!lumberParts.has(p.id)){const object=p.itemModel?nativeItemMesh(p.itemModel):cubeModel(p.block);if(p.branchTarget)object.traverse(mesh=>{if(mesh.material?.emissive){mesh.material=mesh.material.clone();mesh.material.emissive.set('#ffc857');mesh.material.emissiveIntensity=.32;}});lumberRoot.add(object);lumberParts.set(p.id,object);}
+      if(!lumberParts.has(p.id)){const object=p.itemModel?nativeItemMesh(p.itemModel):cubeModel(p.block);lumberRoot.add(object);lumberParts.set(p.id,object);}
       const object=lumberParts.get(p.id);transform(object,p,next.get(p.id)||p,alpha);object.visible=!!p.visible;
+      if(object.userData.glowing!==!!p.glowing){object.traverse(mesh=>{if(mesh.material?.emissive){mesh.material=mesh.material.clone();mesh.material.emissive.set(p.glowing?'#ffc857':'#000000');mesh.material.emissiveIntensity=p.glowing ? .65 : 0;}});object.userData.glowing=!!p.glowing;}
     }
     for(let i=0;i<millParts.length;i++){
       const {part,object}=millParts[i],p=a.machine[i],n=b.machine[i];
