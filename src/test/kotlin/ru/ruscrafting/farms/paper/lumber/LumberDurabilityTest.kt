@@ -54,7 +54,8 @@ class LumberDurabilityTest : FunSpec({
                 every { identity(any()) } returns axeIdentity
             }
             val controller = LumberController(rules, "spawn", mockk(relaxed = true), mockk(relaxed = true),
-                mockk(relaxed = true), storage, tasks, items, scene, initial, { now }, mockk(relaxed = true), mockk(relaxed = true))
+                mockk(relaxed = true), storage, tasks, items, scene, initial, { now }, mockk(relaxed = true), mockk(relaxed = true),
+                incidentTethers = mockk(relaxed = true))
             controller.activate()
             writes.removeFirst().complete(Unit)
             val breaking = BlockBreakEvent(world.getBlockAt(139, 74, 202), player)
@@ -62,12 +63,15 @@ class LumberDurabilityTest : FunSpec({
             controller.state.chopHits shouldBe 1
             controller.updateVisuals()
             frames.last().state.chopHits shouldBe 0
+            frames.last().chopHitAgeTicks shouldBe Int.MAX_VALUE
             writes.removeFirst().completeExceptionally(IllegalStateException("simulated storage outage"))
             now += 10_000L
             retries.removeFirst().invoke()
             writes.removeFirst().complete(Unit)
             controller.updateVisuals()
             frames.last().state.chopHits shouldBe 1
+            frames.last().chopHitAgeTicks shouldBe 0
+            frames.last().requiredChopHits shouldBe rules.chopHits
             // Permission does not grant destructive native breaking of the selected terrain.
             every { items.identity(any()) } returns null
             val nativeBreak = BlockBreakEvent(world.getBlockAt(139, 73, 202), player)
@@ -87,6 +91,7 @@ class LumberDurabilityTest : FunSpec({
             controller.updateVisuals()
             frames.last().state.phase shouldBe LumberPhase.FALLING
             frames.last().phaseAgeTicks shouldBe 0
+            frames.last().chopHitAgeTicks shouldBe 0
             now += 2_999L
             controller.updateVisuals()
             frames.last().state.phase shouldBe LumberPhase.FALLING

@@ -63,7 +63,8 @@ class LumberSawClockTest : FunSpec({
                 every { showScreenTitle(player, any<Component>(), any<Component>()) } answers { titles += thirdArg<Component>() }
             }
             val controller = LumberController(rules, "spawn", locale, mockk(relaxed = true), audience,
-                storage, tasks, mockk(relaxed = true), scene, initial, { now }, mockk(relaxed = true), mockk(relaxed = true))
+                storage, tasks, mockk(relaxed = true), scene, initial, { now }, mockk(relaxed = true), mockk(relaxed = true),
+                incidentTethers = mockk(relaxed = true))
             controller.activate()
             writes.removeFirst().complete(Unit)
             controller.onMove(player)

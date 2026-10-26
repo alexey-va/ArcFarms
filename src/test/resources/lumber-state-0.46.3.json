@@ -1,0 +1,225 @@
+{
+  "schemaVersion": 1,
+  "farms": {},
+  "pausedFarmZones": [],
+  "mines": {},
+  "lumbermills": {
+    "cedar_sawmill": {
+      "roundId": 7,
+      "phase": "DELIVERING",
+      "phaseStartedAt": 34000,
+      "tree": {
+        "root": {
+          "world": "cedar",
+          "x": 139,
+          "y": 73,
+          "z": 202
+        },
+        "logs": [
+          {
+            "position": {
+              "world": "cedar",
+              "x": 139,
+              "y": 73,
+              "z": 202
+            },
+            "blockData": "minecraft:oak_log[axis=y]"
+          },
+          {
+            "position": {
+              "world": "cedar",
+              "x": 139,
+              "y": 74,
+              "z": 202
+            },
+            "blockData": "minecraft:oak_log[axis=y]"
+          },
+          {
+            "position": {
+              "world": "cedar",
+              "x": 139,
+              "y": 75,
+              "z": 202
+            },
+            "blockData": "minecraft:oak_log[axis=y]"
+          },
+          {
+            "position": {
+              "world": "cedar",
+              "x": 139,
+              "y": 76,
+              "z": 202
+            },
+            "blockData": "minecraft:oak_log[axis=y]"
+          },
+          {
+            "position": {
+              "world": "cedar",
+              "x": 139,
+              "y": 77,
+              "z": 202
+            },
+            "blockData": "minecraft:oak_log[axis=y]"
+          },
+          {
+            "position": {
+              "world": "cedar",
+              "x": 139,
+              "y": 78,
+              "z": 202
+            },
+            "blockData": "minecraft:oak_log[axis=y]"
+          },
+          {
+            "position": {
+              "world": "cedar",
+              "x": 139,
+              "y": 79,
+              "z": 202
+            },
+            "blockData": "minecraft:oak_log[axis=y]"
+          },
+          {
+            "position": {
+              "world": "cedar",
+              "x": 139,
+              "y": 80,
+              "z": 202
+            },
+            "blockData": "minecraft:oak_log[axis=y]"
+          },
+          {
+            "position": {
+              "world": "cedar",
+              "x": 139,
+              "y": 81,
+              "z": 202
+            },
+            "blockData": "minecraft:oak_log[axis=y]"
+          },
+          {
+            "position": {
+              "world": "cedar",
+              "x": 139,
+              "y": 82,
+              "z": 202
+            },
+            "blockData": "minecraft:oak_log[axis=y]"
+          }
+        ],
+        "leaves": [
+          {
+            "position": {
+              "world": "cedar",
+              "x": 140,
+              "y": 82,
+              "z": 202
+            },
+            "blockData": "minecraft:oak_leaves[persistent=false]"
+          }
+        ],
+        "fallX": 1,
+        "fallZ": 0
+      },
+      "chopHits": 1,
+      "branches": {
+        "key": {
+          "zoneId": "cedar_sawmill",
+          "objectiveId": "branches",
+          "sequence": 7
+        },
+        "required": 3,
+        "targets": [
+          {
+            "id": "branch_0",
+            "position": {
+              "world": "cedar",
+              "x": 141,
+              "y": 73,
+              "z": 202
+            },
+            "role": {
+              "value": "branch"
+            },
+            "score": 0,
+            "status": "COMPLETED",
+            "leaseExpiresAt": 0
+          },
+          {
+            "id": "branch_1",
+            "position": {
+              "world": "cedar",
+              "x": 142,
+              "y": 73,
+              "z": 202
+            },
+            "role": {
+              "value": "branch"
+            },
+            "score": 1,
+            "status": "COMPLETED",
+            "leaseExpiresAt": 0
+          },
+          {
+            "id": "branch_2",
+            "position": {
+              "world": "cedar",
+              "x": 143,
+              "y": 73,
+              "z": 202
+            },
+            "role": {
+              "value": "branch"
+            },
+            "score": 2,
+            "status": "COMPLETED",
+            "leaseExpiresAt": 0
+          }
+        ],
+        "reserve": [],
+        "contributions": {
+          "00000000-0000-0000-0000-00000000004d": 3
+        }
+      },
+      "cart": {
+        "world": "cedar",
+        "x": 143.5,
+        "y": 73.0,
+        "z": 202.5,
+        "yaw": 0.0
+      },
+      "sawPasses": 2,
+      "sawRunning": false,
+      "boardsCarrier": "00000000-0000-0000-0000-00000000004d",
+      "boardCartLoaded": true,
+      "progressVersion": 14,
+      "completedRounds": 4,
+      "contributors": {
+        "00000000-0000-0000-0000-00000000004d": 9
+      }
+    }
+  },
+  "stats": {},
+  "pendingFarmRewards": [],
+  "claimedFarmRewardSequences": {},
+  "farmRewardMoneyDeliveries": {},
+  "farmPerks": {},
+  "worksiteEnterprise": {
+    "schemaVersion": 1,
+    "reservations": {},
+    "lastCompletedSequenceByWorksite": {},
+    "rejectedReservationSequenceByWorksite": {},
+    "settledGrossByCompany": {},
+    "weeks": {},
+    "releasedReservationsByCompany": {},
+    "rejectedReservationsByCompany": {},
+    "unreservedCompletionsByCompany": {},
+    "excludedCompletionsByCompany": {},
+    "financing": {
+      "companies": {},
+      "investmentCreditsCents": {},
+      "operations": {},
+      "distributions": {}
+    }
+  }
+}

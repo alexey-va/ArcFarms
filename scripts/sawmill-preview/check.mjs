@@ -91,5 +91,7 @@ assert.equal(stock[1], 0, 'the second pass must leave the carriage empty');
 const plank = final.get('timber-board-3'), cant = final.get('timber-final-3');
 assert.equal(plank[1], 1);assert.equal(cant[1], 1);
 assert.ok(Math.abs(plank[3] - plank[5] / 2 - (LOG_BOTTOM + .175 * SCENE_SCALE)) < 1e-5, 'second board must touch the first output');
-assert.ok(Math.abs(cant[3] - .235 * cant[5] - (plank[3] + plank[5] / 2)) < 1e-5, 'final cant must touch the second board');
+const cantMinimumX = Math.min(...runtime.nativeModels.sawn.boxes.map(box=>box.min[0]));
+assert.ok(Math.abs(cant[3] + cantMinimumX * cant[5] - (plank[3] + plank[5] / 2)) < 1e-5, 'cut-face-up cant must touch the second board');
+assert.ok(Math.abs(cant[4]-plank[4]) > .25, 'staggered board and cant ends must remain visibly separate');
 console.log(`Sawmill checks passed: ${parts.length} parts, ${CYCLE_SECONDS}s cycle, original z-fighting reproduced and current fixed faces clear.`);

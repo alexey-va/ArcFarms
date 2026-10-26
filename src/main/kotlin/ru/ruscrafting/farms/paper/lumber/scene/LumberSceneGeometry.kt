@@ -3,6 +3,7 @@ package ru.ruscrafting.farms.paper.lumber.scene
 import org.joml.Quaternionf
 import org.joml.Vector3f
 import ru.ruscrafting.farms.domain.lumber.LumberAction
+import ru.ruscrafting.farms.domain.lumber.LumberBlockSnapshot
 import ru.ruscrafting.farms.domain.lumber.LumberInput
 import ru.ruscrafting.farms.domain.lumber.LumberPhase
 import ru.ruscrafting.farms.domain.lumber.LumberPose
@@ -26,6 +27,9 @@ internal object LumberSceneGeometry {
     private const val FALL_TURN_TICKS = FALL_TICKS * 11 / 15
     const val LOG_FOLLOW_DISTANCE = 5.25
     const val BOARD_CART_FOLLOW_DISTANCE = 4.8
+    const val CRANK_INNER_RADIUS = 1.05
+    const val CRANK_OUTER_RADIUS = 1.65
+    const val HOSE_RANGE = 3.0
     private const val BOARD_CART_DECK_HEIGHT = .10
     const val RECEIVING_RADIUS = 3.0
     const val BRANCH_COUNT = 3
@@ -36,17 +40,28 @@ internal object LumberSceneGeometry {
     }
     private val rawCenter = Vector3f(0f, (CedarSawmillAnimation.LOG_BOTTOM + CedarSawmillAnimation.LOG_HEIGHT / 2).toFloat(), -5.8f)
         .mul(CedarSawmillGeometry.SCENE_SCALE).rotate(CedarSawmillGeometry.sceneRotation).add(CedarSawmillGeometry.origin)
-    private val outputCenter = Vector3f(CedarSawmillAnimation.OUTPUT_X.toFloat(), (CedarSawmillAnimation.LOG_BOTTOM + .175 + .28).toFloat(), 3.6f)
+    private val outputCenter = Vector3f(CedarSawmillAnimation.OUTPUT_X.toFloat(), (CedarSawmillAnimation.LOG_BOTTOM + .175 + .28).toFloat(), CedarSawmillAnimation.OUTPUT_Z.toFloat())
         .mul(CedarSawmillGeometry.SCENE_SCALE).rotate(CedarSawmillGeometry.sceneRotation).add(CedarSawmillGeometry.origin)
 
     data class Part(
         val id: String, val center: Vector3f, val size: Vector3f, val rotation: Quaternionf = Quaternionf(),
         val block: String? = null, val itemModel: String? = null, val visible: Boolean = true,
-        val action: LumberInput? = null,
+        val action: LumberInput? = null, val highlight: Boolean = false,
     )
+
+    /** The selected tree is replaced 1:1 only for participants; the real stump returns when felling starts. */
+    fun maskedTreeBlocks(state: LumberState): List<LumberBlockSnapshot> = when (state.phase) {
+        LumberPhase.IDLE -> emptyList()
+        LumberPhase.CHOPPING -> state.tree?.blocks.orEmpty()
+        else -> state.tree?.maskedBlocks.orEmpty()
+    }
 
     fun sawIntake(): LumberPose = pose(rawCenter, CedarSawmillGeometry.sceneYaw)
     fun receivingCenter(): LumberPose = LumberPose("rc_atelier_cedar_sawmill", 189.5, 73.0, 199.5)
+    fun incidentCrank(): LumberPose = receivingCenter().copy(z = 198.75)
+    fun smolderTargets(): List<LumberPose> = listOf(170.0, 173.0, 175.0).map {
+        LumberPose("rc_atelier_cedar_sawmill", 186.4, 73.13, it)
+    }
     fun groundStock(tree: LumberTreeSnapshot): LumberPose = felledStock(tree).copy(y = tree.root.y.toDouble())
     fun draggedStock(at: LumberPose): LumberPose = at.copy(y = at.y + .612)
     fun leashAnchor(at: LumberPose): LumberPose {
@@ -54,6 +69,7 @@ internal object LumberSceneGeometry {
         return at.copy(x = at.x - sin(yaw) * 3.5, y = at.y + .25, z = at.z + cos(yaw) * 3.5)
     }
     fun outputPickup(): LumberPose = pose(outputCenter, CedarSawmillGeometry.sceneYaw)
+    fun craneStock(warehouse: LumberPose, progress: Double): LumberPose = LumberCraneGeometry.stock(warehouse, progress)
     fun boardCartHome(): LumberPose = LumberPose("rc_atelier_cedar_sawmill", 194.6, 73.0, 172.68, 180f)
     fun boardCartStock(at: LumberPose): LumberPose = at.copy(y = at.y + BOARD_CART_DECK_HEIGHT + (.175 + .28) * CedarSawmillGeometry.SCENE_SCALE)
     fun boardCartPickup(state: LumberState): LumberPose =
@@ -97,15 +113,11 @@ internal object LumberSceneGeometry {
             felledStock(tree).yaw)
     }
 
-    fun sample(view: LumberVisualView, warehouse: LumberPose? = null): List<Part> = buildList {
+    fun sample(view: LumberVisualView, warehouse: LumberPose? = null, craneReturnProgress: Double = 1.0): List<Part> = buildList {
         val state = view.state
         val tree = state.tree
-        if (tree != null && state.phase == LumberPhase.CHOPPING) tree.logs.filter {
-            it.position.x == tree.root.x && it.position.z == tree.root.z && it.position.y < tree.root.y + 2
-        }.forEachIndexed { index, block ->
-            add(Part("tree-mark-$index", Vector3f(block.position.x + .5f, block.position.y + .5f, block.position.z + .5f),
-                Vector3f(1.004f), block = block.blockData, action = LumberInput(LumberAction.CHOP_TREE)))
-        }
+        if (tree != null && state.phase == LumberPhase.CHOPPING) addAll(LumberChopGeometry.tree(view))
+        if (tree != null && state.phase in setOf(LumberPhase.CHOPPING, LumberPhase.FALLING)) addAll(LumberChopGeometry.chips(view))
         if (tree != null && state.phase in setOf(LumberPhase.FALLING, LumberPhase.DELIMBING, LumberPhase.LOADING_CART)) {
             val falling = state.phase == LumberPhase.FALLING
             val age = if (falling) view.phaseAgeTicks.toDouble() else FALL_TICKS.toDouble()
@@ -161,20 +173,12 @@ internal object LumberSceneGeometry {
                 }
             }
         }
-        if (state.phase in setOf(LumberPhase.COLLECTING_BOARDS, LumberPhase.DELIVERING)) {
-            val anchor = state.cart.takeIf { state.phase == LumberPhase.DELIVERING || state.boardCartLoaded } ?: boardCartHome()
-            val free = state.phase == LumberPhase.COLLECTING_BOARDS && state.boardCartLoaded
-            addAll(boardCart(anchor).map { if (free) it.copy(action = LumberInput(LumberAction.COLLECT_BOARDS)) else it })
-            if (state.phase == LumberPhase.DELIVERING || state.boardCartLoaded) {
-                val stock = if (state.boardCartLoaded) boardCartStock(anchor) else
-                    boardLoadingStock(anchor, view.phaseAgeTicks.toDouble() / LumberTiming.BOARD_PICKUP_TICKS)
-                addAll(boards(stock).map { if (free) it.copy(action = LumberInput(LumberAction.COLLECT_BOARDS)) else it })
-            }
+        if (warehouse != null) {
+            if (state.phase == LumberPhase.CRANE_TRANSFER) addAll(boards(craneStock(warehouse,
+                view.phaseAgeTicks.toDouble() / LumberTiming.CRANE_TRANSFER_TICKS)))
+            addAll(LumberCraneGeometry.sample(view, warehouse, craneReturnProgress))
         }
-        if (warehouse != null && state.phase == LumberPhase.DELIVERING && state.boardCartLoaded) {
-            for (z in listOf(-1f, 1f)) add(Part("storage-marker-$z", vector(warehouse).add(0f, .035f, z * 1.45f),
-                Vector3f(2.6f, .07f, .12f), block = "minecraft:yellow_terracotta", action = LumberInput(LumberAction.DELIVER_BOARDS)))
-        }
+        addAll(LumberIncidentGeometry.sample(view))
     }
 
     /** The actual trailing pose is retained; alignment and lift finish outside the doorway. */

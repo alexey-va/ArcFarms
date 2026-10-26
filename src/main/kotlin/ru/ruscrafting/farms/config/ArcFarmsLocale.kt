@@ -148,6 +148,7 @@ enum class MessageKey(val path: String) {
     LUMBER_LOADING_SAWMILL("lumber.phases.loading-sawmill"),
     LUMBER_SAWING("lumber.phases.sawing"),
     LUMBER_COLLECTING_BOARDS("lumber.phases.collecting-boards"),
+    LUMBER_CRANE_TRANSFER("lumber.phases.crane-transfer"),
     LUMBER_DELIVERING("lumber.phases.delivering"),
     LUMBER_IDLE_HINT("lumber.hints.idle"),
     LUMBER_CHOPPING_HINT("lumber.hints.chopping"),
@@ -160,6 +161,7 @@ enum class MessageKey(val path: String) {
     LUMBER_SAWING_HINT("lumber.hints.sawing"),
     LUMBER_SAWING_RUNNING_HINT("lumber.hints.sawing-running"),
     LUMBER_COLLECTING_BOARDS_HINT("lumber.hints.collecting-boards"),
+    LUMBER_CRANE_TRANSFER_HINT("lumber.hints.crane"),
     LUMBER_LOADING_BOARDS_HINT("lumber.hints.loading-boards"),
     LUMBER_DELIVERING_HINT("lumber.hints.delivering"),
     LUMBER_PROGRESS("lumber.progress"),
@@ -177,6 +179,17 @@ enum class MessageKey(val path: String) {
     LUMBER_COMPLETE("lumber.complete"),
     LUMBER_COMPLETE_SUBTITLE("lumber.complete-subtitle"),
     LUMBER_RELEASED("lumber.released"),
+    LUMBER_FEED_JAM_TITLE("lumber.incidents.feed-jam.title"),
+    LUMBER_FEED_JAM_SUBTITLE("lumber.incidents.feed-jam.subtitle"),
+    LUMBER_FEED_JAM_HINT("lumber.incidents.feed-jam.hint"),
+    LUMBER_FEED_JAM_WINDING_HINT("lumber.incidents.feed-jam.winding-hint"),
+    LUMBER_SAWDUST_SMOLDER_TITLE("lumber.incidents.sawdust-smolder.title"),
+    LUMBER_SAWDUST_SMOLDER_SUBTITLE("lumber.incidents.sawdust-smolder.subtitle"),
+    LUMBER_SAWDUST_SMOLDER_HINT("lumber.incidents.sawdust-smolder.hint"),
+    LUMBER_HOSE_NAME("lumber.hose-name"),
+    LUMBER_HOSE_LORE("lumber.hose-lore"),
+    LUMBER_CRANK_BUSY("lumber.crank-busy"),
+    LUMBER_NEED_HOSE("lumber.need-hose"),
     MENU_TITLE("menu.title"),
     MENU_FARM_NAME("menu.farm.name"),
     MENU_FARM_LORE("menu.farm.lore"),
@@ -733,6 +746,8 @@ enum class MessageKey(val path: String) {
 }
 
 internal val SCREEN_TITLE_SUBTITLES = mapOf(
+    MessageKey.LUMBER_FEED_JAM_TITLE to MessageKey.LUMBER_FEED_JAM_SUBTITLE,
+    MessageKey.LUMBER_SAWDUST_SMOLDER_TITLE to MessageKey.LUMBER_SAWDUST_SMOLDER_SUBTITLE,
     MessageKey.LUMBER_COMPLETE to MessageKey.LUMBER_COMPLETE_SUBTITLE,
     MessageKey.FARM_ENTRY_TITLE to MessageKey.FARM_ENTRY_SUBTITLE,
     MessageKey.FARM_PLANTING_STARTED to MessageKey.FARM_PLANTING_STARTED_SUBTITLE,
@@ -869,6 +884,12 @@ class ArcFarmsLocale(
                 "companies.shares.confirm.license", "companies.shares.confirm.risk",
             ))
             ru.ruscrafting.farms.domain.FarmIncidentType.entries.forEach { type ->
+                val event = ru.ruscrafting.farms.domain.FarmEventTypeRegistry.definition(type)
+                add(event.titlePath)
+                add(event.subtitlePath)
+                add(event.hintPath)
+            }
+            ru.ruscrafting.farms.domain.lumber.LumberIncidentType.entries.forEach { type ->
                 val event = ru.ruscrafting.farms.domain.FarmEventTypeRegistry.definition(type)
                 add(event.titlePath)
                 add(event.subtitlePath)
@@ -1072,7 +1093,7 @@ class ArcFarmsLocale(
             addAll(SCREEN_TITLE_SUBTITLES.values.map(MessageKey::path))
             add(MessageKey.LUMBER_TITLE.path)
             addAll(MessageKey.entries.map(MessageKey::path).filter {
-                it.startsWith("lumber.hints.") || it.startsWith("lumber.phases.")
+                it.startsWith("lumber.hints.") || it.startsWith("lumber.phases.") || it.startsWith("lumber.incidents.")
             })
         }
         private val MINIMESSAGE_LITERAL_TAGS = setOf(

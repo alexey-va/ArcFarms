@@ -447,6 +447,15 @@ Add variant mechanics after selecting an existing type. Extend a shared owner
 when a QoL fix applies to siblings; do not copy its implementation into a new
 event controller.
 
+The registry also owns separate, exhaustive mine and lumber definitions; the
+activity enums remain distinct. Lumber composes the existing objective pool,
+crank movement tracker, private crank tethers, water jet and temporary item
+owners. Its incident state is attached to the current lumber round at a stopped
+saw boundary, so resolving an event retains the tree, cargo and completed
+passes. The lumber controller's existing asynchronous persistence gate commits
+each completed lap or physical hotspot before presenting progress. A generation
+identifies replacement incidents and retires their transient input and scene.
+
 The infernal plantation retains the serialized `hellGreenhouse` field,
 `HELL_GREENHOUSE` incident id and greenhouse recovery namespace. Layout version
 2 owns four reusable beds with persisted valve, growth, cooling and overheat

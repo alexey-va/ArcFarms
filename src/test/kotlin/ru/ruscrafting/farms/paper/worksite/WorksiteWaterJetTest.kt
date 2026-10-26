@@ -3,11 +3,13 @@ package ru.ruscrafting.farms.paper.worksite
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.shouldBe
+import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import org.bukkit.Location
 import org.bukkit.Particle
 import org.bukkit.World
+import org.bukkit.entity.Player
 import org.bukkit.util.Vector
 
 class WorksiteWaterJetTest : FunSpec({
@@ -33,6 +35,32 @@ class WorksiteWaterJetTest : FunSpec({
         WorksiteWaterJet.hitTargets(targets, start, Vector(0.0, 0.0, 1.0), -1.0, .5) shouldBe emptyList()
         WorksiteWaterJet.hitTargets(targets, start, Vector(0.0, 0.0, 1.0), 2.0, -1.0) shouldBe emptyList()
         WorksiteWaterJet.hitTargets(targets, start, Vector(0.0, 0.0, 1.0), Double.NaN, .5) shouldBe emptyList()
+    }
+
+    test("private spray reaches only its viewers and never broadcasts to the world") {
+        val world = mockk<World>(relaxed = true)
+        val otherWorld = mockk<World>(relaxed = true)
+        val participant = mockk<Player>(relaxed = true)
+        val outsider = mockk<Player>(relaxed = true)
+        every { participant.world } returns world
+        every { outsider.world } returns otherWorld
+        val start = Location(world, 0.0, 64.0, 0.0)
+
+        WorksiteWaterJet.renderJet(start, Vector(0.0, 0.0, 1.0), 0.0, .2, 0,
+            viewers = listOf(participant, outsider))
+        WorksiteWaterJet.renderJet(start, Vector(0.0, 0.0, 1.0), 3.0, .2, 2,
+            viewers = emptyList())
+
+        verify(exactly = 1) {
+            participant.spawnParticle(Particle.SPLASH, any<Location>(), any<Int>(),
+                any<Double>(), any<Double>(), any<Double>(), any<Double>())
+        }
+        verify(exactly = 0) {
+            outsider.spawnParticle(Particle.SPLASH, any<Location>(), any<Int>(),
+                any<Double>(), any<Double>(), any<Double>(), any<Double>())
+            world.spawnParticle(Particle.SPLASH, any<Location>(), any<Int>(),
+                any<Double>(), any<Double>(), any<Double>(), any<Double>())
+        }
     }
 
     test("particle rendering handles zero, tiny and capped sample ranges") {

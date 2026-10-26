@@ -2,6 +2,7 @@ package ru.ruscrafting.farms.paper.worksite
 
 import org.bukkit.Location
 import org.bukkit.Particle
+import org.bukkit.entity.Player
 import org.bukkit.util.Vector
 import kotlin.math.PI
 import kotlin.math.abs
@@ -47,10 +48,17 @@ internal object WorksiteWaterJet {
         range: Double,
         step: Double,
         sideStreams: Int,
+        viewers: Collection<Player>? = null,
     ) {
         if (!range.isFinite() || !step.isFinite() || range < 0.0 || step <= 0.0 || sideStreams < 0) return
         if (!finite(direction) || direction.lengthSquared() == 0.0) return
         val world = start.world ?: return
+        val privateViewers = viewers?.filter { it.world === world }
+        if (privateViewers != null && privateViewers.isEmpty()) return
+        fun splash(at: Location, count: Int, spread: Double, speed: Double) {
+            if (privateViewers == null) world.spawnParticle(Particle.SPLASH, at, count, spread, spread, spread, speed)
+            else privateViewers.forEach { it.spawnParticle(Particle.SPLASH, at, count, spread, spread, spread, speed) }
+        }
         val forward = direction.clone().normalize()
         val reference = if (abs(forward.y) < 0.92) Vector(0.0, 1.0, 0.0) else Vector(1.0, 0.0, 0.0)
         val right = forward.clone().crossProduct(reference).normalize()
@@ -70,7 +78,7 @@ internal object WorksiteWaterJet {
                 (sample * step).coerceAtMost(range)
             }
             val center = start.clone().add(forward.clone().multiply(distance))
-            world.spawnParticle(Particle.SPLASH, center, 1, 0.06, 0.06, 0.06, 0.02)
+            splash(center, 1, .06, .02)
             if (sample % 2 == 0 && streams > 0) {
                 val coneRadius = 0.12 + (distance / range.coerceAtLeast(1.0)).coerceIn(0.0, 1.0) * 0.82
                 repeat(streams) { stream ->
@@ -78,7 +86,7 @@ internal object WorksiteWaterJet {
                     val spray = center.clone()
                         .add(right.clone().multiply(cos(angle) * coneRadius))
                         .add(up.clone().multiply(sin(angle) * coneRadius))
-                    world.spawnParticle(Particle.SPLASH, spray, 2, 0.1, 0.1, 0.1, 0.045)
+                    splash(spray, 2, .1, .045)
                 }
             }
         }

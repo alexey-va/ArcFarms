@@ -1907,6 +1907,20 @@ mine-lift:
 
 lumber:
   title: '<color:#ffc857>Cedar yard</color>'
+  hose-name: '<italic:false><color:#45c8f5>Fire hose</color>'
+  hose-lore: '<italic:false><color:#b8b8b8>Right click a hotspot</color>'
+  crank-busy: '<color:#f2fff7>The capstan is in use.</color>'
+  need-hose: '<color:#f2fff7>Hold the fire hose.</color>'
+  incidents:
+    feed-jam:
+      title: 'Turn the capstan'
+      subtitle: 'Right click the handle'
+      hint: 'Right click the handle'
+      winding-hint: 'Walk around the capstan'
+    sawdust-smolder:
+      title: 'Extinguish the sawdust'
+      subtitle: 'Right click hotspots with the hose'
+      hint: 'Aim the water at the fire'
   axe-name: '<italic:false><color:#ffc857>Lumberjack axe</color>'
   axe-lore: '<italic:false><color:#b8b8b8>Left click a tree or branch</color>'
   phases:
@@ -1918,7 +1932,8 @@ lumber:
     hauling: 'Deliver the log'
     loading-sawmill: 'Loading the sawmill'
     sawing: 'Saw the log'
-    collecting-boards: 'Collect the boards'
+    collecting-boards: 'Boards ready'
+    crane-transfer: 'Crane moving the boards'
     delivering: 'Wheel the boards to storage'
   hints:
     idle: 'Left click the trunk'
@@ -1931,7 +1946,8 @@ lumber:
     loading-sawmill: 'Please wait'
     sawing: 'Right click the lever'
     sawing-running: 'Sawing in progress'
-    collecting-boards: 'Right click the boards'
+    collecting-boards: 'Wait for the crane'
+    crane: 'Wait for unloading'
     loading-boards: 'Loading boards'
     delivering: 'Push the cart to the marker'
   progress: '<color:#f2fff7>Done: <done>/<total></color>'

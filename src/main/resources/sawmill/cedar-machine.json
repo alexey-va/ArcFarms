@@ -1127,14 +1127,14 @@
       "name": "outfeed-beam",
       "block": "minecraft:stripped_spruce_log[axis=z]",
       "center": [
-        -2.7425,
+        0.8074999999999997,
         1.07,
-        4.1
+        3.576764705882357
       ],
       "size": [
         0.22,
         0.3,
-        5.4
+        4.375882352941177
       ],
       "motion": "fixed",
       "id": "outfeed-beam-1",
@@ -1144,9 +1144,9 @@
       "name": "outfeed-leg",
       "block": "minecraft:gray_concrete",
       "center": [
-        -2.7425,
+        0.8074999999999997,
         0.51,
-        1.7
+        1.7647058823529482
       ],
       "size": [
         0.18,
@@ -1161,9 +1161,9 @@
       "name": "outfeed-leg",
       "block": "minecraft:gray_concrete",
       "center": [
-        -2.7425,
+        0.8074999999999997,
         0.51,
-        4
+        3.41176470588236
       ],
       "size": [
         0.18,
@@ -1178,9 +1178,9 @@
       "name": "outfeed-leg",
       "block": "minecraft:gray_concrete",
       "center": [
-        -2.7425,
+        0.8074999999999997,
         0.51,
-        6.5
+        5.058823529411772
       ],
       "size": [
         0.18,
@@ -1195,14 +1195,14 @@
       "name": "outfeed-beam",
       "block": "minecraft:stripped_spruce_log[axis=z]",
       "center": [
-        -1.5325000000000002,
+        2.0174999999999996,
         1.07,
-        4.1
+        3.576764705882357
       ],
       "size": [
         0.22,
         0.3,
-        5.4
+        4.375882352941177
       ],
       "motion": "fixed",
       "id": "outfeed-beam-2",
@@ -1212,9 +1212,9 @@
       "name": "outfeed-leg",
       "block": "minecraft:gray_concrete",
       "center": [
-        -1.5325000000000002,
+        2.0174999999999996,
         0.51,
-        1.7
+        1.7647058823529482
       ],
       "size": [
         0.18,
@@ -1229,9 +1229,9 @@
       "name": "outfeed-leg",
       "block": "minecraft:gray_concrete",
       "center": [
-        -1.5325000000000002,
+        2.0174999999999996,
         0.51,
-        4
+        3.41176470588236
       ],
       "size": [
         0.18,
@@ -1246,9 +1246,9 @@
       "name": "outfeed-leg",
       "block": "minecraft:gray_concrete",
       "center": [
-        -1.5325000000000002,
+        2.0174999999999996,
         0.51,
-        6.5
+        5.058823529411772
       ],
       "size": [
         0.18,
@@ -1263,14 +1263,14 @@
       "name": "outfeed-top",
       "block": "minecraft:spruce_planks",
       "center": [
-        -2.1525000000000003,
+        1.3974999999999995,
         1.23,
-        1.6
+        1.4252941176470642
       ],
       "size": [
         1.44,
         0.08,
-        0.43
+        0.13294117647059167
       ],
       "motion": "fixed",
       "id": "outfeed-top-1",
@@ -1280,14 +1280,14 @@
       "name": "outfeed-top",
       "block": "minecraft:spruce_planks",
       "center": [
-        -2.1525000000000003,
+        1.3974999999999995,
         1.23,
-        2.1
+        1.7317647058823598
       ],
       "size": [
         1.44,
         0.08,
-        0.43
+        0.36
       ],
       "motion": "fixed",
       "id": "outfeed-top-2",
@@ -1297,14 +1297,14 @@
       "name": "outfeed-top",
       "block": "minecraft:spruce_planks",
       "center": [
-        -2.1525000000000003,
+        1.3974999999999995,
         1.23,
-        2.6
+        2.1517647058823597
       ],
       "size": [
         1.44,
         0.08,
-        0.43
+        0.36
       ],
       "motion": "fixed",
       "id": "outfeed-top-3",
@@ -1314,14 +1314,14 @@
       "name": "outfeed-top",
       "block": "minecraft:spruce_planks",
       "center": [
-        -2.1525000000000003,
+        1.3974999999999995,
         1.23,
-        3.1
+        2.5717647058823596
       ],
       "size": [
         1.44,
         0.08,
-        0.43
+        0.36
       ],
       "motion": "fixed",
       "id": "outfeed-top-4",
@@ -1331,14 +1331,14 @@
       "name": "outfeed-top",
       "block": "minecraft:spruce_planks",
       "center": [
-        -2.1525000000000003,
+        1.3974999999999995,
         1.23,
-        3.6
+        2.9917647058823595
       ],
       "size": [
         1.44,
         0.08,
-        0.43
+        0.36
       ],
       "motion": "fixed",
       "id": "outfeed-top-5",
@@ -1348,14 +1348,14 @@
       "name": "outfeed-top",
       "block": "minecraft:spruce_planks",
       "center": [
-        -2.1525000000000003,
+        1.3974999999999995,
         1.23,
-        4.1
+        3.41176470588236
       ],
       "size": [
         1.44,
         0.08,
-        0.43
+        0.36
       ],
       "motion": "fixed",
       "id": "outfeed-top-6",
@@ -1365,14 +1365,14 @@
       "name": "outfeed-top",
       "block": "minecraft:spruce_planks",
       "center": [
-        -2.1525000000000003,
+        1.3974999999999995,
         1.23,
-        4.6
+        3.83176470588236
       ],
       "size": [
         1.44,
         0.08,
-        0.43
+        0.36
       ],
       "motion": "fixed",
       "id": "outfeed-top-7",
@@ -1382,14 +1382,14 @@
       "name": "outfeed-top",
       "block": "minecraft:spruce_planks",
       "center": [
-        -2.1525000000000003,
+        1.3974999999999995,
         1.23,
-        5.1
+        4.25176470588236
       ],
       "size": [
         1.44,
         0.08,
-        0.43
+        0.36
       ],
       "motion": "fixed",
       "id": "outfeed-top-8",
@@ -1399,14 +1399,14 @@
       "name": "outfeed-top",
       "block": "minecraft:spruce_planks",
       "center": [
-        -2.1525000000000003,
+        1.3974999999999995,
         1.23,
-        5.6
+        4.67176470588236
       ],
       "size": [
         1.44,
         0.08,
-        0.43
+        0.36
       ],
       "motion": "fixed",
       "id": "outfeed-top-9",
@@ -1416,14 +1416,14 @@
       "name": "outfeed-top",
       "block": "minecraft:spruce_planks",
       "center": [
-        -2.1525000000000003,
+        1.3974999999999995,
         1.23,
-        6.1
+        5.09176470588236
       ],
       "size": [
         1.44,
         0.08,
-        0.43
+        0.36
       ],
       "motion": "fixed",
       "id": "outfeed-top-10",
@@ -1433,14 +1433,14 @@
       "name": "outfeed-top",
       "block": "minecraft:spruce_planks",
       "center": [
-        -2.1525000000000003,
+        1.3974999999999995,
         1.23,
-        6.6
+        5.51176470588236
       ],
       "size": [
         1.44,
         0.08,
-        0.43
+        0.36
       ],
       "motion": "fixed",
       "id": "outfeed-top-11",
@@ -1450,14 +1450,14 @@
       "name": "outfeed-end-stop",
       "block": "minecraft:polished_deepslate",
       "center": [
-        -2.1525000000000003,
+        1.3974999999999995,
         1.34,
-        6.85
+        5.735294117647059
       ],
       "size": [
         1.46,
         0.22,
-        0.1
+        0.029411764705882356
       ],
       "motion": "fixed",
       "id": "outfeed-end-stop-1",

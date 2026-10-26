@@ -19,7 +19,8 @@ class LumberPermissionTest : FunSpec({
         val player = mockk<Player> { every { hasPermission(LumbermillSettings.BETA_PERMISSION) } returns false }
         val scene = mockk<LumberPresentation>()
         val items = mockk<ru.ruscrafting.farms.paper.worksite.WorksiteServiceItems>()
-        val controller = LumberController(LumbermillSettings(), "spawn", mockk(), mockk(), mockk(), mockk(), mockk(), items, scene)
+        val controller = LumberController(LumbermillSettings(), "spawn", mockk(), mockk(), mockk(), mockk(), mockk(), items, scene,
+            incidentTethers = mockk())
         val breaking = mockk<BlockBreakEvent>(relaxed = true) { every { this@mockk.player } returns player }
         val damage = mockk<BlockDamageEvent>(relaxed = true) { every { this@mockk.player } returns player }
         val interact = mockk<PlayerInteractEvent>(relaxed = true) { every { this@mockk.player } returns player }

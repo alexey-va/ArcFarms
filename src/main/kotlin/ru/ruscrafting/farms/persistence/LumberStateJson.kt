@@ -22,8 +22,11 @@ internal object LumberStateJson {
                             require(old.get("engineVersion").asInt in 1..2 && old.get("sequence").asString.toLongOrNull()?.let { it >= 0 } == true &&
                                 old.get("phase").asString in LEGACY_PHASES && old.get("felled").asInt in 0..100_000) { "Malformed retired lumber state: $id" }
                             entries.remove(id)
-                        } else if (old.has("roundId") && !old.has("boardCartLoaded")) {
-                            old.addProperty("boardCartLoaded", false)
+                        } else if (old.has("roundId")) {
+                            if (!old.has("boardCartLoaded")) old.addProperty("boardCartLoaded", false)
+                            if (!old.has("incident")) old.add("incident", com.google.gson.JsonNull.INSTANCE)
+                            if (!old.has("incidentHandledRoundId")) old.addProperty("incidentHandledRoundId", 0L)
+                            if (!old.has("incidentGeneration")) old.addProperty("incidentGeneration", 0L)
                         }
                     }
                 }

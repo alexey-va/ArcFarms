@@ -3,6 +3,7 @@ package ru.ruscrafting.farms.paper.lumber
 import org.bukkit.Bukkit
 import org.bukkit.Chunk
 import org.bukkit.Location
+import org.bukkit.NamespacedKey
 import org.bukkit.entity.Player
 import org.bukkit.event.block.BlockBreakEvent
 import org.bukkit.event.block.BlockDamageEvent
@@ -15,6 +16,8 @@ import ru.ruscrafting.farms.config.ArcFarmsLocale
 import ru.ruscrafting.farms.config.LumbermillSettings
 import ru.ruscrafting.farms.domain.lumber.LumberEngine
 import ru.ruscrafting.farms.domain.lumber.LumberState
+import ru.ruscrafting.farms.domain.lumber.LumberIncidentType
+import ru.ruscrafting.farms.domain.lumber.LumberIncidentEngine
 import ru.ruscrafting.farms.paper.*
 import ru.ruscrafting.farms.paper.lumber.scene.PacketLumberPresentation
 import ru.ruscrafting.farms.paper.worksite.*
@@ -61,7 +64,7 @@ internal class LumbermillVersionedModule(
     private fun create(state: LumberState) = LumberController(rules, serverId, locale, access, audience, storage, tasks,
         serviceItems, PacketLumberPresentation(plugin, displays, rules.world, LumbermillSettings.BETA_PERMISSION, rules.warehouse) { player ->
             controller.onDisplayInteract(player)
-        }, state, clock)
+        }, state, clock, incidentTethers = WorksiteCrankTethers(NamespacedKey(plugin, "lumber_incident_crank_tether"), plugin))
     override fun activateLoadedState() {
         if (retired) { controller = create(controller.state); retired = false }
         controller.activate()
@@ -90,18 +93,32 @@ internal class LumbermillVersionedModule(
         "pass" to sawPasses, "running" to sawRunning, "completed_rounds" to completedRounds,
         "index" to controller.indexStatus.name,
         "index_report" to controller.indexReport(),
+        "pending" to controller.transitionPending, "incident" to (incident?.type?.name ?: "none"),
+        "incident_generation" to incidentGeneration, "incident_handled_round_id" to incidentHandledRoundId,
+        "incident_turns" to (incident?.crankTurns ?: 0), "incident_operator" to (incident?.crankOperator?.toString() ?: ""),
+        "incident_completed" to (incident?.hotspots?.completed ?: incident?.crankTurns ?: 0),
+        "incident_total" to when (incident?.type) { LumberIncidentType.FEED_JAM -> LumberIncidentEngine.CRANK_TURNS
+            LumberIncidentType.SAWDUST_SMOLDER -> LumberIncidentEngine.SMOLDER_PILES; null -> 0 },
     ) }
 
     override fun zoneIds() = if (isAvailable()) listOf(LumberEngine.ZONE_ID) else emptyList()
-    override fun incidentIds(): List<String> = emptyList()
-    override fun status(zoneId: String): WorksiteAdminStatus? = null
+    override fun incidentIds(): List<String> = LumberIncidentType.entries.map { it.name.lowercase() }
+    override fun status(zoneId: String): WorksiteAdminStatus? = controller.state.takeIf {
+        isAvailable() && zoneId == LumberEngine.ZONE_ID
+    }?.let { WorksiteAdminStatus(kind, zoneId, it.phase.name.lowercase(), it.roundId,
+        it.incident?.type?.name?.lowercase(), it.incident?.hotspots) }
     override fun start(zoneId: String, player: Player): Boolean {
         if (!canAccess(player) || zoneId != LumberEngine.ZONE_ID) return false
         controller.onMove(player)
         controller.tick(clock())
         return true
     }
-    override fun forceIncident(zoneId: String, incidentId: String, now: Long): Boolean = false
+    override fun forceIncident(zoneId: String, incidentId: String, now: Long): Boolean =
+        incidentType(zoneId, incidentId)?.let(controller::forceIncident) == true
+    override fun forceIncidentAsync(zoneId: String, incidentId: String, now: Long): java.util.concurrent.CompletableFuture<Boolean> =
+        incidentType(zoneId, incidentId)?.let(controller::forceIncidentAsync) ?: java.util.concurrent.CompletableFuture.completedFuture(false)
+    private fun incidentType(zoneId: String, id: String): LumberIncidentType? =
+        LumberIncidentType.entries.firstOrNull { isAvailable() && zoneId == LumberEngine.ZONE_ID && it.name.equals(id, ignoreCase = true) }
     override fun startReindex(zoneId: String): Boolean = false
     override fun tickReindex(zoneId: String, budget: Int): WorksiteAdminReindexTick? = null
     override fun cancelReindex(zoneId: String): Boolean = false

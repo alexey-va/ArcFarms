@@ -1,6 +1,7 @@
 package ru.ruscrafting.farms.domain
 
 import ru.ruscrafting.farms.domain.mine.expedition.MineExpeditionEngine
+import ru.ruscrafting.farms.domain.lumber.LumberIncidentType
 
 /** Shared interaction baseline for farm events. */
 enum class FarmEventArchetype { FIELD, PORTAL, UNDERGROUND }
@@ -58,6 +59,13 @@ object FarmEventTypeRegistry {
     }
 
     fun definition(type: MineIncidentType): FarmEventTypeDefinition = mineDefinitions.getValue(type)
+
+    private val lumberDefinitions: Map<LumberIncidentType, FarmEventTypeDefinition> = LumberIncidentType.entries.associateWith { type ->
+        val path = "lumber.incidents.${type.name.lowercase().replace('_', '-')}"
+        FarmEventTypeDefinition.FieldEvent("$path.title", "$path.subtitle", "$path.hint")
+    }
+
+    fun definition(type: LumberIncidentType): FarmEventTypeDefinition = lumberDefinitions.getValue(type)
 
     fun definition(type: FarmIncidentType): FarmEventTypeDefinition = definitions.getValue(type)
 }

@@ -8,13 +8,14 @@ object LumberTiming {
     const val FALL_TICKS = 60
     const val CART_LOAD_TICKS = 60
     const val SAWMILL_LOAD_TICKS = 120
-    const val BOARD_PICKUP_TICKS = 40
     const val SAW_PASS_TICKS = 240
+    const val OUTPUT_SETTLE_TICKS = 20
+    const val CRANE_TRANSFER_TICKS = 280
 }
 
 enum class LumberPhase {
     IDLE, CHOPPING, FALLING, DELIMBING, LOADING_CART, HAULING,
-    LOADING_SAWMILL, SAWING, COLLECTING_BOARDS, DELIVERING,
+    LOADING_SAWMILL, SAWING, COLLECTING_BOARDS, CRANE_TRANSFER, DELIVERING,
 }
 
 data class LumberBlockSnapshot(val position: WorksitePosition, val blockData: String)
@@ -35,7 +36,7 @@ data class LumberTreeSnapshot(
 
 data class LumberPose(val world: String, val x: Double, val y: Double, val z: Double, val yaw: Float = 0f)
 
-/** Legacy cart stores the log anchor, then the board cart; cartCarrier remains the log's leash holder. */
+/** cart/cartCarrier hold the log. Board carrier/cart fields remain readable for retired manual deliveries. */
 data class LumberState(
     val roundId: Long = 0L,
     val phase: LumberPhase = LumberPhase.IDLE,
@@ -52,10 +53,14 @@ data class LumberState(
     val progressVersion: Long = 0L,
     val completedRounds: Long = 0L,
     val contributors: Map<UUID, Int> = emptyMap(),
+    val incident: LumberIncidentState? = null,
+    val incidentHandledRoundId: Long = 0L,
+    val incidentGeneration: Long = 0L,
 )
 
 enum class LumberAction {
     CHOP_TREE, CUT_BRANCH, LOAD_CART, TAKE_CART, LOAD_SAWMILL, SAW_LEVER, COLLECT_BOARDS, DELIVER_BOARDS,
+    START_CRANK, EXTINGUISH_SAWDUST,
 }
 
 data class LumberInput(val action: LumberAction, val index: Int = 0)
@@ -67,4 +72,7 @@ data class LumberVisualView(
     val viewers: Set<UUID>,
     val sawElapsedTicks: Int,
     val now: Long,
+    val crankRadians: Double = 0.0,
+    val chopHitAgeTicks: Int = Int.MAX_VALUE,
+    val requiredChopHits: Int = 5,
 )

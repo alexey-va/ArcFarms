@@ -24,8 +24,8 @@ internal class CedarSawmillController(world: World, displays: PaperPacketDisplay
         private val controls = CedarSawmillGeometry.parts.filter { it.control }.mapTo(hashSetOf()) { it.id }
 
         fun highlightedParts(view: LumberVisualView): Set<String> = when {
+            view.state.incident != null -> emptySet()
             view.state.phase == LumberPhase.SAWING && !view.state.sawRunning -> controls
-            view.state.phase == LumberPhase.COLLECTING_BOARDS && !view.state.boardCartLoaded -> stock
             else -> emptySet()
         }
 

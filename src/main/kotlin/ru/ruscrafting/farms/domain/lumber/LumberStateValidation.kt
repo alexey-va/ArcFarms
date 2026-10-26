@@ -5,6 +5,7 @@ object LumberStateValidation {
     fun validate(state: LumberState) {
         require(state.roundId in 0 until Long.MAX_VALUE && state.progressVersion in 0 until Long.MAX_VALUE)
         require(state.completedRounds in 0 until Long.MAX_VALUE && state.phaseStartedAt >= 0)
+        require(state.incidentHandledRoundId in 0..state.roundId && state.incidentGeneration in 0 until Long.MAX_VALUE)
         require(state.phase in LumberPhase.entries && state.chopHits in 0..100 && state.sawPasses in 0..2)
         require(state.contributors.size <= 10_000 && state.contributors.values.all { it in 0..100_000 })
         require(state.phase == LumberPhase.IDLE || state.tree != null) { "Active lumber round has no tree" }
@@ -41,7 +42,39 @@ object LumberStateValidation {
         }
         if (state.phase == LumberPhase.DELIMBING) require(state.branches != null)
         if (state.phase in setOf(LumberPhase.LOADING_CART, LumberPhase.HAULING, LumberPhase.LOADING_SAWMILL,
-            LumberPhase.SAWING, LumberPhase.COLLECTING_BOARDS, LumberPhase.DELIVERING)) require(state.branches?.completed == 3)
-        if (state.phase in setOf(LumberPhase.COLLECTING_BOARDS, LumberPhase.DELIVERING)) require(state.sawPasses == 2)
+            LumberPhase.SAWING, LumberPhase.COLLECTING_BOARDS, LumberPhase.CRANE_TRANSFER, LumberPhase.DELIVERING)) require(state.branches?.completed == 3)
+        if (state.phase in setOf(LumberPhase.COLLECTING_BOARDS, LumberPhase.CRANE_TRANSFER, LumberPhase.DELIVERING)) require(state.sawPasses == 2)
+        if (state.phase == LumberPhase.CRANE_TRANSFER) require(state.cart == null && state.cartCarrier == null &&
+            state.boardsCarrier == null && !state.boardCartLoaded && state.incident == null)
+        state.incident?.let { incident ->
+            require(incident.type in LumberIncidentType.entries && LumberIncidentEngine.isSafeBoundary(state))
+            require(incident.generation == state.incidentGeneration && incident.generation > 0 && state.incidentHandledRoundId == state.roundId)
+            when (incident.type) {
+                LumberIncidentType.FEED_JAM -> {
+                    require(incident.crankTurns in 0 until LumberIncidentEngine.CRANK_TURNS && incident.hotspots == null)
+                }
+                LumberIncidentType.SAWDUST_SMOLDER -> {
+                    require(incident.crankTurns == 0 && incident.crankOperator == null)
+                    val objective = requireNotNull(incident.hotspots) { "Smolder incident has no physical targets" }
+                    val targets = objective.targets.orEmpty()
+                    val key = requireNotNull(objective.key)
+                    require(key.zoneId == LumberEngine.ZONE_ID && key.objectiveId == "sawdust_smolder" && key.sequence == incident.generation)
+                    require(objective.required == LumberIncidentEngine.SMOLDER_PILES && targets.size == LumberIncidentEngine.SMOLDER_PILES &&
+                        objective.reserve.orEmpty().isEmpty())
+                    require(targets.map { it.id }.toSet() == (0 until LumberIncidentEngine.SMOLDER_PILES).map { "pile_$it" }.toSet())
+                    require(targets.map { it.position }.distinct().size == targets.size)
+                    require(targets.all { it.role.value == "sawdust" && it.status in setOf(
+                        ru.ruscrafting.farms.domain.worksite.ObjectiveTargetStatus.AVAILABLE,
+                        ru.ruscrafting.farms.domain.worksite.ObjectiveTargetStatus.COMPLETED) && it.leasedBy == null && it.leaseExpiresAt == 0L })
+                    targets.forEach { target ->
+                        val at = requireNotNull(target.position)
+                        ru.ruscrafting.farms.domain.worksite.WorksitePosition(at.world, at.x, at.y, at.z)
+                        require(at.world == state.tree?.root?.world)
+                    }
+                    require(objective.completed < LumberIncidentEngine.SMOLDER_PILES && objective.contributions.orEmpty().size <= 10_000 &&
+                        objective.contributions.orEmpty().values.all { it in 0..LumberIncidentEngine.SMOLDER_PILES })
+                }
+            }
+        }
     }
 }

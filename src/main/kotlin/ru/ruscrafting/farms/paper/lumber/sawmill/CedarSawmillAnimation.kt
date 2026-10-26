@@ -17,11 +17,13 @@ internal object CedarSawmillAnimation {
     const val LOG_BOTTOM = 1.27
     const val LOG_HEIGHT = 0.72
     const val SECTION_COUNT = 5
-    const val OUTPUT_X = -2.15
+    const val OUTPUT_X = 1.4
+    const val OUTPUT_Z = 3.411764705882353
     private const val SECOND_SET = .35
     private const val FINAL_WIDTH = .365
     private const val FINAL_SCALE = FINAL_WIDTH / .715
     private const val FINAL_OFFSET = -.48 + .48 * FINAL_SCALE
+    private const val OUTPUT_END_STAGGER = .08
 
     data class Pose(val partId: String, val center: Vector3f, val size: Vector3f, val rotation: Quaternionf, val visible: Boolean)
     data class Frame(
@@ -58,12 +60,15 @@ internal object CedarSawmillAnimation {
                 rotation.premul(q)
             }
             // Lift, turn and settle onto the exact preceding output's top, after the whole cut clears the blade.
-            fun offbear(start: Double, base: Double, fromX: Double, vertices: List<Vector3f>, xScale: Double = 1.0) {
+            fun offbear(start: Double, base: Double, fromX: Double, vertices: List<Vector3f>, xScale: Double = 1.0,
+                        turnDirection: Double = -1.0, endStagger: Double = 0.0) {
                 val progress = smooth((state.time - start) / 2.0)
-                rotation.rotationZ((-PI / 2 * progress).toFloat())
+                rotation.rotationZ((turnDirection * PI / 2 * progress).toFloat())
                 val minimumY = vertices.minOf { Vector3f(it).mul(xScale.toFloat(), 1f, 1f).rotate(rotation).y }.toDouble()
                 center.x = mix(fromX, OUTPUT_X, progress).toFloat()
                 center.y = (mix(LOG_BOTTOM + LOG_HEIGHT / 2, base - minimumY, progress) + .30 * sin(PI * progress)).toFloat()
+                center.z += (endStagger * progress).toFloat()
+                center.z += ((OUTPUT_Z - 3.6) * progress).toFloat()
             }
             when (part.motion) {
                 "blade", "pulley" -> turn(state.angle * part.ratio)
@@ -96,7 +101,7 @@ internal object CedarSawmillAnimation {
                         (state.carriageZ + (low + high) / 2).toFloat())
                     when (part.motion) {
                         "timber-slab" -> {
-                            center.z = ((if (retainedOutput) 3.6 else state.outputZ) + (low + high) / 2).toFloat()
+                            center.z = ((if (retainedOutput) OUTPUT_Z else state.outputZ) + (low + high) / 2).toFloat()
                             if (retainedOutput) {
                                 rotation.rotationZ((-PI / 2).toFloat())
                                 center.x = OUTPUT_X.toFloat()
@@ -106,14 +111,16 @@ internal object CedarSawmillAnimation {
                         "timber-board" -> {
                             size.set(.28f, .72f, max(length, .00001).toFloat())
                             center.z = (state.outputZ + (low + high) / 2).toFloat()
-                            offbear(14.0, LOG_BOTTOM + .175, .445, boardVertices)
+                            offbear(14.0, LOG_BOTTOM + .175, .445, boardVertices, endStagger = OUTPUT_END_STAGGER)
                         }
                         "timber-final" -> {
                             size.x = FINAL_SCALE.toFloat()
                             center.x += FINAL_OFFSET.toFloat()
                             if (state.time >= 16.2) {
                                 center.z = (3.6 + (low + high) / 2).toFloat()
-                                offbear(16.2, LOG_BOTTOM + .175 + .28, SECOND_SET + FINAL_OFFSET, sawnVertices, FINAL_SCALE)
+                                // Expose the real flat cut face. The previous negative quarter-turn hid it under the stack.
+                                offbear(16.2, LOG_BOTTOM + .175 + .28, SECOND_SET + FINAL_OFFSET, sawnVertices, FINAL_SCALE,
+                                    turnDirection = 1.0, endStagger = -OUTPUT_END_STAGGER)
                             }
                         }
                     }

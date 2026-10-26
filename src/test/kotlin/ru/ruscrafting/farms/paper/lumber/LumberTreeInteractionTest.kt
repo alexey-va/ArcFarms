@@ -101,6 +101,7 @@ private class TreeInteractionFixture(paper: MockBukkitTestRuntime) {
         mockk<WorksiteStatePort>(relaxed = true) { every { persistAsync() } returns CompletableFuture.completedFuture(Unit) },
         tasks, items, mockk<LumberPresentation>(relaxed = true) { every { target(any()) } returns null },
         LumberEngine.start(LumberState(), tree, rules.cart, 0), { 1_000L }, mockk(relaxed = true), mockk(relaxed = true),
+        incidentTethers = mockk(relaxed = true),
     ).also { controller ->
         tree.logs.forEach { world.getBlockAt(it.position.x, it.position.y, it.position.z).type = Material.OAK_LOG }
         controller.activate()

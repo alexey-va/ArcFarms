@@ -10,9 +10,9 @@ import org.bukkit.entity.Player
 import org.bukkit.plugin.Plugin
 import ru.arc.paper.display.PacketItemDisplay
 import ru.ruscrafting.farms.config.ArcFarmsConfig
-import ru.ruscrafting.farms.domain.FarmProcessingCrankSampleStatus
-import ru.ruscrafting.farms.domain.FarmProcessingCrankState
-import ru.ruscrafting.farms.domain.FarmProcessingCrankTracker
+import ru.ruscrafting.farms.domain.worksite.WorksiteCrankSampleStatus
+import ru.ruscrafting.farms.domain.worksite.WorksiteCrankState
+import ru.ruscrafting.farms.domain.worksite.WorksiteCrankTracker
 import ru.ruscrafting.farms.domain.FarmProcessingStage
 import ru.ruscrafting.farms.domain.FarmShiftEngine
 import ru.ruscrafting.farms.paper.ArcFarmsDebug
@@ -42,7 +42,7 @@ internal class FarmProcessingCrankController(
     private val entityLookup: FarmEntityLookup = BukkitFarmEntityLookup,
 ) {
     private val tethers = WorksiteCrankTethers(NamespacedKey(plugin, "farm_processing_crank_tether"))
-    private val states = mutableMapOf<Pair<String, UUID>, FarmProcessingCrankState>()
+    private val states = mutableMapOf<Pair<String, UUID>, WorksiteCrankState>()
     private val radians = mutableMapOf<String, Double>()
 
     fun owns(entity: Entity): Boolean = tethers.owns(entity)
@@ -102,7 +102,7 @@ internal class FarmProcessingCrankController(
             if (key in states) removeParticipant(key, "wrong_level")
             return
         }
-        val sample = FarmProcessingCrankTracker.sample(
+        val sample = WorksiteCrankTracker.sample(
             previous = states[key],
             x = player.location.x,
             z = player.location.z,
@@ -120,7 +120,7 @@ internal class FarmProcessingCrankController(
         states[key] = sample.state
         ensureTether(runtime, player, machine)
         when (sample.status) {
-            FarmProcessingCrankSampleStatus.ENTERED -> {
+            WorksiteCrankSampleStatus.ENTERED -> {
                 showHint(runtime, player)
                 debug.event(
                     "farm_processing_crank_joined",
@@ -130,7 +130,7 @@ internal class FarmProcessingCrankController(
                     "radius" to player.location.distance(machine),
                 )
             }
-            FarmProcessingCrankSampleStatus.TELEPORTED -> if (
+            WorksiteCrankSampleStatus.TELEPORTED -> if (
                 access.allowInteraction("farm-processing-crank-teleport:${runtime.settings.id}:${player.uniqueId}", 5_000)
             ) {
                 debug.event(
@@ -146,11 +146,11 @@ internal class FarmProcessingCrankController(
         if (tick % (configured.crankTitleReminderSeconds * 20L) == 0L) showHint(runtime, player)
         if (sample.acceptedRadians <= 0.0) return
         var accumulated = radians.getOrDefault(runtime.settings.id, 0.0) + sample.acceptedRadians
-        if (accumulated + LAP_EPSILON < FarmProcessingCrankTracker.FULL_LAP_RADIANS) {
+        if (accumulated + LAP_EPSILON < WorksiteCrankTracker.FULL_LAP_RADIANS) {
             radians[runtime.settings.id] = accumulated
             return
         }
-        accumulated = (accumulated - FarmProcessingCrankTracker.FULL_LAP_RADIANS).coerceAtLeast(0.0)
+        accumulated = (accumulated - WorksiteCrankTracker.FULL_LAP_RADIANS).coerceAtLeast(0.0)
         radians[runtime.settings.id] = accumulated
         completeLap(runtime, player, accumulated)
     }

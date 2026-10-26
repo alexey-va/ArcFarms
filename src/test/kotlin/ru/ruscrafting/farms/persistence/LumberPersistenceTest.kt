@@ -100,8 +100,8 @@ class LumberPersistenceTest : FunSpec({
             act(LumberAction.SAW_LEVER)
             now += 12_000; state = LumberEngine.tick(state, now, 60, emptyList())
         }
-        act(LumberAction.COLLECT_BOARDS)
-        state = state.copy(cart = cart)
+        // The pre-crane schema remains readable, although current gameplay never produces this manual phase.
+        state = state.copy(phase = LumberPhase.DELIVERING, boardsCarrier = worker, cart = cart)
         val expected = ArcFarmsState(lumbermills = mapOf("cedar_sawmill" to state))
         val document = com.google.gson.Gson().toJsonTree(expected).asJsonObject
         document.getAsJsonObject("lumbermills").getAsJsonObject("cedar_sawmill").remove("boardCartLoaded")

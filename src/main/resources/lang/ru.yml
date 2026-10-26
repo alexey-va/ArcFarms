@@ -1907,6 +1907,20 @@ mine-lift:
 
 lumber:
   title: '<color:#ffc857>Кедровый двор</color>'
+  hose-name: '<italic:false><color:#45c8f5>Пожарный шланг</color>'
+  hose-lore: '<italic:false><color:#b8b8b8>ПКМ по очагу</color>'
+  crank-busy: '<color:#f2fff7>Ворот занят.</color>'
+  need-hose: '<color:#f2fff7>Возьми пожарный шланг.</color>'
+  incidents:
+    feed-jam:
+      title: 'Прокрути ворот'
+      subtitle: 'ПКМ по рукояти'
+      hint: 'ПКМ по рукояти'
+      winding-hint: 'Иди вокруг ворота'
+    sawdust-smolder:
+      title: 'Потуши опилки'
+      subtitle: 'ПКМ шлангом по очагам'
+      hint: 'Направь струю на огонь'
   axe-name: '<italic:false><color:#ffc857>Топор лесоруба</color>'
   axe-lore: '<italic:false><color:#b8b8b8>ЛКМ по дереву или ветви</color>'
   phases:
@@ -1918,7 +1932,8 @@ lumber:
     hauling: 'Доставь бревно'
     loading-sawmill: 'Загрузка станка'
     sawing: 'Распили бревно'
-    collecting-boards: 'Забери доски'
+    collecting-boards: 'Доски готовы'
+    crane-transfer: 'Кран переносит доски'
     delivering: 'Отвези доски на склад'
   hints:
     idle: 'ЛКМ по стволу'
@@ -1931,7 +1946,8 @@ lumber:
     loading-sawmill: 'Подожди'
     sawing: 'ПКМ по рычагу'
     sawing-running: 'Идёт распил'
-    collecting-boards: 'ПКМ по доскам'
+    collecting-boards: 'Дождись крана'
+    crane: 'Дождись разгрузки'
     loading-boards: 'Грузим доски'
     delivering: 'Толкай тележку к отметке'
   progress: '<color:#f2fff7>Готово: <done>/<total></color>'

@@ -49,22 +49,30 @@ class LumberEngineTest : FunSpec({
             now += 12_000; state = LumberEngine.tick(state, now, 60, branches)
         }
         state.phase shouldBe LumberPhase.COLLECTING_BOARDS
+        val ready = state
         act(LumberAction.COLLECT_BOARDS)
-        state = state.copy(cart = cart) // The Paper controller seeds the cart at the machine output.
         act(LumberAction.DELIVER_BOARDS)
-        state.completedRounds shouldBe 0
-        now += 2_000
+        state shouldBe ready
+        now += 999
+        LumberEngine.tick(state, now, 60, branches) shouldBe state
+        now += 1
         state = LumberEngine.tick(state, now, 60, branches)
-        state.boardCartLoaded shouldBe true
-        act(LumberAction.DELIVER_BOARDS, other)
-        state.phase shouldBe LumberPhase.DELIVERING
-        act(LumberAction.DELIVER_BOARDS)
+        state.phase shouldBe LumberPhase.CRANE_TRANSFER
+        state.tree shouldBe tree
+        state.sawPasses shouldBe 2
+        state.cart shouldBe null
+        now += 13_999
+        LumberEngine.tick(state, now, 60, branches) shouldBe state
+        now += 1
+        state = LumberEngine.tick(state, now, 60, branches)
         state.phase shouldBe LumberPhase.IDLE
         state.roundId shouldBe round
         state.completedRounds shouldBe 1
         val delivered = state
         act(LumberAction.DELIVER_BOARDS)
         state shouldBe delivered
+        LumberEngine.tick(state, now + 60_000, 60, branches) shouldBe delivered
+        state.contributors shouldBe ready.contributors
     }
 
     test("release and restart return logical cargo without replacing the workpiece or progress") {
@@ -86,18 +94,17 @@ class LumberEngineTest : FunSpec({
         LumberEngine.recover(loaded.copy(cart = null), cart, 5000).cart shouldBe cart
     }
 
-    test("releasing a board cart keeps its position while restart returns legacy and released boards to output") {
+    test("legacy board delivery release and restart normalize to output without reviving retired pickup inputs") {
         val atStorage = cart.copy(x = cart.x + 7, z = cart.z + 3)
         val delivering = LumberState(roundId = 7, phase = LumberPhase.DELIVERING, tree = tree,
             cart = atStorage, boardsCarrier = worker, boardCartLoaded = true, sawPasses = 2, completedRounds = 4)
         val released = LumberEngine.release(delivering, worker, cart)
         released.phase shouldBe LumberPhase.COLLECTING_BOARDS
         released.boardsCarrier shouldBe null
-        released.cart shouldBe atStorage
+        released.cart shouldBe null
+        released.boardCartLoaded shouldBe false
         val retaken = LumberEngine.act(released, LumberInput(LumberAction.COLLECT_BOARDS), other, 1000, 5)
-        retaken.cart shouldBe atStorage
-        retaken.boardsCarrier shouldBe other
-        retaken.boardCartLoaded shouldBe true
+        retaken shouldBe released
         for (saved in listOf(delivering, released)) {
             val restored = LumberEngine.recover(saved, cart, 5000)
             restored.phase shouldBe LumberPhase.COLLECTING_BOARDS
@@ -109,23 +116,6 @@ class LumberEngineTest : FunSpec({
             restored.sawPasses shouldBe 2
             restored.completedRounds shouldBe 4
         }
-    }
-
-    test("board loading commits once after two seconds and an interrupted transfer returns to the output") {
-        val loading = LumberState(roundId = 1, phase = LumberPhase.DELIVERING, phaseStartedAt = 1_000,
-            tree = tree, cart = cart, boardsCarrier = worker, sawPasses = 2)
-        LumberEngine.tick(loading, 2_999, 60, emptyList()) shouldBe loading
-        LumberEngine.act(loading, LumberInput(LumberAction.DELIVER_BOARDS), worker, 9_000, 5) shouldBe loading
-        LumberEngine.release(loading, worker, cart).let {
-            it.phase shouldBe LumberPhase.COLLECTING_BOARDS
-            it.cart shouldBe null
-            it.boardCartLoaded shouldBe false
-        }
-        val loaded = LumberEngine.tick(loading, 3_000, 60, emptyList())
-        loaded.boardCartLoaded shouldBe true
-        loaded.phaseStartedAt shouldBe loading.phaseStartedAt
-        LumberEngine.tick(loaded, 4_000, 60, emptyList()) shouldBe loaded
-        loaded.completedRounds shouldBe 0
     }
 
     test("mask preserves the actual two-block stump and validation rejects oversized or missing trees") {

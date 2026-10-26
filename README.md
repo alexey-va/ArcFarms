@@ -515,22 +515,40 @@ Players without that permission keep normal event handling, building and
 interaction behavior. They receive no beta tools, fake blocks, scene or HUD.
 
 The shared round follows an existing tree through chopping, falling, three
-branch cuts, cart loading and hauling, two circular-saw passes, board pickup
-and warehouse delivery. The saw uses the existing five models at scale 1.7;
+branch cuts, log hauling, two circular-saw passes and automatic crane delivery
+to the indoor warehouse. The saw uses the existing five models at scale 1.7;
 the old public, infinitely replenishing demonstration is retired. Each lever
 press advances one pass and returns to OFF after that pass.
 
-Trees and cargo are private packet displays. Tree removal is a per-viewer
-block overlay above a two-block stump; no terrain blocks are written.
+Two local incidents alternate on every second log; the first round is ordinary.
+`FEED_JAM` stops between saw passes and is cleared by walking two complete laps
+with the outdoor crank. `SAWDUST_SMOLDER` stops before the crane transfer and is
+cleared by aiming the temporary hose at three distinct sawdust piles. The same
+tree, completed passes and cargo resume afterwards. Completed crank laps and
+extinguished piles are durable; a partial lap is released with its operator.
+Both scenes use private displays and particles, with no fire or terrain writes.
+
+The existing `/arcfarms admin worksite lumber cedar_sawmill` route exposes
+`status` and `incident <feed_jam|sawdust_smolder>`. Forced incidents require a
+stopped saw or uncollected boards; they replace the current incident without
+moving the workpiece. Motion and transport are never interrupted by this route.
+
+Trees and cargo are private packet displays. The selected tree is replaced by
+a private glowing clone during chopping, with a notch, recoil and wood chips
+on accepted hits. Falling leaves a two-block stump. These are per-viewer block
+overlays; no terrain blocks are written. The roof-mounted crane works below the
+existing ceiling and moves the sawn stack from the west receiving table into
+the warehouse. Players do not carry the boards.
 Cleanup restores the current world block data, including edits made by other
 players. State is stored under the nullable `lumbermills` field of schema 1;
 old state files remain readable. Rejoining, dying or losing access releases
-owned tools and cargo. Restart recovery releases carriers and stops the saw.
+owned tools and cargo. Restart recovery releases carriers and stops the saw;
+an interrupted crane transfer resumes from the receiving table.
 
 This beta grants no money, tokens, XP, inventory items, enterprise income,
 global contribution or network completion. The zero-grant assessment is
-`docs/lumber-beta-economy-20261026.json`. This delivery must not restart or
-reload the server; on-disk installation and active runtime are separate.
+`docs/lumber-beta-economy-20261026.json`. On-disk installation, runtime
+activation and native-client acceptance are verified separately.
 
 ## Commands
 

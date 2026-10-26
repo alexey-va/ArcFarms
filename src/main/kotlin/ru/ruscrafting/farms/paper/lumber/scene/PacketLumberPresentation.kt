@@ -3,6 +3,7 @@ package ru.ruscrafting.farms.paper.lumber.scene
 import org.bukkit.Bukkit
 import org.bukkit.Color
 import org.bukkit.Location
+import org.bukkit.Particle
 import org.bukkit.World
 import org.bukkit.block.Block
 import org.bukkit.entity.Display
@@ -32,10 +33,13 @@ import ru.arc.paper.scene.SpatialSceneKey
 import ru.arc.paper.scene.SpatialSceneScope
 import ru.ruscrafting.farms.domain.lumber.LumberAction
 import ru.ruscrafting.farms.domain.lumber.LumberInput
+import ru.ruscrafting.farms.domain.lumber.LumberIncidentType
 import ru.ruscrafting.farms.domain.lumber.LumberPhase
 import ru.ruscrafting.farms.domain.lumber.LumberPose
 import ru.ruscrafting.farms.domain.lumber.LumberVisualView
 import ru.ruscrafting.farms.domain.worksite.WorksitePosition
+import ru.ruscrafting.farms.domain.worksite.ObjectiveTargetStatus
+import ru.ruscrafting.farms.paper.worksite.WorksiteWaterJet
 import ru.ruscrafting.farms.paper.lumber.sawmill.CedarSawmillController
 import ru.ruscrafting.farms.paper.lumber.sawmill.CedarSawmillDisplays
 import ru.ruscrafting.farms.paper.lumber.sawmill.CedarSawmillGeometry
@@ -59,17 +63,18 @@ internal class PacketLumberPresentation(
     private var mill: CedarSawmillController? = null
     private var worldId: UUID? = null
     private var view: LumberVisualView? = null
-    private var deliveredFrom: LumberPose? = null
     private var deliveredAt = 0L
+    private var smokeFrame: Long? = null
     private var frame: SpatialControlFrame<Long, LumberInput>? = null
     private var masked: Set<WorksitePosition> = emptySet()
     private val blocks = mutableMapOf<String, org.bukkit.block.data.BlockData>()
     private val items = CedarSawmillDisplays.CUSTOM_MODEL_DATA.keys.associateWith(CedarSawmillDisplays::item)
 
     override fun render(view: LumberVisualView) {
+        val acceptedChop = this.view?.let { previous -> previous.state.roundId == view.state.roundId &&
+            view.state.chopHits > previous.state.chopHits && view.chopHitAgeTicks < LumberChopGeometry.HIT_TICKS } == true
         this.view?.let { previous ->
             if (view.state.completedRounds > previous.state.completedRounds) {
-                deliveredFrom = previous.state.cart
                 deliveredAt = view.now
             }
         }
@@ -82,11 +87,13 @@ internal class PacketLumberPresentation(
             mill = CedarSawmillController(world, displays)
             worldId = world.uid
         }
-        masked = view.state.tree?.maskedBlocks.orEmpty().mapTo(hashSetOf()) { it.position }
+        masked = LumberSceneGeometry.maskedTreeBlocks(view.state).mapTo(hashSetOf()) { it.position }
         mill?.render(view, audience)
-        val parts = LumberSceneGeometry.sample(view, warehouse) + if (view.state.completedRounds > 0)
-            LumberSceneGeometry.storedBoards(warehouse, deliveredFrom, (view.now - deliveredAt) / 1000.0) else emptyList()
+        val parts = LumberSceneGeometry.sample(view, warehouse, (view.now - deliveredAt) / 4000.0) + if (view.state.completedRounds > 0)
+            LumberSceneGeometry.storedBoards(warehouse) else emptyList()
         scene.apply(SceneFrame(parts.map { rendered(world, it, view) }, audience, 0))
+        if (acceptedChop) renderChopDust(view, world)
+        renderSmolder(view, world)
         logTether.render(view, view.viewers.mapNotNull(Bukkit::getPlayer).filter(::eligible))
         frame = SpatialControlFrame(view.state.roundId, audience, SpatialSceneScope.World,
             targets(view, parts).flatMap { part -> lumberControls(world, part) },
@@ -99,6 +106,40 @@ internal class PacketLumberPresentation(
     override fun target(player: Player): LumberInput? {
         if (!eligible(player)) return null
         return controls.target(KEY, player)?.action
+    }
+
+    override fun spray(player: Player) {
+        if (!eligible(player) || view?.state?.incident?.type != LumberIncidentType.SAWDUST_SMOLDER) return
+        val start = player.eyeLocation
+        val direction = start.direction.normalize()
+        WorksiteWaterJet.renderJet(start.add(direction.clone().multiply(.45)), direction,
+            LumberSceneGeometry.HOSE_RANGE, .30, 2, viewers.mapNotNull(Bukkit::getPlayer).filter(::eligible))
+    }
+
+    private fun renderChopDust(view: LumberVisualView, world: World) {
+        val tree = view.state.tree ?: return
+        val material = tree.logs.firstOrNull { it.position == tree.root }?.blockData ?: return
+        val point = Location(world, tree.root.x + .5 + tree.fallX * .52, tree.root.y + 1.73,
+            tree.root.z + .5 + tree.fallZ * .52)
+        val data = blocks.getOrPut(material) { Bukkit.createBlockData(material) }
+        viewers.mapNotNull(Bukkit::getPlayer).filter(::eligible).forEach {
+            it.spawnParticle(Particle.BLOCK, point, 5, .12, .09, .12, .04, data)
+        }
+    }
+
+    private fun renderSmolder(view: LumberVisualView, world: World) {
+        if (view.state.incident?.type != LumberIncidentType.SAWDUST_SMOLDER || smokeFrame == view.now / 250) return
+        smokeFrame = view.now / 250
+        val recipients = viewers.mapNotNull(Bukkit::getPlayer).filter(::eligible)
+        val anchors = LumberSceneGeometry.smolderTargets()
+        view.state.incident.hotspots?.targets.orEmpty().filter { it.status != ObjectiveTargetStatus.COMPLETED }.forEach { target ->
+            val at = anchors.getOrNull(target.id.substringAfterLast('_').toIntOrNull() ?: -1) ?: return@forEach
+            val point = Location(world, at.x, at.y, at.z)
+            recipients.forEach { viewer ->
+                viewer.spawnParticle(Particle.SMALL_FLAME, point, 2, .18, .10, .18, .005)
+                viewer.spawnParticle(Particle.SMOKE, point.clone().add(0.0, .22, 0.0), 1, .10, .08, .10, .005)
+            }
+        }
     }
 
     override fun current(player: Player, scene: SpatialSceneKey): SpatialControlFrame<Long, LumberInput>? =
@@ -121,7 +162,7 @@ internal class PacketLumberPresentation(
         viewers = emptySet()
         frame = null
         view = null
-        deliveredFrom = null
+        smokeFrame = null
         controls.clear(KEY)
         controls.close()
         logTether.clear()
@@ -143,7 +184,7 @@ internal class PacketLumberPresentation(
         val translation = Vector3f(part.center).sub(anchor.x.toFloat(), anchor.y.toFloat(), anchor.z.toFloat())
         if (part.itemModel == null) translation.add(part.rotation.transform(Vector3f(part.size).mul(-.5f)))
         val pose = ScenePose(anchor, Transformation(translation, Quaternionf(part.rotation), Vector3f(part.size), Quaternionf()))
-        val glowing = part.action != null
+        val glowing = part.action != null || part.highlight
         val style = STYLE.copy(glowing = glowing, glowColor = if (glowing) Color.fromRGB(0xffc857) else null)
         return if (part.itemModel != null) ScenePart.Item(part.id, pose, style, items.getValue(part.itemModel), ItemDisplay.ItemDisplayTransform.NONE, part.visible)
         else ScenePart.Block(part.id, pose, style, blocks.getOrPut(requireNotNull(part.block)) { Bukkit.createBlockData(part.block) }, part.visible)
@@ -151,6 +192,14 @@ internal class PacketLumberPresentation(
 
     private fun targets(view: LumberVisualView, parts: List<LumberSceneGeometry.Part>): List<LumberSceneGeometry.Part> = buildList {
         val state = view.state
+        if (state.incident != null) {
+            addAll(parts.filter { it.action != null }.map { part ->
+                if (part.action?.action == LumberAction.EXTINGUISH_SAWDUST)
+                    part.copy(center = Vector3f(part.center).add(0f, .26f, 0f), size = Vector3f(.95f, .7f, .95f))
+                else part.copy(size = Vector3f(.65f, .6f, .65f))
+            })
+            return@buildList
+        }
         fun box(id: String, at: LumberPose, size: Vector3f, action: LumberAction) {
             add(LumberSceneGeometry.Part(id, LumberSceneGeometry.vector(at), size,
                 Quaternionf().rotationY(Math.toRadians(-at.yaw.toDouble()).toFloat()), action = LumberInput(action)))
@@ -177,11 +226,6 @@ internal class PacketLumberPresentation(
                         action = LumberInput(LumberAction.SAW_LEVER)))
                 }
             }
-            LumberPhase.COLLECTING_BOARDS -> {
-                add(LumberSceneGeometry.pickupTarget(LumberSceneGeometry.boardCartPickup(state), LumberAction.COLLECT_BOARDS))
-                if (state.boardCartLoaded) addAll(parts.filter { it.id == "board-cart-handle" })
-            }
-            LumberPhase.DELIVERING -> if (state.boardCartLoaded) box("warehouse", warehouse.copy(y = warehouse.y + .8), Vector3f(2.5f, 1.6f, 2.5f), LumberAction.DELIVER_BOARDS)
             else -> Unit
         }
     }

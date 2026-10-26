@@ -13,8 +13,8 @@ import org.bukkit.entity.ItemDisplay
 import org.bukkit.entity.Player
 import org.bukkit.inventory.ItemStack
 import ru.ruscrafting.farms.config.ArcFarmsLocale
-import ru.ruscrafting.farms.domain.FarmProcessingCrankState
-import ru.ruscrafting.farms.domain.FarmProcessingCrankTracker
+import ru.ruscrafting.farms.domain.worksite.WorksiteCrankState
+import ru.ruscrafting.farms.domain.worksite.WorksiteCrankTracker
 import ru.ruscrafting.farms.domain.MineWorkshopHeat
 import ru.ruscrafting.farms.domain.mine.expedition.*
 import ru.ruscrafting.farms.paper.worksite.WorksiteCrankTethers
@@ -37,7 +37,7 @@ internal class MineExpeditionActions(private val plugin: Plugin, private val loc
         val cart: MineFactoryCarts.Cart? = null,
     )
     private data class Crank(val scope: String, val stage: MineExpeditionStage, val objective: String,
-        var sample: FarmProcessingCrankState? = null, var radians: Double = 0.0)
+        var sample: WorksiteCrankState? = null, var radians: Double = 0.0)
     private data class Operation(val scope:String,val objective:String,val target:Int,val cycle:MineFactoryOperation)
     private data class ChargeTransfer(var lastTick: Long, var elapsed: Long = 0L)
     private data class PressTransfer(var lastTick: Long, var elapsed: Long = 0L)
@@ -265,7 +265,7 @@ internal class MineExpeditionActions(private val plugin: Plugin, private val loc
                 releaseCrank(id)
                 return@forEach
             }
-            val sample = FarmProcessingCrankTracker.sample(crank.sample, player.location.x, player.location.z,
+            val sample = WorksiteCrankTracker.sample(crank.sample, player.location.x, player.location.z,
                 center.x, center.z, 0.8, 2.8, radiusTolerance = 0.25, maxStepDistance = 1.8)
             if (sample.state == null || !attachTether(scope, player, center, now)) {
                 releaseCrank(id)

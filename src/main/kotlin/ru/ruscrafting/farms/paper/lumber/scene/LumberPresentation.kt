@@ -8,6 +8,7 @@ import ru.ruscrafting.farms.domain.lumber.LumberVisualView
 internal interface LumberPresentation {
     fun render(view: LumberVisualView)
     fun target(player: Player): LumberInput?
+    fun spray(player: Player) = Unit
     fun release(player: Player)
     fun cleanup(reason: String)
 }

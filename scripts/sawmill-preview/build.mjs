@@ -67,25 +67,32 @@ const operations = snapshot.blocks.map(([x, y, z, state]) => ({
 const parts = makeParts();
 if (JSON.stringify(parts) !== JSON.stringify(runtime.parts)) throw Error('Runtime geometry changed; rerun the compiled Kotlin export.');
 for (const part of parts) if (part.block) material(part.block);
-for (const state of [...new Set(lumber.frames.flatMap(frame => frame.parts.map(part => part.block).filter(Boolean))), 'minecraft:spruce_log[axis=z]', 'minecraft:stripped_spruce_log[axis=z]', 'minecraft:spruce_planks', 'minecraft:light_gray_concrete']) material(state);
+const lumberFrames = [...lumber.frames, ...Object.values(lumber.incidents ?? {}).flatMap(episode => episode.frames)];
+for (const state of [...new Set(lumberFrames.flatMap(frame => frame.parts.map(part => part.block).filter(Boolean))), 'minecraft:spruce_log[axis=z]', 'minecraft:stripped_spruce_log[axis=z]', 'minecraft:spruce_planks', 'minecraft:light_gray_concrete']) material(state);
 // Keep all presets inside the open aisle, independent of the machine's floor scaling.
 const framing = {
   overview: [[198,78.2,188],[189.5,75.1,180],78],
   operator: [[194.6,74.62,177.8],[192.5,74.785,176.964],76],
   infeed: [[184.4,74.62,188.5],[188.2,75.2,183],74],
   drive: [[183.6,74.62,178.8],[187.5,75.1,179.2],70],
-  output: [[196.3,74.62,177.8],[192.6,75.55,172.68],72],
+  output: [[189.1,74.62,177.2],[186.049,75.8,173],76],
 };
 const lumberViews = [
   {id:'forest',label:'Лес · дерево',camera:[149,76,207],target:[140.5,75,198.5],fov:74},
+  {id:'chop',label:'Игрок · рубка',camera:[139.5,74.62,199.5],target:[139.5,74.7,202.1],fov:76},
+  {id:'chop-approach',label:'Игрок · подход к дереву',camera:[141.5,74.62,205.0],target:[139.5,74.7,202.5],fov:76},
   {id:'pickup',label:'Подбор бревна',camera:[143,74.62,193.5],target:[139.5,73.5,198.3],fov:76},
   {id:'cart',label:'Приёмная зона',camera:[194.5,77,207],target:[189.5,73.6,198.5],fov:74},
   {id:'dock',label:'Улица · рельсы',camera:[191.8,74.62,204.5],target:[189.3,74.3,190.5],fov:76},
   {id:'haul-forward',label:'Игрок · вперёд',camera:[170,74.62,202],target:[180,74.62,202],fov:76},
   {id:'haul-back',label:'Игрок · оглянуться',camera:[170,74.62,202],target:[160,73.6,202],fov:76},
-  {id:'boardcart',label:'Тележка с досками',camera:[198,74.62,178],target:[194.6,73.9,176],fov:76},
-  {id:'board-player',label:'Игрок · тележка',camera:[194.6,74.62,167.88],target:[194.6,73.9,174],fov:76},
+  {id:'crane-pickup',label:'Кран · подхват',camera:[189.4,74.62,175.8],target:[186.049,76.8,173],fov:78},
+  {id:'crane-cross',label:'Кран · поперёк цеха',camera:[188.4,74.62,182],target:[190.2,77.8,176.4],fov:78},
+  {id:'crane-store',label:'Кран · разгрузка',camera:[195.2,74.62,190],target:[194.1,76.1,185.5],fov:76},
   {id:'warehouse',label:'Склад в цеху',camera:[195.4,74.62,190],target:[194.1,73.8,185.5],fov:75},
+  {id:'crank',label:'Ворот · с улицы',camera:[187.2,74.62,202],target:[189.5,73.65,198.75],fov:76},
+  {id:'crank-player',label:'Игрок · ворот',camera:[190.85,74.62,198.75],target:[189.5,73.89,198.75],fov:76},
+  {id:'smolder',label:'Опилки · проход',camera:[189.4,74.62,173.8],target:[186.4,73.13,173],fov:74},
   {id:'route',label:'Весь маршрут',camera:[190,125,239],target:[182,73,192],fov:72},
 ];
 const views = SAWMILL.views.map(view => ({ ...view, camera: local(framing[view.id][0]),
@@ -112,7 +119,8 @@ const inline = value => JSON.stringify(value).replace(/</g, '\\u003c');
 const script = [
   `const SAWMILL_CAPTURE = ${inline({ world: snapshot.world, capturedAt: snapshot.capturedAt, origin: min, sha256: createHash('sha256').update(snapshotText).digest('hex') })};`,
   `const runtime = ${runtimeText};`,
-  `const LUMBER = ${lumberText};`,
+  `const LUMBER_DOCUMENT = ${lumberText};`,
+  `const LUMBER = LUMBER_DOCUMENT.incidents?.[new URLSearchParams(location.search).get('incident')] || LUMBER_DOCUMENT;`,
   `const LUMBER_VIEWS = ${inline(lumberViews)};`,
   `const NATIVE_ITEM_FACES = ${inline(nativeFaces)};`,
   `const SAWMILL = {origin:${inline(SAWMILL.origin)},views:${inline(SAWMILL.views)},${SAWMILL.previewMask.toString()}};`,
@@ -145,6 +153,7 @@ await writeFile(join(out, 'preview-manifest.json'), JSON.stringify({
   renderer: 'Location Atelier vanilla block model + texture baker, Three 0.128.0',
   lumberExportSha256: createHash('sha256').update(lumberText).digest('hex'),
   lumberRoundSeconds: lumber.seconds,
+  lumberIncidents: Object.fromEntries(Object.entries(lumber.incidents ?? {}).map(([id, episode]) => [id, {seconds:episode.seconds,frames:episode.frames.length}])),
   limitations: ['Representative player path feeds the actual Kotlin LumberLogMotion follower; native leash pixels and controls require client acceptance', 'Captured square stem becomes the existing raw profile on pickup, same7.48m length', 'No server writes', 'No Minecraft native client acceptance', 'Workshop lighting is an offline approximation', 'Native model loading, packet delivery and sound require live validation'],
 }, null, 2) + '\n');
 console.log(`Animated preview: ${join(out, 'index.html')} (${hidden.length} interior props masked only in preview)`);

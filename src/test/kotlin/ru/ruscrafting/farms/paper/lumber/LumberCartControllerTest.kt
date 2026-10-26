@@ -121,7 +121,7 @@ private class HaulingFixture(paper: MockBukkitTestRuntime,
         tasks, mockk(relaxed = true),
         mockk<LumberPresentation>(relaxed = true) { every { target(player) } returns LumberInput(LumberAction.TAKE_CART) },
         LumberState(roundId = 1, phase = LumberPhase.HAULING, cart = log),
-        { now }, mockk(relaxed = true), mockk(relaxed = true),
+        { now }, mockk(relaxed = true), mockk(relaxed = true), incidentTethers = mockk(relaxed = true),
     ).also { it.activate() }
 
     fun takeLog() {

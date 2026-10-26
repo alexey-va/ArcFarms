@@ -77,21 +77,21 @@ class LumberSceneGeometryTest : FunSpec({
             actual.size shouldBe expected.size
             kotlin.math.abs(actual.rotation.dot(expected.rotation)) shouldBe (1f plusOrMinus .0001f)
         }
+        val cant = boards.single { it.id == "timber-final-3" }
+        val plank = boards.single { it.id == "timber-board-3" }
+        cant.rotation.transform(Vector3f(1f, 0f, 0f)).y shouldBe (1f plusOrMinus .0001f)
+        kotlin.math.abs(cant.center.z - plank.center.z) shouldBe (.272f plusOrMinus .0001f)
     }
 
-    test("boards slide clear of the output table before lowering onto the cart without a shoulder attachment") {
-        val home = LumberSceneGeometry.boardCartHome()
-        LumberSceneGeometry.boardLoadingStock(home, 0.0) shouldBe LumberSceneGeometry.outputPickup()
-        LumberSceneGeometry.boardLoadingStock(home, 1.0) shouldBe LumberSceneGeometry.boardCartStock(home)
-        for (tick in 0..40) {
-            val stock = LumberSceneGeometry.boardLoadingStock(home, tick / 40.0)
-            // The outer face of the shifted table is X193.313; stock half-width is conservatively .816.
-            if (stock.x - .816 < 193.313) (stock.y >= LumberSceneGeometry.outputPickup().y - .0001) shouldBe true
-        }
-        val view = LumberVisualView(LumberState(phase = LumberPhase.COLLECTING_BOARDS,
-            sawPasses = 2, cart = home, boardCartLoaded = true), 0, emptySet(), 0, 0)
-        val parts = LumberSceneGeometry.sample(view)
+    test("crane keeps all fifteen pieces continuous from output to warehouse and below the real ceiling") {
+        val warehouse = LumberPose(root.world, 194.1, 73.0, 185.5)
+        LumberSceneGeometry.craneStock(warehouse, 0.0) shouldBe LumberSceneGeometry.outputPickup()
+        LumberSceneGeometry.craneStock(warehouse, 1.0) shouldBe LumberSceneGeometry.warehouseStock(warehouse)
+        val view = LumberVisualView(LumberState(phase = LumberPhase.CRANE_TRANSFER,
+            sawPasses = 2), 60, emptySet(), 0, 0)
+        val parts = LumberSceneGeometry.sample(view, warehouse)
         parts.count { it.id.startsWith("timber-") } shouldBe 15
+        parts.none { it.id.startsWith("board-cart-") } shouldBe true
         val models = LumberSceneGeometry::class.java.getResourceAsStream("/sawmill/cedar-machine.json")!!.bufferedReader().use {
             JsonParser.parseReader(it).asJsonObject.getAsJsonObject("nativeModels")
         }
@@ -104,12 +104,11 @@ class LumberSceneGeometryTest : FunSpec({
             } ?: (0..7).map { i -> Vector3f(if (i and 1 == 0) -.5f else .5f, if (i and 2 == 0) -.5f else .5f, if (i and 4 == 0) -.5f else .5f) }
             vertices.maxOf { it.mul(part.size).rotate(part.rotation).add(part.center).y }
         }
-        stockTop shouldBe (home.y.toFloat() + 1.494f plusOrMinus .0001f)
-        (stockTop < home.y + 1.5) shouldBe true
-        parts.filter { it.id.startsWith("board-cart-wheel-") }.forEach {
-            (it.center.y - it.size.y / 2) shouldBe (home.y.toFloat() plusOrMinus .0001f)
+        stockTop shouldBe (78.514f plusOrMinus .0001f)
+        (stockTop < 79.0) shouldBe true
+        parts.filter { it.id.startsWith("crane-roof-mount-") }.forEach {
+            (it.center.y + it.size.y / 2) shouldBe (79f plusOrMinus .0001f)
         }
-        parts.first { it.id == "board-cart-handle" }.center.z shouldBe (home.z.toFloat() - 4.45f plusOrMinus .0001f)
         CedarSawmillController.frame(view).poses.none { it.visible && it.partId.startsWith("timber-") &&
             CedarSawmillGeometry.parts.first { part -> part.id == it.partId }.motion.startsWith("timber-") } shouldBe true
     }
@@ -117,12 +116,65 @@ class LumberSceneGeometryTest : FunSpec({
     test("only the currently available tree lever or output carries an actionable highlight") {
         fun view(phase: LumberPhase, running: Boolean = false) = LumberVisualView(
             LumberState(phase = phase, tree = tree, sawRunning = running), 0, emptySet(), 0, 0)
-        LumberSceneGeometry.sample(view(LumberPhase.CHOPPING)).count { it.id.startsWith("tree-mark-") && it.action != null } shouldBe 2
+        LumberSceneGeometry.sample(view(LumberPhase.CHOPPING)).count { it.id.startsWith("standing-") && it.highlight } shouldBe tree.blocks.size
         CedarSawmillController.highlightedParts(view(LumberPhase.SAWING)).isNotEmpty() shouldBe true
         CedarSawmillController.highlightedParts(view(LumberPhase.SAWING, true)) shouldBe emptySet()
-        CedarSawmillController.highlightedParts(view(LumberPhase.COLLECTING_BOARDS)).isNotEmpty() shouldBe true
+        CedarSawmillController.highlightedParts(view(LumberPhase.COLLECTING_BOARDS)) shouldBe emptySet()
         LumberSceneGeometry.sample(view(LumberPhase.LOADING_CART)).none { it.id.startsWith("receiving-") } shouldBe true
         val halfPass = view(LumberPhase.SAWING, true).copy(sawElapsedTicks = ru.ruscrafting.farms.domain.lumber.LumberTiming.SAW_PASS_TICKS / 2)
         CedarSawmillController.frame(halfPass).poses shouldBe CedarSawmillAnimation.sample(12.5).poses
+    }
+
+    test("selected tree clones the whole captured tree exactly and masks only that tree for participants") {
+        val withLeaves = tree.copy(leaves = listOf(LumberBlockSnapshot(root.copy(x = root.x + 1, y = root.y + 8), "minecraft:oak_leaves[persistent=true]")))
+        val state = LumberState(phase = LumberPhase.CHOPPING, tree = withLeaves)
+        val pieces = LumberSceneGeometry.sample(LumberVisualView(state, 0, emptySet(), 0, 0))
+        pieces.size shouldBe withLeaves.blocks.size
+        pieces.zip(withLeaves.blocks).forEach { (part, block) ->
+            part.center shouldBe Vector3f(block.position.x + .5f, block.position.y + .5f, block.position.z + .5f)
+            part.size shouldBe Vector3f(1f)
+            part.block shouldBe block.blockData
+            part.highlight shouldBe true
+        }
+        LumberSceneGeometry.maskedTreeBlocks(state) shouldBe withLeaves.blocks
+        LumberSceneGeometry.maskedTreeBlocks(state.copy(phase = LumberPhase.FALLING)) shouldBe withLeaves.maskedBlocks
+        LumberSceneGeometry.maskedTreeBlocks(state.copy(phase = LumberPhase.IDLE)) shouldBe emptyList()
+    }
+
+    test("accepted hits grow the notch and briefly recoil with chips but recovered state stays still") {
+        val state = LumberState(phase = LumberPhase.CHOPPING, tree = tree, chopHits = 1)
+        val steady = LumberVisualView(state, 0, emptySet(), 0, 0)
+        val impact = steady.copy(chopHitAgeTicks = 2)
+        val before = LumberSceneGeometry.sample(steady)
+        val during = LumberSceneGeometry.sample(impact)
+        before.none { it.id.startsWith("chop-chip-") } shouldBe true
+        during.count { it.id.startsWith("chop-chip-") } shouldBe 7
+        (during.single { it.id == "standing-11" }.center.distance(before.single { it.id == "standing-11" }.center) in .01f.. .15f) shouldBe true
+        during.single { it.id == "standing-0" }.center shouldBe before.single { it.id == "standing-0" }.center
+        val later = LumberSceneGeometry.sample(steady.copy(state = state.copy(chopHits = 4)))
+        val notch = before.single { it.id == "standing-1-notch-2" }
+        (later.single { it.id == notch.id }.size.x < notch.size.x) shouldBe true
+        LumberChopGeometry.chips(impact.copy(chopHitAgeTicks = LumberChopGeometry.HIT_TICKS)) shouldBe emptyList()
+        LumberChopGeometry.chips(impact.copy(state = state.copy(chopHits = 0))) shouldBe emptyList()
+    }
+
+    test("hit chips fan around both sides and stay outside the stem at every age and facing") {
+        for ((fallX, fallZ) in listOf(1 to 0, -1 to 0, 0 to 1, 0 to -1)) {
+            val state = LumberState(phase = LumberPhase.CHOPPING, tree = tree.copy(fallX = fallX, fallZ = fallZ), chopHits = 1)
+            for (age in 0 until LumberChopGeometry.HIT_TICKS) {
+                val chips = LumberChopGeometry.chips(LumberVisualView(state, 0, emptySet(), 0, 0, chopHitAgeTicks = age))
+                chips.size shouldBe 7
+                chips.count { (it.center.x - root.x - .5f) * fallX + (it.center.z - root.z - .5f) * fallZ < -.5f } shouldBe 2
+                for (chip in chips) {
+                    val corners = buildList {
+                        for (x in listOf(-.5f, .5f)) for (y in listOf(-.5f, .5f)) for (z in listOf(-.5f, .5f)) {
+                            add(Vector3f(x, y, z).mul(chip.size).rotate(chip.rotation).add(chip.center))
+                        }
+                    }
+                    (corners.maxOf { it.x } < root.x || corners.minOf { it.x } > root.x + 1 ||
+                        corners.maxOf { it.z } < root.z || corners.minOf { it.z } > root.z + 1) shouldBe true
+                }
+            }
+        }
     }
 })

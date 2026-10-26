@@ -4,6 +4,10 @@ import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.doubles.plusOrMinus
 import io.kotest.matchers.shouldBe
+import ru.ruscrafting.farms.domain.worksite.WorksiteCrankSampleStatus
+import ru.ruscrafting.farms.domain.worksite.WorksiteCrankTracker
+import ru.ruscrafting.farms.domain.worksite.WorksiteCrankSample
+import ru.ruscrafting.farms.domain.worksite.WorksiteCrankState
 import java.util.UUID
 import kotlin.math.PI
 import kotlin.math.cos
@@ -136,11 +140,11 @@ class FarmProcessingTest : FunSpec({
 
     test("walking a full circle accumulates one lap in either direction") {
         fun walk(direction: Int): Double {
-            var state: FarmProcessingCrankState? = null
+            var state: WorksiteCrankState? = null
             var progress = 0.0
             repeat(49) { step ->
                 val angle = direction * 2.0 * PI * step / 48.0
-                val sample = FarmProcessingCrankTracker.sample(
+                val sample = WorksiteCrankTracker.sample(
                     previous = state,
                     x = 100.0 + 3.2 * cos(angle),
                     z = 200.0 + 3.2 * sin(angle),
@@ -156,14 +160,14 @@ class FarmProcessingTest : FunSpec({
             return progress
         }
 
-        walk(1) shouldBe (FarmProcessingCrankTracker.FULL_LAP_RADIANS plusOrMinus 0.0001)
-        walk(-1) shouldBe (FarmProcessingCrankTracker.FULL_LAP_RADIANS plusOrMinus 0.0001)
+        walk(1) shouldBe (WorksiteCrankTracker.FULL_LAP_RADIANS plusOrMinus 0.0001)
+        walk(-1) shouldBe (WorksiteCrankTracker.FULL_LAP_RADIANS plusOrMinus 0.0001)
     }
 
     test("reversing and teleporting do not manufacture millstone progress") {
-        var state: FarmProcessingCrankState? = null
-        fun sample(angle: Double, radius: Double = 3.2): FarmProcessingCrankSample {
-            val result = FarmProcessingCrankTracker.sample(
+        var state: WorksiteCrankState? = null
+        fun sample(angle: Double, radius: Double = 3.2): WorksiteCrankSample {
+            val result = WorksiteCrankTracker.sample(
                 previous = state,
                 x = radius * cos(angle),
                 z = radius * sin(angle),
@@ -177,22 +181,22 @@ class FarmProcessingTest : FunSpec({
             return result
         }
 
-        sample(0.0).status shouldBe FarmProcessingCrankSampleStatus.ENTERED
+        sample(0.0).status shouldBe WorksiteCrankSampleStatus.ENTERED
         sample(0.2).acceptedRadians shouldBe (0.2 plusOrMinus 0.0001)
-        sample(0.0).status shouldBe FarmProcessingCrankSampleStatus.REVERSED
-        sample(0.2).status shouldBe FarmProcessingCrankSampleStatus.REVERSED
-        sample(PI).status shouldBe FarmProcessingCrankSampleStatus.TELEPORTED
+        sample(0.0).status shouldBe WorksiteCrankSampleStatus.REVERSED
+        sample(0.2).status shouldBe WorksiteCrankSampleStatus.REVERSED
+        sample(PI).status shouldBe WorksiteCrankSampleStatus.TELEPORTED
         sample(PI).acceptedRadians shouldBe 0.0
-        sample(PI, radius = 4.5).status shouldBe FarmProcessingCrankSampleStatus.OUTSIDE
+        sample(PI, radius = 4.5).status shouldBe WorksiteCrankSampleStatus.OUTSIDE
     }
 
     test("a crooked lap keeps progress through small radial excursions") {
-        var state: FarmProcessingCrankState? = null
+        var state: WorksiteCrankState? = null
         var progress = 0.0
         repeat(97) { step ->
             val angle = 2.0 * PI * step / 96.0
             val radius = 3.2 + sin(angle * 3.0)
-            val sample = FarmProcessingCrankTracker.sample(
+            val sample = WorksiteCrankTracker.sample(
                 previous = state,
                 x = radius * cos(angle),
                 z = radius * sin(angle),
@@ -207,6 +211,6 @@ class FarmProcessingTest : FunSpec({
             progress += sample.acceptedRadians
         }
 
-        progress shouldBe (FarmProcessingCrankTracker.FULL_LAP_RADIANS plusOrMinus 0.0001)
+        progress shouldBe (WorksiteCrankTracker.FULL_LAP_RADIANS plusOrMinus 0.0001)
     }
 })
