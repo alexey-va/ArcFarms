@@ -6,10 +6,10 @@ if (query.get('mode') === 'lumber') {
   let lumberBeta = query.get('beta') !== '0', treeMasked = null;
   const treeCells = new Set([...LUMBER.fixture.logs.filter(p => p[1] >= LUMBER.fixture.root[1] + 2), ...LUMBER.fixture.leaves]
     .map(p => p.slice(0,3).map((n,i)=>n-SAWMILL_CAPTURE.origin[i]).join(',')));
-  const labels = {IDLE:'Станок пуст · круг завершён',CHOPPING:'Срубить выбранное дерево',FALLING:'Падение дерева',DELIMBING:'Снять три ветви',LOADING_CART:'Подсвеченное бревно · ПКМ',HAULING:'Бревно на поводке',LOADING_SAWMILL:'Затянуть бревно на подающий стол',SAWING:'Два распила',COLLECTING_BOARDS:'Забрать готовый штабель',DELIVERING:'Отнести на лесосклад'};
-  const phaseHint = {IDLE:'Новая заготовка появляется только после выбора и рубки следующего дерева.',CHOPPING:'Пять ударов выданным топором по настоящему стволу.',FALLING:'Сохраняются два блока пня; исходные блоки дерева вращаются вокруг среза.',DELIMBING:'Три отдельные цели снимают ветви и крону этого дерева.',LOADING_CART:'ПКМ по подсвеченному стволу сразу берёт это бревно на поводок.',HAULING:'Игрок идёт впереди; бревно следует сзади. Для сдачи достаточно войти в золотую зону перед цехом.',LOADING_SAWMILL:'Передаётся тот же идентификатор заготовки. Последний кадр совпадает с пятью raw-секциями станка.',SAWING:'Каждый проход требует отдельного нажатия рычага; между ними станок выключен.',COLLECTING_BOARDS:'Сохраняются все пятнадцать деталей готового штабеля.',DELIVERING:'Штабель несут на открытую площадку существующего лесосклада. Наград и валют в beta нет.'};
+  const labels = {IDLE:'Доски на складе',CHOPPING:'Сруби дерево',FALLING:'Дерево падает',DELIMBING:'Обрежь ветви',LOADING_CART:'Возьми бревно',HAULING:'Доставь бревно',LOADING_SAWMILL:'Загрузка станка',SAWING:'Распили бревно',COLLECTING_BOARDS:'Забери доски',DELIVERING:'Отвези доски на склад'};
+  const phaseHint = {IDLE:'Выбери следующее дерево',CHOPPING:'ЛКМ топором',FALLING:'Отойди в сторону',DELIMBING:'ЛКМ по подсвеченной ветви',LOADING_CART:'ПКМ по бревну',HAULING:'Войди в золотую зону',LOADING_SAWMILL:'Подожди',SAWING:'ПКМ по рычагу',COLLECTING_BOARDS:'ПКМ по доскам',DELIVERING:'Толкай тележку к отметке'};
   panel.innerHTML = `<h2>Полный рабочий круг</h2>
-    <p class="sawmill-note">Один ствол · поводок · приёмная зона · два распила · лесосклад</p>
+    <p class="sawmill-note">Дерево · поводок · распил · тележка · склад в цеху</p>
     <div class="sawmill-play-row"><button id="millPlay" class="primary">Смотреть</button><button id="millReplay">С начала</button></div>
     <div class="sawmill-time"><label for="millTimeline">Время</label><output id="millClock"></output></div>
     <input id="millTimeline" type="range" min="0" max="${LUMBER.seconds}" step=".05" value="0" aria-label="Время полного рабочего круга">
@@ -29,9 +29,10 @@ if (query.get('mode') === 'lumber') {
       get:(x,y,z)=>treeCells.has(`${x},${y},${z}`)?0:original.get(x,y,z)};
     previousBuilder(); model = original; millRoot.visible = lumberBeta; lumberRoot.visible = lumberBeta;
   };
-  let lumberCameraMode = ['haul-forward','haul-back'].includes(query.get('view')) ? query.get('view') : null;
+  const playerViews = ['haul-forward','haul-back','board-player'];
+  let lumberCameraMode = playerViews.includes(query.get('view')) ? query.get('view') : null;
   const normalChooseMillView = chooseMillView;
-  chooseMillView = function(id) {lumberCameraMode=['haul-forward','haul-back'].includes(id)?id:null;normalChooseMillView(id);};
+  chooseMillView = function(id) {lumberCameraMode=playerViews.includes(id)?id:null;normalChooseMillView(id);};
   const carrierFigure=new THREE.Group();world.add(carrierFigure);
   for(const [size,at,color] of [[[.5,.75,.28],[0,1.05,0],'#467d85'],[[.45,.45,.45],[0,1.65,0],'#b58f6c'],[[.18,.7,.22],[-.13,.35,0],'#364b5e'],[[.18,.7,.22],[.13,.35,0],'#364b5e']]){
     const mesh=new THREE.Mesh(new THREE.BoxGeometry(...size),new THREE.MeshStandardMaterial({color,roughness:1}));mesh.position.set(...at);carrierFigure.add(mesh);
@@ -40,8 +41,8 @@ if (query.get('mode') === 'lumber') {
   const ropeGeometry=new THREE.CylinderGeometry(.025,.025,1,4),ropeMaterial=new THREE.MeshStandardMaterial({color:'#86613a',roughness:1});
   const ropeSegments=Array.from({length:20},()=>{const mesh=new THREE.Mesh(ropeGeometry,ropeMaterial);ropeGroup.add(mesh);return mesh;});
   function poseCarrier(a,b,alpha){
-    const player=a.logCarrier,other=b.logCarrier||player;
-    carrierFigure.visible=!!player;ropeGroup.visible=!!(player&&a.leash);
+    const player=a.logCarrier||a.boardCarrier,other=b.logCarrier||b.boardCarrier||player;
+    carrierFigure.visible=!!player;ropeGroup.visible=!!(a.logCarrier&&a.leash);
     if(!player)return;
     const at=new THREE.Vector3(player.x+(other.x-player.x)*alpha,player.y+(other.y-player.y)*alpha,player.z+(other.z-player.z)*alpha);
     const yaw=player.yaw*Math.PI/180,forward=new THREE.Vector3(-Math.sin(yaw),0,Math.cos(yaw));
@@ -54,7 +55,8 @@ if (query.get('mode') === 'lumber') {
     if(lumberCameraMode){
       const eye=at.clone().add(new THREE.Vector3(0,1.62,0)).sub(new THREE.Vector3(...SAWMILL_CAPTURE.origin));
       camera.position.copy(eye);controls.target.copy(eye).add(forward.multiplyScalar(lumberCameraMode==='haul-back'?-6:8));
-      if(lumberCameraMode==='haul-back')controls.target.y-=1.0;camera.lookAt(controls.target);controls.update();carrierFigure.visible=false;
+      if(lumberCameraMode==='haul-back')controls.target.y-=1.0;
+      camera.lookAt(controls.target);controls.update();carrierFigure.visible=false;
     }
   }
   function transform(object, part, next, alpha) {
@@ -88,15 +90,20 @@ if (query.get('mode') === 'lumber') {
       // Machine objects are children of its translated local origin.
       object.position.sub(millRoot.position);
       object.visible=p[0]&&(part.motion!=='sawdust'||$('millDust').checked);
+      const glowing=a.machineGlowing.includes(part.id);
+      if(object.userData.glowing!==glowing){object.traverse(mesh=>{if(mesh.material?.emissive){mesh.material=mesh.material.clone();mesh.material.emissive.set(glowing?'#ffc857':'#000000');mesh.material.emissiveIntensity=glowing?.65:0;}});object.userData.glowing=glowing;}
     }
     millRoot.visible=lumberBeta;lumberRoot.visible=lumberBeta;
     $('lumberBeat').value = [...LUMBER.beats].reverse().find(beat=>beat.at<=lumberTime)?.at;
     $('millClock').textContent=`${lumberTime.toFixed(1)} / ${LUMBER.seconds} с`;
     $('millTimeline').value=lumberTime;
-    $('millPhase').textContent=lumberBeta?labels[a.phase]:'Обычный мир';
-    $('millPhaseDetail').textContent=lumberBeta?phaseHint[a.phase]:'Оригинальное дерево видно. В этой демонстрации скрыты все private-дисплеи; серверная проверка permission тестируется отдельно.';
+    const loadingBoards=a.phase==='DELIVERING'&&!a.boardCartLoaded;
+    const title=loadingBoards?'Грузим доски':labels[a.phase];
+    const hint=loadingBoards?'Подожди':a.phase==='SAWING'&&a.running?'Идёт распил':phaseHint[a.phase];
+    $('millPhase').textContent=lumberBeta?title:'Обычный мир';
+    $('millPhaseDetail').textContent=lumberBeta?hint:'Исходное дерево · без private-дисплеев';
     $('millStatus').textContent=`Круг ${a.round} · ветви ${a.branches}/3 · распилы ${a.passes}/2 · ${a.running?'рычаг ON':'рычаг OFF'}`;
-    $('millFrameLabel').textContent=lumberBeta?`${labels[a.phase]} · ${lumberTime.toFixed(1)} с`:'Без права beta · исходный мир';
+    $('millFrameLabel').textContent=lumberBeta?`${title} · ${lumberTime.toFixed(1)} с`:'Без права beta · исходный мир';
     const newMask=a.maskTree&&lumberBeta;
     if(treeMasked!==newMask){treeMasked=newMask;buildMesh();}
     renderer.shadowMap.needsUpdate=true;

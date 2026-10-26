@@ -1,6 +1,7 @@
 package ru.ruscrafting.farms.paper.lumber.sawmill
 
 import org.bukkit.Bukkit
+import org.bukkit.Color
 import org.bukkit.Location
 import org.bukkit.Material
 import org.bukkit.NamespacedKey
@@ -36,7 +37,7 @@ internal class CedarSawmillDisplays(
     val blockCount: Int get() = blocks.size
     val itemCount: Int get() = items.size
 
-    fun render(frame: CedarSawmillAnimation.Frame, smooth: Boolean, audience: SceneAudience) {
+    fun render(frame: CedarSawmillAnimation.Frame, smooth: Boolean, audience: SceneAudience, highlighted: Set<String> = emptySet()) {
         require(frame.poses.size == parts.size && frame.poses.map { it.partId }.toSet() == parts.keys) {
             "The sawmill frame must retain every authored part key"
         }
@@ -55,10 +56,11 @@ internal class CedarSawmillDisplays(
             }
             val transform = Transformation(translation, Quaternionf(pose.rotation), Vector3f(pose.size), Quaternionf())
             val at = ScenePose(anchor, transform)
+            val activeStyle = if (part.id in highlighted) style.copy(glowing = true, glowColor = Color.fromRGB(0xffc857)) else style
             if (part.itemModel != null) {
-                ScenePart.Item(part.id, at, style, items.getValue(part.id), ItemDisplay.ItemDisplayTransform.NONE, pose.visible)
+                ScenePart.Item(part.id, at, activeStyle, items.getValue(part.id), ItemDisplay.ItemDisplayTransform.NONE, pose.visible)
             } else {
-                ScenePart.Block(part.id, at, style, blocks.getValue(part.id), pose.visible)
+                ScenePart.Block(part.id, at, activeStyle, blocks.getValue(part.id), pose.visible)
             }
         }
         scene.apply(SceneFrame(rendered, audience, 0))

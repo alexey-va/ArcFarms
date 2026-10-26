@@ -22,6 +22,8 @@ internal object LumberStateJson {
                             require(old.get("engineVersion").asInt in 1..2 && old.get("sequence").asString.toLongOrNull()?.let { it >= 0 } == true &&
                                 old.get("phase").asString in LEGACY_PHASES && old.get("felled").asInt in 0..100_000) { "Malformed retired lumber state: $id" }
                             entries.remove(id)
+                        } else if (old.has("roundId") && !old.has("boardCartLoaded")) {
+                            old.addProperty("boardCartLoaded", false)
                         }
                     }
                 }

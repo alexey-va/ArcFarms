@@ -10,6 +10,7 @@ object LumberStateValidation {
         require(state.phase == LumberPhase.IDLE || state.tree != null) { "Active lumber round has no tree" }
         require(state.cartCarrier == null || state.phase == LumberPhase.HAULING)
         require(state.boardsCarrier == null || state.phase == LumberPhase.DELIVERING)
+        require(!state.boardCartLoaded || state.phase in setOf(LumberPhase.COLLECTING_BOARDS, LumberPhase.DELIVERING) && state.cart != null)
         require(!state.sawRunning || state.phase == LumberPhase.SAWING && state.sawPasses < 2)
         state.tree?.let { tree ->
             ru.ruscrafting.farms.domain.worksite.WorksitePosition(tree.root.world, tree.root.x, tree.root.y, tree.root.z)

@@ -1,7 +1,7 @@
 {
   "world": "rc_atelier_cedar_sawmill",
   "baseCaptureSha256": "4c5a1358f5dbd45f31ed68bca5f3741f5489f49e2123fb37d903b6ac2fb2ceaa",
-  "verifiedAt": "2026-10-26T02:07:00+03:00",
+  "verifiedAt": "2026-10-26T14:29:04+03:00",
   "evidence": "Native execute-if-block readback by root: all20 AIR and3 TOP predicates Test passed. Server PID613728. No block writes. Temporary tickets for chunks11,11 and11,12 released02:08:11MSK. Unlisted cells retain captured state. Detailed receipt: artifacts/lumber-worksite-20261026/live-current-readback.json",
   "air": [
     [
@@ -103,6 +103,56 @@
       190,
       76,
       191
+    ],
+    [
+      191,
+      74,
+      168
+    ],
+    [
+      191,
+      75,
+      168
+    ],
+    [
+      190,
+      74,
+      168
+    ],
+    [
+      190,
+      74,
+      169
+    ],
+    [
+      190,
+      74,
+      170
+    ],
+    [
+      190,
+      74,
+      171
+    ],
+    [
+      190,
+      75,
+      168
+    ],
+    [
+      190,
+      75,
+      171
+    ],
+    [
+      191,
+      73,
+      171
+    ],
+    [
+      191,
+      73,
+      172
     ]
   ],
   "verifiedStatePredicates": [
@@ -129,6 +179,72 @@
         194
       ],
       "state": "minecraft:spruce_stairs[half=top,facing=east,shape=straight]"
+    }
+  ],
+  "additionalReadbacks": [
+    {
+      "at": "2026-10-26T14:24:07+03:00",
+      "air": [
+        [
+          191,
+          74,
+          168
+        ],
+        [
+          191,
+          75,
+          168
+        ],
+        [
+          190,
+          74,
+          168
+        ],
+        [
+          190,
+          74,
+          169
+        ],
+        [
+          190,
+          74,
+          170
+        ],
+        [
+          190,
+          74,
+          171
+        ],
+        [
+          190,
+          75,
+          168
+        ],
+        [
+          190,
+          75,
+          171
+        ]
+      ],
+      "evidence": "artifacts/lumber-ux-20261026/output-props-readback.json",
+      "details": "All8 native AIR predicates Test passed; temporary chunk11,10 ticket removed. No block writes."
+    },
+    {
+      "at": "2026-10-26T14:29:03+03:00",
+      "air": [
+        [
+          191,
+          73,
+          171
+        ],
+        [
+          191,
+          73,
+          172
+        ]
+      ],
+      "evidence": "artifacts/lumber-ux-20261026/output-feet-readback.json",
+      "details": "Both native AIR predicates Test passed; temporary chunk11,10 ticket removed. No block writes."
     }
   ]
 }

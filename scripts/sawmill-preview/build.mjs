@@ -70,11 +70,11 @@ for (const part of parts) if (part.block) material(part.block);
 for (const state of [...new Set(lumber.frames.flatMap(frame => frame.parts.map(part => part.block).filter(Boolean))), 'minecraft:spruce_log[axis=z]', 'minecraft:stripped_spruce_log[axis=z]', 'minecraft:spruce_planks', 'minecraft:light_gray_concrete']) material(state);
 // Keep all presets inside the open aisle, independent of the machine's floor scaling.
 const framing = {
-  overview: [[183.6,76.4,173.5],[188.2,74.8,179.8],78],
-  operator: [[183.55,74.62,175.3],[186.4,75.5,178.8],76],
+  overview: [[198,78.2,188],[189.5,75.1,180],78],
+  operator: [[194.6,74.62,177.8],[192.5,74.785,176.964],76],
   infeed: [[184.4,74.62,188.5],[188.2,75.2,183],74],
   drive: [[183.6,74.62,178.8],[187.5,75.1,179.2],70],
-  output: [[192.8,75.0,178.0],[186.7,75.7,172.7],72],
+  output: [[196.3,74.62,177.8],[192.6,75.55,172.68],72],
 };
 const lumberViews = [
   {id:'forest',label:'Лес · дерево',camera:[149,76,207],target:[140.5,75,198.5],fov:74},
@@ -83,7 +83,9 @@ const lumberViews = [
   {id:'dock',label:'Улица · рельсы',camera:[191.8,74.62,204.5],target:[189.3,74.3,190.5],fov:76},
   {id:'haul-forward',label:'Игрок · вперёд',camera:[170,74.62,202],target:[180,74.62,202],fov:76},
   {id:'haul-back',label:'Игрок · оглянуться',camera:[170,74.62,202],target:[160,73.6,202],fov:76},
-  {id:'warehouse',label:'Лесосклад',camera:[229,76.62,190],target:[225,75,180],fov:75},
+  {id:'boardcart',label:'Тележка с досками',camera:[198,74.62,178],target:[194.6,73.9,176],fov:76},
+  {id:'board-player',label:'Игрок · тележка',camera:[194.6,74.62,167.88],target:[194.6,73.9,174],fov:76},
+  {id:'warehouse',label:'Склад в цеху',camera:[195.4,74.62,190],target:[194.1,73.8,185.5],fov:75},
   {id:'route',label:'Весь маршрут',camera:[190,125,239],target:[182,73,192],fov:72},
 ];
 const views = SAWMILL.views.map(view => ({ ...view, camera: local(framing[view.id][0]),

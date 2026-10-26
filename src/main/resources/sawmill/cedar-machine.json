@@ -83,13 +83,13 @@
     }
   ],
   "leverCenter": [
-    2.45,
-    1.43,
-    1.2
+    -2.39470588235294,
+    0.9,
+    1.08
   ],
   "leverSize": [
     0.7,
-    0.78,
+    0.6,
     0.7
   ],
   "parts": [
@@ -1127,7 +1127,7 @@
       "name": "outfeed-beam",
       "block": "minecraft:stripped_spruce_log[axis=z]",
       "center": [
-        0.54,
+        -2.7425,
         1.07,
         4.1
       ],
@@ -1144,7 +1144,7 @@
       "name": "outfeed-leg",
       "block": "minecraft:gray_concrete",
       "center": [
-        0.54,
+        -2.7425,
         0.51,
         1.7
       ],
@@ -1161,7 +1161,7 @@
       "name": "outfeed-leg",
       "block": "minecraft:gray_concrete",
       "center": [
-        0.54,
+        -2.7425,
         0.51,
         4
       ],
@@ -1178,7 +1178,7 @@
       "name": "outfeed-leg",
       "block": "minecraft:gray_concrete",
       "center": [
-        0.54,
+        -2.7425,
         0.51,
         6.5
       ],
@@ -1195,7 +1195,7 @@
       "name": "outfeed-beam",
       "block": "minecraft:stripped_spruce_log[axis=z]",
       "center": [
-        1.75,
+        -1.5325000000000002,
         1.07,
         4.1
       ],
@@ -1212,7 +1212,7 @@
       "name": "outfeed-leg",
       "block": "minecraft:gray_concrete",
       "center": [
-        1.75,
+        -1.5325000000000002,
         0.51,
         1.7
       ],
@@ -1229,7 +1229,7 @@
       "name": "outfeed-leg",
       "block": "minecraft:gray_concrete",
       "center": [
-        1.75,
+        -1.5325000000000002,
         0.51,
         4
       ],
@@ -1246,7 +1246,7 @@
       "name": "outfeed-leg",
       "block": "minecraft:gray_concrete",
       "center": [
-        1.75,
+        -1.5325000000000002,
         0.51,
         6.5
       ],
@@ -1263,7 +1263,7 @@
       "name": "outfeed-top",
       "block": "minecraft:spruce_planks",
       "center": [
-        1.13,
+        -2.1525000000000003,
         1.23,
         1.6
       ],
@@ -1280,7 +1280,7 @@
       "name": "outfeed-top",
       "block": "minecraft:spruce_planks",
       "center": [
-        1.13,
+        -2.1525000000000003,
         1.23,
         2.1
       ],
@@ -1297,7 +1297,7 @@
       "name": "outfeed-top",
       "block": "minecraft:spruce_planks",
       "center": [
-        1.13,
+        -2.1525000000000003,
         1.23,
         2.6
       ],
@@ -1314,7 +1314,7 @@
       "name": "outfeed-top",
       "block": "minecraft:spruce_planks",
       "center": [
-        1.13,
+        -2.1525000000000003,
         1.23,
         3.1
       ],
@@ -1331,7 +1331,7 @@
       "name": "outfeed-top",
       "block": "minecraft:spruce_planks",
       "center": [
-        1.13,
+        -2.1525000000000003,
         1.23,
         3.6
       ],
@@ -1348,7 +1348,7 @@
       "name": "outfeed-top",
       "block": "minecraft:spruce_planks",
       "center": [
-        1.13,
+        -2.1525000000000003,
         1.23,
         4.1
       ],
@@ -1365,7 +1365,7 @@
       "name": "outfeed-top",
       "block": "minecraft:spruce_planks",
       "center": [
-        1.13,
+        -2.1525000000000003,
         1.23,
         4.6
       ],
@@ -1382,7 +1382,7 @@
       "name": "outfeed-top",
       "block": "minecraft:spruce_planks",
       "center": [
-        1.13,
+        -2.1525000000000003,
         1.23,
         5.1
       ],
@@ -1399,7 +1399,7 @@
       "name": "outfeed-top",
       "block": "minecraft:spruce_planks",
       "center": [
-        1.13,
+        -2.1525000000000003,
         1.23,
         5.6
       ],
@@ -1416,7 +1416,7 @@
       "name": "outfeed-top",
       "block": "minecraft:spruce_planks",
       "center": [
-        1.13,
+        -2.1525000000000003,
         1.23,
         6.1
       ],
@@ -1433,7 +1433,7 @@
       "name": "outfeed-top",
       "block": "minecraft:spruce_planks",
       "center": [
-        1.13,
+        -2.1525000000000003,
         1.23,
         6.6
       ],
@@ -1450,7 +1450,7 @@
       "name": "outfeed-end-stop",
       "block": "minecraft:polished_deepslate",
       "center": [
-        1.13,
+        -2.1525000000000003,
         1.34,
         6.85
       ],
@@ -1467,13 +1467,13 @@
       "name": "control-plinth",
       "block": "minecraft:gray_concrete",
       "center": [
-        2.45,
-        0.54,
+        -2.39470588235294,
+        0.32,
         1.08
       ],
       "size": [
         0.44,
-        1.08,
+        0.64,
         0.46
       ],
       "motion": "fixed",
@@ -1484,8 +1484,8 @@
       "name": "control-cap",
       "block": "minecraft:waxed_exposed_copper",
       "center": [
-        2.45,
-        1.12,
+        -2.39470588235294,
+        0.68,
         1.08
       ],
       "size": [
@@ -1501,19 +1501,19 @@
       "name": "control-lever",
       "block": "minecraft:polished_deepslate",
       "center": [
-        2.45,
-        1.42,
+        -2.39470588235294,
+        0.88,
         1.08
       ],
       "size": [
         0.085,
-        0.54,
+        0.34,
         0.085
       ],
       "motion": "lever",
       "pivot": [
-        2.45,
-        1.15,
+        -2.39470588235294,
+        0.71,
         1.08
       ],
       "id": "control-lever-1",
@@ -1523,8 +1523,8 @@
       "name": "lever-handle",
       "block": "minecraft:dark_oak_log[axis=x]",
       "center": [
-        2.45,
-        1.69,
+        -2.39470588235294,
+        1.05,
         1.08
       ],
       "size": [
@@ -1534,8 +1534,8 @@
       ],
       "motion": "lever",
       "pivot": [
-        2.45,
-        1.15,
+        -2.39470588235294,
+        0.71,
         1.08
       ],
       "id": "lever-handle-1",

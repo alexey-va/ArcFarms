@@ -15,6 +15,7 @@ import ru.arc.paper.scene.SceneAudience
 import ru.arc.paper.testing.MockBukkitTestRuntime
 import ru.ruscrafting.farms.domain.lumber.LumberPhase
 import ru.ruscrafting.farms.domain.lumber.LumberState
+import ru.ruscrafting.farms.domain.lumber.LumberTiming
 import ru.ruscrafting.farms.domain.lumber.LumberVisualView
 
 class CedarSawmillRuntimeTest : FunSpec({
@@ -27,7 +28,8 @@ class CedarSawmillRuntimeTest : FunSpec({
         }
         frame(LumberPhase.SAWING).poses shouldBe CedarSawmillAnimation.sample(0.0, 0).poses
         frame(LumberPhase.SAWING, 1).poses shouldBe CedarSawmillAnimation.sample(25.0, 0).poses
-        frame(LumberPhase.SAWING, 1, true, 250).poses shouldBe CedarSawmillAnimation.sample(12.5, 1).poses
+        frame(LumberPhase.SAWING, 1, true, LumberTiming.SAW_PASS_TICKS / 2).poses shouldBe
+            CedarSawmillAnimation.sample(CedarSawmillAnimation.DURATION_SECONDS / 2, 1).poses
         frame(LumberPhase.COLLECTING_BOARDS, 2).poses shouldBe CedarSawmillAnimation.sample(25.0, 1).poses
     }
 

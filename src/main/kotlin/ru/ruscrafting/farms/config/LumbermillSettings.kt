@@ -8,7 +8,7 @@ data class LumbermillSettings(
     val forest: CuboidBounds = CuboidBounds(94, 64, 158, 147, 92, 215),
     val worksite: CuboidBounds = CuboidBounds(90, 64, 150, 260, 100, 290),
     val cart: LumberPose = LumberPose(world, 144.5, 72.0, 206.5),
-    val warehouse: LumberPose = LumberPose(world, 226.5, 74.0, 182.5, 180f),
+    val warehouse: LumberPose = LumberPose(world, 194.1, 73.0, 185.5, 180f),
     val chopHits: Int = 5,
     val fallTicks: Int = ru.ruscrafting.farms.domain.lumber.LumberTiming.FALL_TICKS,
     val interactionRadius: Double = 5.5,

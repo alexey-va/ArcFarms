@@ -158,7 +158,9 @@ enum class MessageKey(val path: String) {
     LUMBER_HAULING_HELD_HINT("lumber.hints.hauling-held"),
     LUMBER_LOADING_SAWMILL_HINT("lumber.hints.loading-sawmill"),
     LUMBER_SAWING_HINT("lumber.hints.sawing"),
+    LUMBER_SAWING_RUNNING_HINT("lumber.hints.sawing-running"),
     LUMBER_COLLECTING_BOARDS_HINT("lumber.hints.collecting-boards"),
+    LUMBER_LOADING_BOARDS_HINT("lumber.hints.loading-boards"),
     LUMBER_DELIVERING_HINT("lumber.hints.delivering"),
     LUMBER_PROGRESS("lumber.progress"),
     LUMBER_SAW_PROGRESS("lumber.saw-progress"),
@@ -173,6 +175,7 @@ enum class MessageKey(val path: String) {
     LUMBER_TOO_FAR("lumber.too-far"),
     LUMBER_WAIT("lumber.wait"),
     LUMBER_COMPLETE("lumber.complete"),
+    LUMBER_COMPLETE_SUBTITLE("lumber.complete-subtitle"),
     LUMBER_RELEASED("lumber.released"),
     MENU_TITLE("menu.title"),
     MENU_FARM_NAME("menu.farm.name"),
@@ -730,6 +733,7 @@ enum class MessageKey(val path: String) {
 }
 
 internal val SCREEN_TITLE_SUBTITLES = mapOf(
+    MessageKey.LUMBER_COMPLETE to MessageKey.LUMBER_COMPLETE_SUBTITLE,
     MessageKey.FARM_ENTRY_TITLE to MessageKey.FARM_ENTRY_SUBTITLE,
     MessageKey.FARM_PLANTING_STARTED to MessageKey.FARM_PLANTING_STARTED_SUBTITLE,
     MessageKey.FARM_PREPARATION_COMPLETED to MessageKey.FARM_PREPARATION_COMPLETED_SUBTITLE,
@@ -1063,7 +1067,14 @@ class ArcFarmsLocale(
         private val PLACEHOLDER_TAG = Regex("(?<!\\\\)<([a-z][a-z0-9_-]*)>")
         private val CLOSING_TAG = Regex("</([a-z][a-z0-9_-]*)>")
         private val SCREEN_LINE_BREAK_TAG = Regex("<(?:newline|br)>", RegexOption.IGNORE_CASE)
-        private val SCREEN_TITLE_PATHS = SCREEN_TITLE_SUBTITLES.keys.mapTo(hashSetOf(), MessageKey::path)
+        private val SCREEN_TITLE_PATHS = buildSet {
+            addAll(SCREEN_TITLE_SUBTITLES.keys.map(MessageKey::path))
+            addAll(SCREEN_TITLE_SUBTITLES.values.map(MessageKey::path))
+            add(MessageKey.LUMBER_TITLE.path)
+            addAll(MessageKey.entries.map(MessageKey::path).filter {
+                it.startsWith("lumber.hints.") || it.startsWith("lumber.phases.")
+            })
+        }
         private val MINIMESSAGE_LITERAL_TAGS = setOf(
             "black", "dark_blue", "dark_green", "dark_aqua", "dark_red", "dark_purple", "gold", "gray",
             "dark_gray", "blue", "green", "aqua", "red", "light_purple", "yellow", "white", "bold", "b",

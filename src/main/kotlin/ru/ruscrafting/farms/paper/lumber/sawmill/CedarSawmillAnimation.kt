@@ -17,6 +17,7 @@ internal object CedarSawmillAnimation {
     const val LOG_BOTTOM = 1.27
     const val LOG_HEIGHT = 0.72
     const val SECTION_COUNT = 5
+    const val OUTPUT_X = -2.15
     private const val SECOND_SET = .35
     private const val FINAL_WIDTH = .365
     private const val FINAL_SCALE = FINAL_WIDTH / .715
@@ -61,7 +62,7 @@ internal object CedarSawmillAnimation {
                 val progress = smooth((state.time - start) / 2.0)
                 rotation.rotationZ((-PI / 2 * progress).toFloat())
                 val minimumY = vertices.minOf { Vector3f(it).mul(xScale.toFloat(), 1f, 1f).rotate(rotation).y }.toDouble()
-                center.x = mix(fromX, 1.1325, progress).toFloat()
+                center.x = mix(fromX, OUTPUT_X, progress).toFloat()
                 center.y = (mix(LOG_BOTTOM + LOG_HEIGHT / 2, base - minimumY, progress) + .30 * sin(PI * progress)).toFloat()
             }
             when (part.motion) {
@@ -98,7 +99,7 @@ internal object CedarSawmillAnimation {
                             center.z = ((if (retainedOutput) 3.6 else state.outputZ) + (low + high) / 2).toFloat()
                             if (retainedOutput) {
                                 rotation.rotationZ((-PI / 2).toFloat())
-                                center.x = 1.1325f
+                                center.x = OUTPUT_X.toFloat()
                                 center.y = (LOG_BOTTOM + .0875).toFloat()
                             } else offbear(14.0, LOG_BOTTOM, .3925, CedarSawmillGeometry.slabContactVertices)
                         }

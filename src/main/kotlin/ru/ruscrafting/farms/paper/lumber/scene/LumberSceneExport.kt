@@ -10,8 +10,7 @@ import java.util.UUID
 import ru.ruscrafting.farms.domain.lumber.*
 import ru.ruscrafting.farms.domain.worksite.WorksitePosition
 import ru.ruscrafting.farms.paper.lumber.sawmill.CedarSawmillController
-import kotlin.math.cos
-import kotlin.math.sin
+import ru.ruscrafting.farms.paper.worksite.WorksiteCartMotion
 
 /** One representative complete round, sampled from the real domain and display functions at 10 Hz. */
 internal object LumberSceneExport {
@@ -25,14 +24,23 @@ internal object LumberSceneExport {
         val fall = fixture.getAsJsonArray("fall")
         val tree = LumberTreeSnapshot(position(fixture.getAsJsonArray("root")), blocks("logs"), blocks("leaves"), fall[0].asInt, fall[1].asInt, home)
         val logCarrierRoute = fixture.getAsJsonArray("logCarrierRoute").map { pose(it.asJsonArray) }
-        val boardRoute = fixture.getAsJsonArray("boardRoute").map { pose(it.asJsonArray) }
+        val boardRoute = fixture.getAsJsonArray("boardCarrierRoute").map { pose(it.asJsonArray) }
+        val warehouse = pose(fixture.getAsJsonArray("warehouse"))
         val player = UUID.fromString("00000000-0000-0000-0000-000000000001")
         val branchPositions = LumberSceneGeometry.branchTargets(tree).map { WorksitePosition(world, it.x.toInt(), it.y.toInt(), it.z.toInt()) }
         var state = LumberEngine.start(LumberState(), tree, home, 0)
         val frames = JsonArray()
         val phases = JsonArray()
         var previous = ""
-        for (tick in 0..3460) {
+        val firstSaw = 1460 + LumberTiming.SAWMILL_LOAD_TICKS
+        val secondSaw = firstSaw + LumberTiming.SAW_PASS_TICKS + 40
+        val collect = secondSaw + LumberTiming.SAW_PASS_TICKS + 40
+        val move = collect + LumberTiming.BOARD_PICKUP_TICKS
+        val deliver = move + 140
+        val end = deliver + 60
+        var cartMotion: WorksiteCartMotion.Frame? = null
+        var deliveredFrom: LumberPose? = null
+        for (tick in 0..end) {
             val now = tick * 50L
             state = LumberEngine.tick(state, now, 60, branchPositions)
             val action = when (tick) {
@@ -42,45 +50,55 @@ internal object LumberSceneExport {
                 300 -> LumberInput(LumberAction.CUT_BRANCH, 2)
                 340 -> LumberInput(LumberAction.LOAD_CART)
                 1460 -> LumberInput(LumberAction.LOAD_SAWMILL)
-                1580, 2140 -> LumberInput(LumberAction.SAW_LEVER)
-                2700 -> LumberInput(LumberAction.COLLECT_BOARDS)
-                3440 -> LumberInput(LumberAction.DELIVER_BOARDS)
+                firstSaw, secondSaw -> LumberInput(LumberAction.SAW_LEVER)
+                collect -> LumberInput(LumberAction.COLLECT_BOARDS)
+                deliver -> LumberInput(LumberAction.DELIVER_BOARDS)
                 else -> null
             }
+            if (tick == deliver) deliveredFrom = state.cart
             if (action != null) state = LumberEngine.act(state, action, player, now, 5)
+            if (tick == collect) state = state.copy(cart = LumberSceneGeometry.boardCartHome())
             val logCarrier = if (tick in 340 until 1460) route(logCarrierRoute, (tick - 340) / 1119.0) else null
             if (logCarrier != null) state = state.copy(cart = LumberLogMotion.advance(requireNotNull(state.cart),
                 logCarrier, LumberSceneGeometry.LOG_FOLLOW_DISTANCE))
+            val boardCarrier = if (state.phase == LumberPhase.DELIVERING)
+                route(boardRoute, ((tick - move) / 140.0).coerceIn(0.0, 1.0)) else null
+            if (boardCarrier != null && state.boardCartLoaded) {
+                val cart = requireNotNull(state.cart)
+                val from = cartMotion ?: WorksiteCartMotion.Frame(cart.x, cart.y, cart.z, cart.yaw, 0f,
+                    boardCarrier.x, boardCarrier.z, 0.0, 1.0)
+                val moved = WorksiteCartMotion.advance(from, boardCarrier.x, boardCarrier.y, boardCarrier.z,
+                    boardCarrier.yaw, LumberSceneGeometry.BOARD_CART_FOLLOW_DISTANCE)
+                cartMotion = moved
+                state = state.copy(cart = LumberPose(world, moved.x, moved.y, moved.z, moved.yaw))
+            }
             if (tick % 2 != 0) continue
             val age = ((now - state.phaseStartedAt) / 50L).toInt()
             val view = LumberVisualView(state, age, setOf(player), if (state.sawRunning) age else 0, now)
             val label = state.phase.name + if (state.phase == LumberPhase.SAWING) ":${state.sawPasses}:${state.sawRunning}" else ""
             if (label != previous) { phases.add(Gson().toJsonTree(mapOf("at" to tick / 20.0, "phase" to label))); previous = label }
-            val sceneParts = LumberSceneGeometry.sample(view).toMutableList()
-            val carrier = if (state.phase == LumberPhase.DELIVERING) route(boardRoute, ((tick - 2720) / 720.0).coerceIn(0.0, 1.0)) else null
-            if (carrier != null) {
-                val yaw = Math.toRadians(carrier.yaw.toDouble())
-                val target = carrier.copy(x = carrier.x - sin(yaw) * .65 + cos(yaw) * 1.15,
-                    y = carrier.y + 1.8, z = carrier.z + cos(yaw) * .65 + sin(yaw) * 1.15, yaw = carrier.yaw + 180f)
-                sceneParts += LumberSceneGeometry.boards(LumberSceneGeometry.blend(LumberSceneGeometry.outputPickup(), target, age / 20.0, .9))
-            }
+            val sceneParts = LumberSceneGeometry.sample(view, warehouse).toMutableList()
+            if (state.completedRounds > 0) sceneParts += LumberSceneGeometry.storedBoards(warehouse, deliveredFrom, (tick - deliver) / 20.0)
             val machine = CedarSawmillController.frame(view)
             frames.add(JsonObject().apply {
                 addProperty("t", tick / 20.0); addProperty("phase", state.phase.name); addProperty("phaseAge", age)
                 addProperty("round", state.roundId); addProperty("passes", state.sawPasses); addProperty("running", state.sawRunning)
                 addProperty("branches", state.branches?.completed ?: 0)
+                addProperty("boardCartLoaded", state.boardCartLoaded)
                 addProperty("maskTree", state.phase !in setOf(LumberPhase.IDLE, LumberPhase.CHOPPING))
                 add("cart", Gson().toJsonTree(state.cart));
                 add("logCarrier", Gson().toJsonTree(logCarrier));
-                add("leash", Gson().toJsonTree(if (state.cartCarrier != null) state.cart?.let(LumberSceneGeometry::leashAnchor) else null)); add("carrier", Gson().toJsonTree(carrier))
+                add("leash", Gson().toJsonTree(if (state.cartCarrier != null) state.cart?.let(LumberSceneGeometry::leashAnchor) else null))
+                add("boardCarrier", Gson().toJsonTree(boardCarrier))
                 add("parts", Gson().toJsonTree(sceneParts.map(::part)))
+                add("machineGlowing", Gson().toJsonTree(CedarSawmillController.highlightedParts(view)))
                 add("machine", Gson().toJsonTree(machine.poses.map { p -> listOf(p.visible, p.center.x, p.center.y, p.center.z,
                     p.size.x, p.size.y, p.size.z, p.rotation.x, p.rotation.y, p.rotation.z, p.rotation.w) }))
             })
         }
         check(state.phase == LumberPhase.IDLE && state.completedRounds == 1L && state.roundId == 1L) { "Preview must finish exactly one genuine round" }
         val document = JsonObject().apply {
-            addProperty("schema", 1); addProperty("seconds", 173); addProperty("step", .1)
+            addProperty("schema", 1); addProperty("seconds", end / 20.0); addProperty("step", .1)
             add("fixture", fixture); add("beats", phases); add("frames", frames)
             add("evidence", Gson().toJsonTree(listOf("LumberEngine transitions", "LumberLogMotion follower", "LumberSceneGeometry poses", "CedarSawmillController frames", "same five native models", "representative path fixture; not native-client acceptance")))
         }
@@ -92,7 +110,7 @@ internal object LumberSceneExport {
         "center" to listOf(p.center.x, p.center.y, p.center.z), "size" to listOf(p.size.x, p.size.y, p.size.z),
         "rotation" to listOf(p.rotation.x, p.rotation.y, p.rotation.z, p.rotation.w),
         "block" to p.block, "itemModel" to p.itemModel, "visible" to p.visible,
-        "glowing" to (p.action?.action in setOf(LumberAction.CUT_BRANCH, LumberAction.LOAD_CART, LumberAction.TAKE_CART, LumberAction.LOAD_SAWMILL)))
+        "glowing" to (p.action != null))
 
     private fun route(points: List<LumberPose>, progress: Double): LumberPose {
         val weights = points.zipWithNext().map { (a, b) ->

@@ -55,17 +55,24 @@ internal class PacketLumberPresentation(
     private val audience = SceneAudience.Public(group)
     private val scene = PacketDisplayScene<String>(displays)
     private val controls = PaperSpatialControls(plugin, displays, this)
-    private val carriedBoards = LumberBoardCarry(displays, group)
     private val logTether = LumberLogTether(plugin)
     private var mill: CedarSawmillController? = null
     private var worldId: UUID? = null
     private var view: LumberVisualView? = null
+    private var deliveredFrom: LumberPose? = null
+    private var deliveredAt = 0L
     private var frame: SpatialControlFrame<Long, LumberInput>? = null
     private var masked: Set<WorksitePosition> = emptySet()
     private val blocks = mutableMapOf<String, org.bukkit.block.data.BlockData>()
     private val items = CedarSawmillDisplays.CUSTOM_MODEL_DATA.keys.associateWith(CedarSawmillDisplays::item)
 
     override fun render(view: LumberVisualView) {
+        this.view?.let { previous ->
+            if (view.state.completedRounds > previous.state.completedRounds) {
+                deliveredFrom = previous.state.cart
+                deliveredAt = view.now
+            }
+        }
         this.view = view
         viewers = view.viewers
         val world = Bukkit.getWorld(worldName) ?: return
@@ -77,9 +84,9 @@ internal class PacketLumberPresentation(
         }
         masked = view.state.tree?.maskedBlocks.orEmpty().mapTo(hashSetOf()) { it.position }
         mill?.render(view, audience)
-        val parts = LumberSceneGeometry.sample(view)
+        val parts = LumberSceneGeometry.sample(view, warehouse) + if (view.state.completedRounds > 0)
+            LumberSceneGeometry.storedBoards(warehouse, deliveredFrom, (view.now - deliveredAt) / 1000.0) else emptyList()
         scene.apply(SceneFrame(parts.map { rendered(world, it, view) }, audience, 0))
-        carriedBoards.render(view, world)
         logTether.render(view, view.viewers.mapNotNull(Bukkit::getPlayer).filter(::eligible))
         frame = SpatialControlFrame(view.state.roundId, audience, SpatialSceneScope.World,
             targets(view, parts).flatMap { part -> lumberControls(world, part) },
@@ -107,7 +114,6 @@ internal class PacketLumberPresentation(
 
     override fun release(player: Player) {
         viewers = viewers - player.uniqueId
-        if (view?.state?.boardsCarrier == player.uniqueId) carriedBoards.clear()
         logTether.release(player)
     }
 
@@ -115,9 +121,9 @@ internal class PacketLumberPresentation(
         viewers = emptySet()
         frame = null
         view = null
+        deliveredFrom = null
         controls.clear(KEY)
         controls.close()
-        carriedBoards.clear()
         logTether.clear()
         scene.close()
         mill?.close()
@@ -137,8 +143,7 @@ internal class PacketLumberPresentation(
         val translation = Vector3f(part.center).sub(anchor.x.toFloat(), anchor.y.toFloat(), anchor.z.toFloat())
         if (part.itemModel == null) translation.add(part.rotation.transform(Vector3f(part.size).mul(-.5f)))
         val pose = ScenePose(anchor, Transformation(translation, Quaternionf(part.rotation), Vector3f(part.size), Quaternionf()))
-        val glowing = part.action?.action in setOf(LumberAction.CUT_BRANCH, LumberAction.LOAD_CART,
-            LumberAction.TAKE_CART, LumberAction.LOAD_SAWMILL)
+        val glowing = part.action != null
         val style = STYLE.copy(glowing = glowing, glowColor = if (glowing) Color.fromRGB(0xffc857) else null)
         return if (part.itemModel != null) ScenePart.Item(part.id, pose, style, items.getValue(part.itemModel), ItemDisplay.ItemDisplayTransform.NONE, part.visible)
         else ScenePart.Block(part.id, pose, style, blocks.getOrPut(requireNotNull(part.block)) { Bukkit.createBlockData(part.block) }, part.visible)
@@ -162,7 +167,7 @@ internal class PacketLumberPresentation(
                 if (state.cartCarrier == null) state.cart?.let {
                     add(LumberSceneGeometry.pickupTarget(LumberSceneGeometry.draggedStock(it), LumberAction.TAKE_CART))
                 }
-                box("receiving-zone", LumberSceneGeometry.receivingCenter().copy(y = LumberSceneGeometry.receivingCenter().y + .75),
+                if (state.cartCarrier != null) box("receiving-zone", LumberSceneGeometry.receivingCenter().copy(y = LumberSceneGeometry.receivingCenter().y + .75),
                     Vector3f(6f, 1.5f, 6f), LumberAction.LOAD_SAWMILL)
             }
             LumberPhase.SAWING -> if (!state.sawRunning) {
@@ -172,8 +177,11 @@ internal class PacketLumberPresentation(
                         action = LumberInput(LumberAction.SAW_LEVER)))
                 }
             }
-            LumberPhase.COLLECTING_BOARDS -> addAll(LumberSceneGeometry.boards(LumberSceneGeometry.outputPickup()).map { it.copy(action = LumberInput(LumberAction.COLLECT_BOARDS)) })
-            LumberPhase.DELIVERING -> box("warehouse", warehouse.copy(y = warehouse.y + .8), Vector3f(2.5f, 1.6f, 2.5f), LumberAction.DELIVER_BOARDS)
+            LumberPhase.COLLECTING_BOARDS -> {
+                add(LumberSceneGeometry.pickupTarget(LumberSceneGeometry.boardCartPickup(state), LumberAction.COLLECT_BOARDS))
+                if (state.boardCartLoaded) addAll(parts.filter { it.id == "board-cart-handle" })
+            }
+            LumberPhase.DELIVERING -> if (state.boardCartLoaded) box("warehouse", warehouse.copy(y = warehouse.y + .8), Vector3f(2.5f, 1.6f, 2.5f), LumberAction.DELIVER_BOARDS)
             else -> Unit
         }
     }
@@ -190,7 +198,7 @@ internal fun lumberControls(world: World, part: LumberSceneGeometry.Part): List<
     val planes = lumberHitPlanes(world, part)
     if (action.action in setOf(LumberAction.CHOP_TREE, LumberAction.CUT_BRANCH, LumberAction.LOAD_SAWMILL))
         return listOf(SpatialControl(part.id, action, planes, null))
-    val count = if (action.action in setOf(LumberAction.LOAD_CART, LumberAction.TAKE_CART)) 6 else 1
+    val count = if (part.id == "pickup-log") 6 else 1
     return (0 until count).map { index ->
         val size = Vector3f(part.size.x, part.size.y, part.size.z / count)
         val center = Vector3f(0f, 0f, -part.size.z / 2 + size.z * (index + .5f)).rotate(part.rotation).add(part.center)

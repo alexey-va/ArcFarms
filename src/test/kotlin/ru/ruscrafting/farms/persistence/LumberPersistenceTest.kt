@@ -6,6 +6,13 @@ import io.kotest.assertions.throwables.shouldThrow
 import ru.ruscrafting.farms.domain.ArcFarmsState
 import ru.ruscrafting.farms.domain.lumber.LumberPhase
 import ru.ruscrafting.farms.domain.lumber.LumberState
+import ru.ruscrafting.farms.domain.lumber.LumberTreeSnapshot
+import ru.ruscrafting.farms.domain.lumber.LumberBlockSnapshot
+import ru.ruscrafting.farms.domain.lumber.LumberPose
+import ru.ruscrafting.farms.domain.lumber.LumberEngine
+import ru.ruscrafting.farms.domain.lumber.LumberAction
+import ru.ruscrafting.farms.domain.lumber.LumberInput
+import ru.ruscrafting.farms.domain.worksite.WorksitePosition
 import java.nio.file.Files
 
 class LumberPersistenceTest : FunSpec({
@@ -69,6 +76,46 @@ class LumberPersistenceTest : FunSpec({
             repo.load().stats shouldBe emptyMap()
             repo.load().pendingFarmRewards shouldBe emptyList()
         }
+    }
+
+    test("pre-cart schema1 boards default to unloaded and the explicit loaded marker round trips") {
+        val root = Files.createTempDirectory("lumber-board-cart")
+        val worker = java.util.UUID(0, 77)
+        val at = WorksitePosition("cedar", 139, 73, 202)
+        val tree = LumberTreeSnapshot(at,
+            (0..9).map { LumberBlockSnapshot(at.copy(y = at.y + it), "minecraft:oak_log[axis=y]") },
+            listOf(LumberBlockSnapshot(at.copy(x = 140, y = 82), "minecraft:oak_leaves[persistent=false]")))
+        val cart = LumberPose(at.world, 143.5, 73.0, 202.5)
+        var now = 1_000L
+        var state = LumberEngine.start(LumberState(roundId = 6, completedRounds = 4), tree, cart, now)
+        fun act(action: LumberAction, index: Int = 0) {
+            state = LumberEngine.act(state, LumberInput(action, index), worker, now, 1)
+        }
+        act(LumberAction.CHOP_TREE)
+        now += 3_000; state = LumberEngine.tick(state, now, 60, (0..2).map { at.copy(x = at.x + 2 + it) })
+        repeat(3) { act(LumberAction.CUT_BRANCH, it) }
+        act(LumberAction.LOAD_CART); act(LumberAction.LOAD_SAWMILL)
+        now += 6_000; state = LumberEngine.tick(state, now, 60, emptyList())
+        repeat(2) {
+            act(LumberAction.SAW_LEVER)
+            now += 12_000; state = LumberEngine.tick(state, now, 60, emptyList())
+        }
+        act(LumberAction.COLLECT_BOARDS)
+        state = state.copy(cart = cart)
+        val expected = ArcFarmsState(lumbermills = mapOf("cedar_sawmill" to state))
+        val document = com.google.gson.Gson().toJsonTree(expected).asJsonObject
+        document.getAsJsonObject("lumbermills").getAsJsonObject("cedar_sawmill").remove("boardCartLoaded")
+        Files.createDirectories(root.resolve("data"))
+        Files.writeString(root.resolve("data/state.json"), document.toString())
+        val loaded = expected.copy(lumbermills = mapOf("cedar_sawmill" to state.copy(boardCartLoaded = true)))
+        ArcFarmsStateRepository(root).use { repo ->
+            repo.load() shouldBe expected
+            repo.saveBlocking(loaded)
+        }
+        com.google.gson.JsonParser.parseString(Files.readString(root.resolve("data/state.json"))).asJsonObject
+            .getAsJsonObject("lumbermills").getAsJsonObject("cedar_sawmill").get("boardCartLoaded").asBoolean shouldBe true
+        // load() is a prepared startup snapshot; reopen to exercise the actual saved JSON codec.
+        ArcFarmsStateRepository(root).use { repo -> repo.load() shouldBe loaded }
     }
 
     test("malformed active lumber snapshot is rejected at the real storage boundary") {

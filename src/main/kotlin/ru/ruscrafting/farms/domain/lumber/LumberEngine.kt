@@ -58,7 +58,7 @@ object LumberEngine {
                 current.copy(phase = LumberPhase.DELIVERING, boardsCarrier = player)
             }
             LumberAction.DELIVER_BOARDS -> {
-                if (current.phase != LumberPhase.DELIVERING || current.boardsCarrier != player || now - current.phaseStartedAt < LumberTiming.BOARD_PICKUP_TICKS * 50L) return current
+                if (current.phase != LumberPhase.DELIVERING || current.boardsCarrier != player || !current.boardCartLoaded) return current
                 LumberState(roundId = current.roundId, phaseStartedAt = now,
                     progressVersion = current.progressVersion, completedRounds = current.completedRounds + 1,
                     contributors = current.contributors)
@@ -86,23 +86,31 @@ object LumberEngine {
             current.phase == LumberPhase.SAWING && current.sawRunning && ageTicks >= SAW_PASS_TICKS -> {
                 val passes = current.sawPasses + 1
                 current.copy(sawPasses = passes, sawRunning = false,
-                    phase = if (passes == 2) LumberPhase.COLLECTING_BOARDS else LumberPhase.SAWING)
+                    phase = if (passes == 2) LumberPhase.COLLECTING_BOARDS else LumberPhase.SAWING,
+                    cart = if (passes == 2) null else current.cart)
             }
+            current.phase == LumberPhase.DELIVERING && !current.boardCartLoaded && ageTicks >= LumberTiming.BOARD_PICKUP_TICKS ->
+                current.copy(boardCartLoaded = true)
             else -> return current
         }
-        return next.copy(phaseStartedAt = now, progressVersion = current.progressVersion + 1)
+        return next.copy(phaseStartedAt = if (next.boardCartLoaded != current.boardCartLoaded) current.phaseStartedAt else now,
+            progressVersion = current.progressVersion + 1)
     }
 
     fun release(current: LumberState, player: UUID, cartHome: LumberPose): LumberState = when (player) {
         current.cartCarrier -> current.copy(cartCarrier = null, cart = validCart(current.cart, cartHome), progressVersion = current.progressVersion + 1)
         current.boardsCarrier -> current.copy(phase = LumberPhase.COLLECTING_BOARDS, boardsCarrier = null,
+            cart = current.cart.takeIf { current.boardCartLoaded },
             progressVersion = current.progressVersion + 1)
         else -> current
     }
 
     fun recover(current: LumberState, cartHome: LumberPose, now: Long): LumberState = current.copy(
         phase = if (current.phase == LumberPhase.DELIVERING) LumberPhase.COLLECTING_BOARDS else current.phase,
-        cartCarrier = null, boardsCarrier = null, cart = validCart(current.cart, cartHome), sawRunning = false, phaseStartedAt = now,
+        cartCarrier = null, boardsCarrier = null,
+        // Legacy board phases retained the hauled log's pose, so recover their cart at the output.
+        cart = if (current.phase in setOf(LumberPhase.COLLECTING_BOARDS, LumberPhase.DELIVERING)) null else validCart(current.cart, cartHome),
+        boardCartLoaded = false, sawRunning = false, phaseStartedAt = now,
     )
 
     private fun validCart(cart: LumberPose?, fallback: LumberPose): LumberPose = cart?.takeIf {

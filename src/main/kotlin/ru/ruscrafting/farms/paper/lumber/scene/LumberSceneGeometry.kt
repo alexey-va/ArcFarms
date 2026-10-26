@@ -6,6 +6,7 @@ import ru.ruscrafting.farms.domain.lumber.LumberAction
 import ru.ruscrafting.farms.domain.lumber.LumberInput
 import ru.ruscrafting.farms.domain.lumber.LumberPhase
 import ru.ruscrafting.farms.domain.lumber.LumberPose
+import ru.ruscrafting.farms.domain.lumber.LumberState
 import ru.ruscrafting.farms.domain.lumber.LumberTreeSnapshot
 import ru.ruscrafting.farms.domain.lumber.LumberVisualView
 import ru.ruscrafting.farms.domain.lumber.LumberTiming
@@ -24,6 +25,8 @@ internal object LumberSceneGeometry {
     const val FALL_TICKS = LumberTiming.FALL_TICKS
     private const val FALL_TURN_TICKS = FALL_TICKS * 11 / 15
     const val LOG_FOLLOW_DISTANCE = 5.25
+    const val BOARD_CART_FOLLOW_DISTANCE = 4.8
+    private const val BOARD_CART_DECK_HEIGHT = .10
     const val RECEIVING_RADIUS = 3.0
     const val BRANCH_COUNT = 3
     val STOCK_LENGTH = CedarSawmillAnimation.LOG_LENGTH * CedarSawmillGeometry.SCENE_SCALE
@@ -33,7 +36,7 @@ internal object LumberSceneGeometry {
     }
     private val rawCenter = Vector3f(0f, (CedarSawmillAnimation.LOG_BOTTOM + CedarSawmillAnimation.LOG_HEIGHT / 2).toFloat(), -5.8f)
         .mul(CedarSawmillGeometry.SCENE_SCALE).rotate(CedarSawmillGeometry.sceneRotation).add(CedarSawmillGeometry.origin)
-    private val outputCenter = Vector3f(1.1325f, (CedarSawmillAnimation.LOG_BOTTOM + .175 + .28).toFloat(), 3.6f)
+    private val outputCenter = Vector3f(CedarSawmillAnimation.OUTPUT_X.toFloat(), (CedarSawmillAnimation.LOG_BOTTOM + .175 + .28).toFloat(), 3.6f)
         .mul(CedarSawmillGeometry.SCENE_SCALE).rotate(CedarSawmillGeometry.sceneRotation).add(CedarSawmillGeometry.origin)
 
     data class Part(
@@ -51,6 +54,28 @@ internal object LumberSceneGeometry {
         return at.copy(x = at.x - sin(yaw) * 3.5, y = at.y + .25, z = at.z + cos(yaw) * 3.5)
     }
     fun outputPickup(): LumberPose = pose(outputCenter, CedarSawmillGeometry.sceneYaw)
+    fun boardCartHome(): LumberPose = LumberPose("rc_atelier_cedar_sawmill", 194.6, 73.0, 172.68, 180f)
+    fun boardCartStock(at: LumberPose): LumberPose = at.copy(y = at.y + BOARD_CART_DECK_HEIGHT + (.175 + .28) * CedarSawmillGeometry.SCENE_SCALE)
+    fun boardCartPickup(state: LumberState): LumberPose =
+        if (state.boardCartLoaded) boardCartStock(state.cart ?: boardCartHome()) else outputPickup()
+    fun boardLoadingStock(anchor: LumberPose, progress: Double): LumberPose {
+        val end = boardCartStock(anchor)
+        val above = end.copy(y = outputPickup().y)
+        return if (progress < .55) blend(outputPickup(), above, progress / .55, .15)
+        else blend(above, end, (progress - .55) / .45)
+    }
+    fun warehouseStock(at: LumberPose): LumberPose = at.copy(
+        y = at.y + .16 + (.175 + .28) * CedarSawmillGeometry.SCENE_SCALE, yaw = CedarSawmillGeometry.sceneYaw)
+
+    /** One representative delivered bundle. Completion remains wholly owned by the durable domain. */
+    fun storedBoards(warehouse: LumberPose, fromCart: LumberPose? = null, progress: Double = 1.0): List<Part> = buildList {
+        for (z in listOf(-2.5f, 2.5f)) add(Part("storage-bearer-$z", vector(warehouse).add(0f, .08f, z),
+            Vector3f(1.8f, .16f, .24f), block = "minecraft:stripped_spruce_log[axis=x]"))
+        if (fromCart != null && progress < 1.0) addAll(boardCart(fromCart))
+        val target = warehouseStock(warehouse)
+        val at = if (fromCart == null) target else blend(boardCartStock(fromCart), target, progress, .15)
+        addAll(boards(at).map { it.copy(id = "stored-${it.id}") })
+    }
 
     /** A forgiving full-log hull, independent of each ItemDisplay section's model scale. */
     fun pickupTarget(at: LumberPose, action: LumberAction): Part = Part("pickup-log", vector(at),
@@ -72,9 +97,15 @@ internal object LumberSceneGeometry {
             felledStock(tree).yaw)
     }
 
-    fun sample(view: LumberVisualView): List<Part> = buildList {
+    fun sample(view: LumberVisualView, warehouse: LumberPose? = null): List<Part> = buildList {
         val state = view.state
         val tree = state.tree
+        if (tree != null && state.phase == LumberPhase.CHOPPING) tree.logs.filter {
+            it.position.x == tree.root.x && it.position.z == tree.root.z && it.position.y < tree.root.y + 2
+        }.forEachIndexed { index, block ->
+            add(Part("tree-mark-$index", Vector3f(block.position.x + .5f, block.position.y + .5f, block.position.z + .5f),
+                Vector3f(1.004f), block = block.blockData, action = LumberInput(LumberAction.CHOP_TREE)))
+        }
         if (tree != null && state.phase in setOf(LumberPhase.FALLING, LumberPhase.DELIMBING, LumberPhase.LOADING_CART)) {
             val falling = state.phase == LumberPhase.FALLING
             val age = if (falling) view.phaseAgeTicks.toDouble() else FALL_TICKS.toDouble()
@@ -111,8 +142,8 @@ internal object LumberSceneGeometry {
                 }
             }
         }
-        if (state.phase in setOf(LumberPhase.LOADING_CART, LumberPhase.HAULING, LumberPhase.LOADING_SAWMILL)) {
-            addAll(receivingMarkers())
+        if (state.phase == LumberPhase.HAULING && state.cartCarrier != null || state.phase == LumberPhase.LOADING_SAWMILL) {
+            addAll(receivingMarkers().map { if (state.phase == LumberPhase.HAULING) it else it.copy(action = null) })
         }
         state.cart?.let { anchor ->
             if (state.phase in setOf(LumberPhase.HAULING, LumberPhase.LOADING_SAWMILL)) {
@@ -129,6 +160,20 @@ internal object LumberSceneGeometry {
                         Quaternionf().rotationTo(Vector3f(0f, 1f, 0f), line.normalize()), "minecraft:iron_chain[axis=y]"))
                 }
             }
+        }
+        if (state.phase in setOf(LumberPhase.COLLECTING_BOARDS, LumberPhase.DELIVERING)) {
+            val anchor = state.cart.takeIf { state.phase == LumberPhase.DELIVERING || state.boardCartLoaded } ?: boardCartHome()
+            val free = state.phase == LumberPhase.COLLECTING_BOARDS && state.boardCartLoaded
+            addAll(boardCart(anchor).map { if (free) it.copy(action = LumberInput(LumberAction.COLLECT_BOARDS)) else it })
+            if (state.phase == LumberPhase.DELIVERING || state.boardCartLoaded) {
+                val stock = if (state.boardCartLoaded) boardCartStock(anchor) else
+                    boardLoadingStock(anchor, view.phaseAgeTicks.toDouble() / LumberTiming.BOARD_PICKUP_TICKS)
+                addAll(boards(stock).map { if (free) it.copy(action = LumberInput(LumberAction.COLLECT_BOARDS)) else it })
+            }
+        }
+        if (warehouse != null && state.phase == LumberPhase.DELIVERING && state.boardCartLoaded) {
+            for (z in listOf(-1f, 1f)) add(Part("storage-marker-$z", vector(warehouse).add(0f, .035f, z * 1.45f),
+                Vector3f(2.6f, .07f, .12f), block = "minecraft:yellow_terracotta", action = LumberInput(LumberAction.DELIVER_BOARDS)))
         }
     }
 
@@ -228,6 +273,21 @@ internal object LumberSceneGeometry {
             Part(source.partId, Vector3f(source.center).add(CedarSawmillGeometry.origin).sub(outputCenter).rotate(Quaternionf(CedarSawmillGeometry.sceneRotation).conjugate()).rotate(turn).add(vector(at)),
                 Vector3f(source.size), Quaternionf(turn).mul(Quaternionf(CedarSawmillGeometry.sceneRotation).conjugate()).mul(source.rotation), original.blockData, original.itemModel)
         }
+    }
+
+    private fun boardCart(at: LumberPose): List<Part> = buildList {
+        val turn = Quaternionf().rotationY(Math.toRadians(-at.yaw.toDouble()).toFloat())
+        fun part(id: String, x: Float, y: Float, z: Float, sx: Float, sy: Float, sz: Float, material: String) {
+            add(Part("board-cart-$id", Vector3f(x, y, z).rotate(turn).add(vector(at)), Vector3f(sx, sy, sz), Quaternionf(turn), material))
+        }
+        part("bed", 0f, .04f, 0f, 1.55f, .04f, 3.8f, "minecraft:spruce_planks")
+        for (z in listOf(-1.5f, 1.5f)) {
+            part("bolster-$z", 0f, .08f, z, 1.6f, .04f, .24f, "minecraft:stripped_spruce_log[axis=x]")
+            part("axle-$z", 0f, .05f, z, 1.72f, .04f, .12f, "minecraft:polished_deepslate")
+            for (x in listOf(-.82f, .82f)) part("wheel-$x-$z", x, .15f, z, .16f, .3f, .3f, "minecraft:dark_oak_log[axis=x]")
+        }
+        for (x in listOf(-.95f, .95f)) part("shaft-$x", x, .85f, 3.1f, .10f, .10f, 2.7f, "minecraft:spruce_planks")
+        part("handle", 0f, .85f, 4.45f, 2f, .12f, .12f, "minecraft:stripped_spruce_log[axis=x]")
     }
 
     fun blend(from: LumberPose, to: LumberPose, progress: Double, lift: Double = 0.0): LumberPose {
