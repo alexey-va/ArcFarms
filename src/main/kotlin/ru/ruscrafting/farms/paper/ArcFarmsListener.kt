@@ -89,7 +89,9 @@ class ArcFarmsListener(
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
-    fun onSwing(event: org.bukkit.event.player.PlayerAnimationEvent) = service.onSwing(event)
+    fun onSwing(event: org.bukkit.event.player.PlayerAnimationEvent) {
+        service.onSwing(event)
+    }
 
     @EventHandler(priority = EventPriority.HIGHEST)
     fun onBreakHigh(event: BlockBreakEvent) {

@@ -378,6 +378,7 @@ private data class NativeFixture(
 private fun installNativeDispatch(paper: MockBukkitTestRuntime, graph: MineComponentGraph): ArcFarmsService {
     paper.installArcSidebarHost()
     paper.server.addSimpleWorld("sp11")
+    paper.server.addSimpleWorld("rc_atelier_cedar_sawmill")
     val plugin = paper.server.pluginManager.loadPlugin(ArcFarmsPlugin::class.java) as ArcFarmsPlugin
     val root = plugin.dataFolder.toPath()
     Files.createDirectories(root.resolve("lang"))

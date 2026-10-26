@@ -34,6 +34,7 @@ class ArcFarmsPluginMockBukkitIntegrationTest : FunSpec({
             paper.installArcSidebarHost()
             paper.server.addSimpleWorld("sp11")
             paper.server.addSimpleWorld("world")
+            paper.server.addSimpleWorld("rc_atelier_cedar_sawmill")
             val plugin = paper.server.pluginManager.loadPlugin(ArcFarmsPlugin::class.java) as ArcFarmsPlugin
             preparePluginData(plugin.dataFolder.toPath())
             paper.server.pluginManager.enablePlugin(plugin)
@@ -65,6 +66,7 @@ class ArcFarmsPluginMockBukkitIntegrationTest : FunSpec({
             paper.installArcSidebarHost()
             val world = paper.server.addSimpleWorld("sp11")
             paper.server.addSimpleWorld("world")
+            paper.server.addSimpleWorld("rc_atelier_cedar_sawmill")
             val plugin = paper.server.pluginManager.loadPlugin(ArcFarmsPlugin::class.java) as ArcFarmsPlugin
             preparePluginData(plugin.dataFolder.toPath())
             paper.server.pluginManager.enablePlugin(plugin)

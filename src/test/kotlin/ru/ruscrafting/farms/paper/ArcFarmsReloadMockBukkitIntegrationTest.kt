@@ -50,6 +50,7 @@ class ArcFarmsReloadMockBukkitIntegrationTest : FunSpec({
             paper.installArcSidebarHost()
             val world = paper.server.addSimpleWorld("sp11")
             paper.server.addSimpleWorld("world")
+            paper.server.addSimpleWorld("rc_atelier_cedar_sawmill")
             val plugin = paper.server.pluginManager.loadPlugin(ArcFarmsPlugin::class.java) as ArcFarmsPlugin
             prepareReloadData(plugin.dataFolder.toPath())
             seedFoodDelivery(plugin.dataFolder.toPath())

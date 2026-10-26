@@ -137,7 +137,7 @@ class FarmDialogScreensTest : FunSpec({
         } finally { paper.close() }
     }
 
-    test("native footer uses Close when escape closes and keeps Back otherwise") {
+    test("native semantic Back keeps its footer and history policy for either escape preference") {
         val paper = MockBukkitTestRuntime.open()
         try {
             val plugin = paper.createSimplePlugin("FarmDialogFooterLabelTest")
@@ -156,15 +156,26 @@ class FarmDialogScreensTest : FunSpec({
                 ),
             )
 
-            menus.open(player, ArcFarmsMenuPlatform.ENTERPRISE_CONFIRM, content = ::content)
-            PlainTextComponentSerializer.plainText().serialize(capture.last!!.exitButton!!.label) shouldBe "Back to activities"
-            PlainTextComponentSerializer.plainText().serialize(capture.last!!.exitButton!!.tooltip) shouldBe "Return to the previous screen."
+            for (preference in listOf(false, true)) {
+                closePreference = preference
+                menus.open(player, ArcFarmsMenuPlatform.ENTERPRISE_CONFIRM, content = ::content)
+                val screen = requireNotNull(capture.last)
+                val footer = requireNotNull(screen.exitButton)
+                PlainTextComponentSerializer.plainText().serialize(footer.label) shouldBe "back"
+                PlainTextComponentSerializer.plainText().serialize(footer.tooltip) shouldBe "Return to the previous screen."
+                footer.id.value shouldBe "back"
+                footer.width shouldBe 200
+                footer.closeDialogBeforeAction shouldBe false
+                capture.closeOnEscape shouldBe false
+                screen.buttons.any { it.id.value == "back" } shouldBe false
+            }
 
             closePreference = true
-            menus.open(player, ArcFarmsMenuPlatform.ENTERPRISE_CONFIRM, content = ::content)
+            menus.open(player, ArcFarmsMenuPlatform.MAIN) { FarmMenuContent(Component.text("Activities")) }
             PlainTextComponentSerializer.plainText().serialize(capture.last!!.exitButton!!.label) shouldBe "close"
             capture.last!!.exitButton!!.tooltip shouldBe Component.empty()
-            PlainTextComponentSerializer.plainText().serialize(capture.last!!.buttons.single { it.id.value == "back" }.label) shouldBe "Back to activities"
+            capture.last!!.exitButton!!.closeDialogBeforeAction shouldBe true
+            capture.closeOnEscape shouldBe true
         } finally {
             paper.close()
         }

@@ -89,6 +89,7 @@ class ArcFarmsRuntimeValidatorTest : FunSpec({
         MockBukkitTestRuntime.open().use { paper ->
             paper.server.addSimpleWorld("sp11")
             paper.server.addSimpleWorld("world")
+            paper.server.addSimpleWorld("rc_atelier_cedar_sawmill")
 
             shouldThrow<IllegalArgumentException> {
                 validator().validateRuntime(candidateWith("shield-material: SHIELD", "shield-material: IRON_SWORD"))

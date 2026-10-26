@@ -10,6 +10,8 @@ import io.mockk.spyk
 import io.mockk.verify
 import io.papermc.paper.connection.PlayerGameConnection
 import net.kyori.adventure.key.Key
+import net.kyori.adventure.text.Component
+import net.kyori.adventure.text.format.NamedTextColor
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer
 import org.bukkit.Material
 import org.bukkit.NamespacedKey
@@ -43,7 +45,7 @@ import java.nio.file.Files
 import java.util.concurrent.CompletableFuture
 
 class FarmMarketMenuTest : FunSpec({
-    test("market buyer clicks reopen after native Back and Close without the scene feedback cooldown") {
+    test("market buyer clicks reopen after native root Close with either escape preference") {
         MockBukkitTestRuntime.open().use { paper ->
             val plugin = paper.createSimplePlugin("FarmMarketDialogReopen")
             listOf("config.yml", "lang/ru.yml", "lang/en.yml").forEach { name ->
@@ -152,8 +154,14 @@ class FarmMarketMenuTest : FunSpec({
                                 if (opened) {
                                     menus.session(player)?.menuId shouldBe ArcFarmsMenuPlatform.MARKET
                                     val footer = requireNotNull(displayed.exitButton)
-                                    PlainTextComponentSerializer.plainText().serialize(footer.label) shouldBe
-                                        if (closeOnEscape) "Закрыть" else "‹ Назад"
+                                    if (closeOnEscape) {
+                                        PlainTextComponentSerializer.plainText().serialize(footer.label) shouldBe "Закрыть"
+                                    } else {
+                                        // Direct NPC entry starts a flow; Core owns the client-localized root Close.
+                                        footer.label shouldBe Component.translatable("mco.selectServer.close", NamedTextColor.WHITE)
+                                        footer.tooltip shouldBe footer.label
+                                    }
+                                    footer.closeDialogBeforeAction shouldBe closeOnEscape
                                     val key = registration.javaClass.methods.single { it.name.startsWith("key-") }
                                         .invoke(registration, footer.id.value) as String
                                     native.onCustomClick(mockk {
