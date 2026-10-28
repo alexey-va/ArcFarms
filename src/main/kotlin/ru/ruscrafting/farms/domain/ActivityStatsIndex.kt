@@ -54,6 +54,16 @@ class ActivityStatsIndex(
         synchronized(lock) { values = values.put(playerId, (values[playerId] ?: PlayerActivityStats()).complete(kind)) }
     }
 
+    fun recordFarmIntroduction(playerIds: Set<UUID>, eventId: String) {
+        require(eventId.matches(Regex("[a-zA-Z0-9_.:-]{1,160}")))
+        synchronized(lock) {
+            playerIds.forEach { playerId ->
+                val before = values[playerId] ?: PlayerActivityStats()
+                if (before.farmIntroductionEventId == null) values = values.put(playerId, before.copy(farmIntroductionEventId = eventId))
+            }
+        }
+    }
+
     fun leaderboard(kind: ActivityKind, limit: Int = 10): List<Pair<UUID, Long>> {
         refresh()
         return synchronized(lock) { ranks?.all?.get(kind).orEmpty().take(limit.coerceIn(1, 50)) }

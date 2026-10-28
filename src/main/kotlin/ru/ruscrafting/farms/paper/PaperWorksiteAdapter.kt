@@ -340,6 +340,8 @@ internal class PaperWorksiteAdapter(
         contributors.keys.forEach { playerId -> stats.complete(playerId, kind) }
     }
 
+    override fun recordFarmIntroduction(players: Set<UUID>, eventId: String) = stats.recordFarmIntroduction(players, eventId)
+
     override fun signal(signal: NetworkSignal, activity: ActivityKind, actorName: String?, excludedPlayers: Set<UUID>) =
         network.signal(signal, activity, actorName, excludedPlayers)
 

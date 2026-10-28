@@ -646,6 +646,7 @@ class ArcFarmsStateRepository(dataRoot: Path) : AutoCloseable {
             }
             require(stats.contributions.values.all { it >= 0 }) { "Negative contribution" }
             require(stats.completedShifts.values.all { it >= 0 }) { "Negative completion count" }
+            require(stats.farmIntroductionEventId?.matches(Regex("[a-zA-Z0-9_.:-]{1,160}")) != false) { "Invalid farm introduction receipt" }
             require(weekly.values.all { it.weekStartEpochDay in 0..4_000_000 && it.contribution >= 0 }) {
                 "Invalid weekly contribution"
             }

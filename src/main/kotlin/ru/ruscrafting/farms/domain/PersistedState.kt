@@ -9,6 +9,8 @@ data class PlayerActivityStats(
     // Nullable only so Gson can safely read pre-weekly state files where the
     // field is absent. ArcFarmsStateRepository normalizes it after loading.
     val weeklyContributions: Map<ActivityKind, WeeklyActivityContribution>? = emptyMap(),
+    // Only a real commercial farm completion writes this receipt; old aggregate counters are not proof.
+    val farmIntroductionEventId: String? = null,
 ) {
     fun contribute(kind: ActivityKind, amount: Int): PlayerActivityStats =
         copy(

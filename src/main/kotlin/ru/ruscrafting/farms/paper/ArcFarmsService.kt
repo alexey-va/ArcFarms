@@ -695,7 +695,22 @@ class ArcFarmsService(
             return CompletableFuture.failedFuture(IllegalStateException("ArcFarms persistence is suspended during reload"))
         }
         val startedAt = System.nanoTime()
-        return runCatching { stateRepository.saveAsync(snapshotState()) }
+        return runCatching {
+            val snapshot = snapshotState()
+            val onboardingReceipts = Bukkit.getOnlinePlayers().mapNotNull { player ->
+                snapshot.stats[player.uniqueId]?.farmIntroductionEventId?.let { player.uniqueId to it }
+            }.toMap()
+            // Cleanup may still persist after gameplay has stopped; only optional replay needs an active token.
+            val onboardingToken = runCatching { lifecycleTaskSupervisor.token() }.getOrNull()
+            stateRepository.saveAsync(snapshot).also { operation ->
+                operation.whenComplete { _, failure ->
+                    if (failure == null && onboardingToken != null && onboardingReceipts.isNotEmpty())
+                        lifecycleTaskSupervisor.runSync(onboardingToken) {
+                            ru.ruscrafting.farms.paper.farm.shift.replayFarmOnboardingCompletions(onboardingReceipts, worksitePorts.tasks)
+                        }
+                }
+            }
+        }
             .onSuccess { operation ->
                 operation.whenComplete { _, failure ->
                     if (failure != null) plugin.logger.log(Level.SEVERE, "Could not persist ArcFarms state", failure)

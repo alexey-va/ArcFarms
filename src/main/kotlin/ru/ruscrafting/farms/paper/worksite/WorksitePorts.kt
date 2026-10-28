@@ -121,6 +121,7 @@ internal interface WorksiteTaskPort {
 internal interface WorksiteStatsPort {
     fun recordContribution(playerId: UUID, kind: ActivityKind, amount: Int)
     fun recordCompletion(kind: ActivityKind, contributors: Map<UUID, Int>)
+    fun recordFarmIntroduction(players: Set<UUID>, eventId: String) = Unit
 }
 
 internal interface WorksiteNetworkPort {

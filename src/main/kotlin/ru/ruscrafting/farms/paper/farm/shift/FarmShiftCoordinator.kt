@@ -720,6 +720,9 @@ internal class FarmShiftCoordinator(
         val worksiteSequence = runtime.state.sequence
         val worksiteStartedAt = runtime.state.startedAt
         val worksiteSubject = runtime.state.orderId
+        val onboardingPlayers = if (commercialEligible) contributors.filterValues { it > 0 }.keys.toSet() else emptySet()
+        val onboardingEventId = "${settings().serverId}:farm:$worksiteId:$worksiteSequence"
+        if (onboardingPlayers.isNotEmpty()) stats.recordFarmIntroduction(onboardingPlayers, onboardingEventId)
         if (commercialEligible && contributors.isNotEmpty()) {
             Bukkit.getPluginManager().callEvent(
                 WorkShiftCompletedEvent(
