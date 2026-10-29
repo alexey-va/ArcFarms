@@ -4,6 +4,7 @@ import org.bukkit.plugin.ServicePriority
 import org.bukkit.entity.Player
 import org.bukkit.plugin.Plugin
 import org.mockbukkit.mockbukkit.MockBukkit
+import ru.arc.paper.api.ArcDisplayPassengerService
 import ru.arc.paper.api.ArcSidebarFrame
 import ru.arc.paper.api.ArcSidebarHandle
 import ru.arc.paper.api.ArcSidebarRegistrationSnapshot
@@ -12,6 +13,7 @@ import ru.arc.paper.api.ArcSidebarService
 import ru.arc.paper.api.ArcNativeCleanupService
 import ru.arc.paper.api.ArcVisualPacketBudget
 import ru.arc.paper.api.VisualPacketAdmission
+import ru.arc.paper.display.PaperDisplayPassengerServiceProvider
 import ru.arc.paper.runtime.PaperNativeCleanupServiceProvider
 import ru.arc.paper.testing.MockBukkitTestRuntime
 import java.util.UUID
@@ -22,6 +24,9 @@ internal fun MockBukkitTestRuntime.installArcSidebarHost() {
     server.servicesManager.register(ArcSidebarService::class.java, service, host, ServicePriority.Normal)
     if (server.servicesManager.load(ArcNativeCleanupService::class.java) == null) {
         PaperNativeCleanupServiceProvider(host)
+    }
+    if (server.servicesManager.load(ArcDisplayPassengerService::class.java) == null) {
+        PaperDisplayPassengerServiceProvider(host)
     }
     server.servicesManager.register(ArcVisualPacketBudget::class.java, NoOpVisualPacketBudget, host, ServicePriority.Normal)
 }

@@ -144,6 +144,8 @@ tasks {
         exclude("ru/arc/paper/sidebar/**")
         exclude("ru/arc/paper/packet/PaperVisualPacketRuntime*.class")
         exclude("ru/arc/paper/display/PaperDisplayPassengerServiceProvider*.class")
+        exclude("ru/arc/paper/scene/PaperSceneObservationServiceProvider*.class")
+        exclude("ru/arc/paper/scene/PaperSceneEntityInfoServiceProvider*.class")
         exclude("ru/arc/paper/api/**")
         exclude("ru/arc/paper/sql/PaperSqlServiceProvider*.class")
         exclude("ru/arc/paper/sql/SharedPaperSqlService*.class")
