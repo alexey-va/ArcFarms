@@ -1891,7 +1891,7 @@ class ArcFarmsConfigTest : FunSpec({
             values = mapOf("amount" to Component.text("500")),
         )
 
-        PlainTextComponentSerializer.plainText().serialize(rendered) shouldBe "500 💰"
+        PlainTextComponentSerializer.plainText().serialize(rendered) shouldBe "500💰"
     }
 }) {
     companion object {
