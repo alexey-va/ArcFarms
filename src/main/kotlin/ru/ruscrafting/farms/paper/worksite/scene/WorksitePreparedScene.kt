@@ -144,19 +144,19 @@ internal class WorksitePreparedSceneOwner(
     private val rejectedPreparations = linkedSetOf<SceneKey>()
     private val ticketedChunks = linkedMapOf<Triple<String, Int, Int>, AutoCloseable>()
     private val scenes = mutableMapOf<SceneKey, WorksitePreparedScene>()
-    private val scenePositions = mutableMapOf<SceneKey, Set<Triple<Int, Int, Int>>>()
+    private val scenePositions = mutableMapOf<SceneKey, WorksitePreparedSceneIndex>()
     private var mutationEpoch = 0L
     private var cacheEpoch = 0L
     private var journalCache = persistentMapOf<Triple<String, Int, Int>, JournalSnapshot>()
     private val loadingJournals = mutableMapOf<Triple<String, Int, Int>, CompletableFuture<JournalSnapshot>>()
     private data class JournalSnapshot(
         val records: List<WorksitePreparedSceneRecord>,
-        val byPosition: Map<RecordKey, WorksitePreparedSceneRecord>,
+        val byPosition: WorksitePreparedSceneIndex,
         val byScene: Map<SceneKey, List<WorksitePreparedSceneRecord>>,
         val worldId: java.util.UUID? = null,
     )
     private fun snapshot(records: List<WorksitePreparedSceneRecord>) =
-        JournalSnapshot(records, records.associateBy { it.key() }, records.groupBy { it.sceneKey() })
+        JournalSnapshot(records, WorksitePreparedSceneIndex(records), records.groupBy { it.sceneKey() })
     private val chunkRevisions = mutableMapOf<Triple<String, Int, Int>, Long>()
     private val sceneJournalCounts = mutableMapOf<Pair<java.util.UUID, SceneKey>, Int>()
     private val worldWarmups = mutableMapOf<java.util.UUID, CompletableFuture<Unit>>()
@@ -230,7 +230,7 @@ internal class WorksitePreparedSceneOwner(
             return CompletableFuture.completedFuture(false)
         }
         val positions = scenePositions[key] ?: return CompletableFuture.completedFuture(false)
-        require(changes.keys.all { it in positions }) { "Prepared scene projection escapes its journal" }
+        require(changes.keys.all { positions.contains(key.world, it.first, it.second, it.third) }) { "Prepared scene projection escapes its journal" }
         require(changes.values.all { it.length in 1..512 && '\n' !in it && '\r' !in it })
         val epoch = mutationEpoch
         val token = work.lifecycleToken()
@@ -323,7 +323,7 @@ internal class WorksitePreparedSceneOwner(
         if (!commit(scenePlans)) return false
         scenePlans.forEach { scene ->
             scenes[scene.key()] = scene
-            scenePositions[scene.key()] = scene.records.mapTo(hashSetOf()) { Triple(it.x, it.y, it.z) }
+            scenePositions[scene.key()] = WorksitePreparedSceneIndex(scene.records)
             completedBuilds.remove(scene.key())
             ticket(scene)
             enqueueBuild(scene.records)
@@ -358,10 +358,11 @@ internal class WorksitePreparedSceneOwner(
             it.world == scene.world.name && it.zoneId == scene.zoneId && it.sequence == scene.sequence &&
                 it.sceneId == scene.sceneId && it.totalRecords == scene.records.size
         })
-        require(scene.records.map { it.key() }.toSet().size == scene.records.size) { "Prepared scene has duplicate positions" }
+        val positions = WorksitePreparedSceneIndex(scene.records)
+        require(positions.size == scene.records.size) { "Prepared scene has duplicate positions" }
         if (!validateBlockData(scene.records)) return false
         scenes[key] = scene
-        scenePositions[key] = scene.records.mapTo(hashSetOf()) { Triple(it.x, it.y, it.z) }
+        scenePositions[key] = positions
         completedBuilds.remove(key)
         rejectedPreparations.remove(key)
         ticket(scene)
@@ -370,7 +371,7 @@ internal class WorksitePreparedSceneOwner(
     }
 
     private data class ScenePreparation(
-        val positions: Set<Triple<Int, Int, Int>>,
+        val positions: WorksitePreparedSceneIndex,
         val chunks: Set<Pair<Int, Int>>,
         val palette: Set<String>,
         val slices: List<List<WorksitePreparedSceneRecord>>,
@@ -398,7 +399,7 @@ internal class WorksitePreparedSceneOwner(
         work.compute {
             require(records.all { it.world == worldName && it.zoneId == zoneId && it.sequence == sequence &&
                 it.sceneId == sceneId && it.totalRecords == records.size })
-            val positions = records.mapTo(hashSetOf()) { Triple(it.x, it.y, it.z) }
+            val positions = WorksitePreparedSceneIndex(records)
             require(positions.size == records.size) { "Prepared scene has duplicate positions" }
             ScenePreparation(positions, records.mapTo(linkedSetOf()) { it.x shr 4 to (it.z shr 4) },
                 records.flatMapTo(linkedSetOf()) { listOf(it.originalData, it.activeData) }, records.chunked(recordsPerSlice))
@@ -527,8 +528,8 @@ internal class WorksitePreparedSceneOwner(
         val cached = scenes[scene.key()] ?: return false
         val key = cached.key()
         if (key in preparations || key in buildingSceneCounts) return false
-        val positions = scenePositions.getOrPut(key) { cached.records.mapTo(hashSetOf()) { Triple(it.x, it.y, it.z) } }
-        require(changes.keys.all { it in positions }) { "Prepared scene projection escapes its journal" }
+        val positions = scenePositions.getOrPut(key) { WorksitePreparedSceneIndex(cached.records) }
+        require(changes.keys.all { positions.contains(key.world, it.first, it.second, it.third) }) { "Prepared scene projection escapes its journal" }
         require(changes.values.all { it.length in 1..512 && '\n' !in it && '\r' !in it }) {
             "Prepared scene projection contains invalid BlockData"
         }
@@ -647,7 +648,7 @@ internal class WorksitePreparedSceneOwner(
         return WorksitePreparedScene(world, zoneId, sequence, sceneId, surface, resolvedStart, resolvedEnd, records)
             .also {
                 scenes[key] = it
-                scenePositions[key] = it.records.mapTo(hashSetOf()) { record -> Triple(record.x, record.y, record.z) }
+                scenePositions[key] = WorksitePreparedSceneIndex(it.records)
                 if (isComplete(it)) completedBuilds += key
             }
     }
@@ -749,14 +750,14 @@ internal class WorksitePreparedSceneOwner(
     fun protects(location: Location): Boolean {
         val key = RecordKey(location.world.name, location.blockX, location.blockY, location.blockZ)
         if (key in queuedBuilds || key in queuedRestores || scenePositions.any { (scene, positions) ->
-            scene.world == location.world.name && Triple(location.blockX, location.blockY, location.blockZ) in positions
+            scene.world == location.world.name && positions.contains(key.world, key.x, key.y, key.z)
         }) return true
         if (!location.world.isChunkLoaded(location.blockX shr 4, location.blockZ shr 4)) return false
         val records = read(location.world.getChunkAt(location.blockX shr 4, location.blockZ shr 4))
         // Unknown journals protect the chunk until their worker validation finishes.
         if (records == null) return tasks != null
         val indexed = journalCache[Triple(location.world.name, location.blockX shr 4, location.blockZ shr 4)]
-        return indexed?.byPosition?.containsKey(key) ?: records.any { it.key() == key }
+        return indexed?.byPosition?.contains(key.world, key.x, key.y, key.z) ?: records.any { it.key() == key }
     }
 
     fun restoring(zoneId: String): Boolean = (restoreCounts[zoneId] ?: 0) > 0 || zoneId in retiringZones ||
@@ -852,7 +853,7 @@ internal class WorksitePreparedSceneOwner(
                     val chunk = world.getChunkAt(cx, cz)
                     readAsync(chunk)
                     val journal = journalCache[Triple(pending.world, cx, cz)]
-                    val record = journal?.byPosition?.get(key)
+                    val record = journal?.byPosition?.get(key.world, key.x, key.y, key.z)
                     when {
                         journal == null -> requeue(pending, restore)
                         record == null -> if (!restore) forgetBuild(pending, completed = false)
@@ -1237,7 +1238,7 @@ internal class WorksitePreparedSceneOwner(
             }
             val pendingKeys = pending.mapTo(hashSetOf()) { it.key() }
             val indexed = journalCache[chunkKey]
-            val owned = if (tasks != null && indexed != null) pendingKeys.mapNotNull(indexed.byPosition::get)
+            val owned = if (tasks != null && indexed != null) pendingKeys.mapNotNull { indexed.byPosition[it.world, it.x, it.y, it.z] }
                 else current.filter { it.key() in pendingKeys }
             val ownedKeys = owned.mapTo(hashSetOf()) { it.key() }
             if (!restore) {
@@ -1364,7 +1365,7 @@ internal class WorksitePreparedSceneOwner(
 
     private data class RecoveredScene(
         val records: List<WorksitePreparedSceneRecord>,
-        val positions: Set<Triple<Int, Int, Int>>,
+        val positions: WorksitePreparedSceneIndex,
         val chunks: Set<Pair<Int, Int>>,
         val palette: Set<String>,
         val start: WorksitePreparedSceneRecord?,
@@ -1391,7 +1392,7 @@ internal class WorksitePreparedSceneOwner(
                     .flatMap { it.value.byScene[key].orEmpty().asSequence() }.toList()
                 if (records.isNotEmpty()) require(records.all { it.totalRecords == records.first().totalRecords }) { "Inconsistent recovered scene size" }
                 if (records.isEmpty()) null else RecoveredScene(records,
-                    records.mapTo(hashSetOf()) { Triple(it.x, it.y, it.z) },
+                    WorksitePreparedSceneIndex(records),
                     records.mapTo(linkedSetOf()) { it.x shr 4 to (it.z shr 4) },
                     records.flatMapTo(linkedSetOf()) { listOf(it.originalData, it.activeData) },
                     startMarker?.let { marker -> records.singleOrNull { it.marker == marker } },

@@ -69,6 +69,30 @@ class WorksitePreparedSceneAsyncTest : FunSpec({
         }
     }
 
+    test("restoration keeps an unloaded chunk journal protected and resumes after that chunk returns") {
+        SceneHarness().use { h ->
+            val scene = h.scene(17)
+            h.owner.prepareIncrementally(scene, NATIVE_STEP_BUDGET) shouldBe true
+            h.until { scene.ready }
+            val unloaded = h.world.getChunkAt(1, 0)
+            val journal = unloaded.persistentDataContainer.get(h.key, PersistentDataType.BYTE_ARRAY)!!.toList()
+            h.world.unloadChunk(1, 0, true) shouldBe true
+
+            h.owner.beginRestore(h.world, scene.zoneId, scene.sequence)
+            h.until { h.world.getChunkAt(0, 0).persistentDataContainer.get(h.key, PersistentDataType.BYTE_ARRAY) == null }
+            h.owner.restoring(scene.zoneId) shouldBe true
+            h.owner.protects(Location(h.world, 16.0, 64.0, 0.0)) shouldBe true
+            h.world.isChunkLoaded(1, 0) shouldBe false
+            unloaded.persistentDataContainer.get(h.key, PersistentDataType.BYTE_ARRAY)!!.toList() shouldBe journal
+
+            val loaded = h.world.getChunkAt(1, 0)
+            h.owner.onChunkLoad(loaded, { _, _ -> false })
+            h.until { !h.owner.restoring(scene.zoneId) }
+            h.world.getBlockAt(16, 64, 0).type shouldBe Material.STONE
+            loaded.persistentDataContainer.get(h.key, PersistentDataType.BYTE_ARRAY) shouldBe null
+        }
+    }
+
     test("clearing an owner while worker preparation is delayed cannot publish its stale scene") {
         SceneHarness().use { h ->
             val blocker = CompletableFuture<Unit>()

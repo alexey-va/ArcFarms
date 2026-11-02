@@ -212,7 +212,7 @@ internal class MineExpeditionBuilder(
         kind = kind,
         seed = seed,
         bounds = bounds,
-        blocks = blocks.toMap(),
+        blocks = MineExpeditionBlocks(bounds, blocks),
         stations = stations.toMap(),
         routes = routes.mapValues { it.value.toList() },
         walkingRoutes = walkingRoutes.map { it.toList() },

@@ -90,6 +90,7 @@ class WorksitePreparedSceneProjectionMockBukkitTest : FunSpec({
     ): WorksitePreparedScene {
         val originalData = "minecraft:farmland[moisture=7]"
         xs.forEach { x ->
+            world.getChunkAt(x shr 4, 0).load()
             world.getBlockAt(x, 64, 0).blockData = Bukkit.createBlockData(originalData)
         }
         val records = xs.map { x ->
@@ -152,6 +153,32 @@ class WorksitePreparedSceneProjectionMockBukkitTest : FunSpec({
         restarted.beginRestore(world, plan.zoneId, plan.sequence, plan.sceneId)
         restarted.process(1) { true } shouldBe 1
         world.getBlockAt(0, 64, 0).blockData.asString shouldBe "minecraft:farmland[moisture=7]"
+        leases shouldBe emptySet()
+    }
+
+    test("negative chunk boundaries keep projection ownership and restart restoration exact") {
+        val prepared = owner()
+        val plan = scene(xs = listOf(-17, -16, -1))
+        prepareAndBuild(prepared, plan)
+        val changes = plan.records.associate { Triple(it.x, it.y, it.z) to "minecraft:gold_block" }
+        prepared.project(plan, changes) shouldBe true
+        plan.records.forEach { prepared.protects(Location(world, it.x.toDouble(), 64.0, 0.0)) shouldBe true }
+        shouldThrow<IllegalArgumentException> {
+            prepared.project(plan, mapOf(Triple(15, 64, 0) to "minecraft:diamond_block"))
+        }
+
+        prepared.clearQueues()
+        val restarted = owner()
+        val recovered = requireNotNull(restarted.scene(world, plan.zoneId, plan.sequence, plan.sceneId,
+            plan.surface, 0, plan.start, plan.end))
+        recovered.records.associate { it.x to it.activeData } shouldBe mapOf(
+            -17 to "minecraft:gold_block", -16 to "minecraft:gold_block", -1 to "minecraft:gold_block")
+        restarted.beginRestore(world, plan.zoneId, plan.sequence, plan.sceneId)
+        restarted.process(3) { true } shouldBe 3
+        plan.records.forEach {
+            world.getBlockAt(it.x, it.y, it.z).blockData.asString shouldBe "minecraft:farmland[moisture=7]"
+            restarted.protects(Location(world, it.x.toDouble(), 64.0, 0.0)) shouldBe false
+        }
         leases shouldBe emptySet()
     }
 
