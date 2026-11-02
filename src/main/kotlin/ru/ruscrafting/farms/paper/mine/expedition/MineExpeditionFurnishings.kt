@@ -56,7 +56,7 @@ internal object MineExpeditionFurnishings {
         id.startsWith("control_") -> "machine_console"
         else -> "console"
     }
-    fun fixtures(scene:MineExpeditionScene):List<Fixture> = fixtures(scene.plan)
+    fun fixtures(scene:MineExpeditionScene):List<Fixture> = scene.furnishingFixtures
     fun fixtures(plan:ru.ruscrafting.farms.domain.mine.expedition.MineExpeditionPlan):List<Fixture> {
         val modernFactory = plan.kind==MineExpeditionKind.DEAD_FACTORY && plan.stations.containsKey("crusher_feed")
         // v4 keeps the historical station ids but uses the pump sentinel to

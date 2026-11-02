@@ -185,7 +185,7 @@ internal class PacketLumberPresentation(
         if (part.itemModel == null) translation.add(part.rotation.transform(Vector3f(part.size).mul(-.5f)))
         val pose = ScenePose(anchor, Transformation(translation, Quaternionf(part.rotation), Vector3f(part.size), Quaternionf()))
         val glowing = part.action != null || part.highlight
-        val style = STYLE.copy(glowing = glowing, glowColor = if (glowing) Color.fromRGB(0xffc857) else null)
+        val style = if (glowing) GLOWING_STYLE else STYLE
         return if (part.itemModel != null) ScenePart.Item(part.id, pose, style, items.getValue(part.itemModel), ItemDisplay.ItemDisplayTransform.NONE, part.visible)
         else ScenePart.Block(part.id, pose, style, blocks.getOrPut(requireNotNull(part.block)) { Bukkit.createBlockData(part.block) }, part.visible)
     }
@@ -233,6 +233,7 @@ internal class PacketLumberPresentation(
     private companion object {
         val KEY = SpatialSceneKey("cedar-lumber-workpiece")
         val STYLE = SceneDisplayStyle(Display.Billboard.FIXED, Display.Brightness(12, 12), 0, 2, 1.25f, 0f, 0f, 0f, 0f, false, null)
+        val GLOWING_STYLE = STYLE.copy(glowing = true, glowColor = Color.fromRGB(0xffc857))
     }
 }
 

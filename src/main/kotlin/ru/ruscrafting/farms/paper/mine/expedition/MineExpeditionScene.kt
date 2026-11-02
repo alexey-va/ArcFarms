@@ -22,6 +22,11 @@ internal class MineExpeditionScene(
     var completedAt: Long = 0L,
     var reserved: Boolean = false,
 ) {
+    /** Fixed authored fixtures; editor offsets and yaw are applied by the renderer. */
+    val furnishingFixtures: List<MineExpeditionFurnishings.Fixture> by lazy {
+        java.util.List.copyOf(MineExpeditionFurnishings.fixtures(plan))
+    }
+
     /** Stable incident identity; journalSequence is the cross-shift journal identity. */
     val nonce: Long get() = objectiveNonce
     val sceneId: Int get() = prepared.sceneId
