@@ -207,8 +207,7 @@ internal class FarmBlockRegistry(
         reconcileCounts[definition.zoneId] = (reconcileCounts[definition.zoneId] ?: 0) + 1
         val previous = reconcileTails.put(definition.zoneId, result) ?: CompletableFuture.completedFuture(Unit)
         fun current() = !closed && epoch == expectedEpoch && pendingReconcile[key] === result &&
-            definition.zoneId !in jobs && chunk.world.isChunkLoaded(chunk.x, chunk.z) &&
-            chunk.world.getChunkAt(chunk.x, chunk.z) === chunk
+            definition.zoneId !in jobs && chunk.world.isChunkLoaded(chunk.x, chunk.z)
         previous.handle { _, _ -> Unit }.thenCompose { work.callSync(token) {
             if (!current()) throw CancellationException("Farm chunk reconciliation source changed")
             ledger.restoreTemporaryAsync(chunk, definition.zoneId, work, ::current)
@@ -380,7 +379,7 @@ internal class FarmBlockRegistry(
         fun start() { if (tasks == null) requestChunk() else requestChunkAsync() }
 
         private fun current() = !finished && !closed && jobs[definition.zoneId] === this &&
-            (currentChunk?.let { it.isLoaded && it.world.getChunkAt(it.x, it.z) === it } != false)
+            (currentChunk?.isLoaded != false)
 
         private fun requestChunkAsync() {
             val work = requireNotNull(tasks)

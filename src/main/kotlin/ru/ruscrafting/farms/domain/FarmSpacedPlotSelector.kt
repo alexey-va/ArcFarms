@@ -9,7 +9,12 @@ internal data class FarmSpacedSelection(
 internal object FarmSpacedPlotSelector {
     private data class Candidate(var value: FarmMatureCrop, var minimumDistanceSquared: Double)
 
-    fun select(candidates: List<FarmMatureCrop>, count: Int, minimumSpacing: Double): FarmSpacedSelection {
+    fun select(
+        candidates: List<FarmMatureCrop>,
+        count: Int,
+        minimumSpacing: Double,
+        enforceMinimumSpacing: Boolean = false,
+    ): FarmSpacedSelection {
         require(count >= 0) { "Spaced selection count must not be negative" }
         require(minimumSpacing.isFinite() && minimumSpacing >= 0.0) { "Spaced selection distance is invalid" }
         if (candidates.isEmpty() || count == 0) return FarmSpacedSelection(emptyList(), 0)
@@ -22,14 +27,13 @@ internal object FarmSpacedPlotSelector {
         }
         val minimumSquared = minimumSpacing * minimumSpacing
         while (selected.size < target && remaining.isNotEmpty()) {
-            val spaced = remaining.indices.filter { remaining[it].minimumDistanceSquared >= minimumSquared }
-            val pool = spaced.ifEmpty { remaining.indices.toList() }
-            val chosenIndex = pool.maxWithOrNull(
+            val chosenIndex = remaining.indices.maxWithOrNull(
                 compareBy<Int> { remaining[it].minimumDistanceSquared }
                     .thenBy { remaining[it].value.plot.x }
                     .thenBy { remaining[it].value.plot.z }
                     .thenBy { remaining[it].value.plot.y },
             ) ?: break
+            if (enforceMinimumSpacing && remaining[chosenIndex].minimumDistanceSquared < minimumSquared) break
             val chosen = remaining.removeAt(chosenIndex).value
             selected += chosen
             remaining.forEach { candidate ->

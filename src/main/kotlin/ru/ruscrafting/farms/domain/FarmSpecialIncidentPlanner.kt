@@ -117,6 +117,7 @@ object FarmSpecialIncidentPlanner {
                 candidates,
                 nightCropPlacements,
                 nightCropMinSpacing,
+                enforceMinimumSpacing = true,
             ).values
                 .takeIf(List<FarmMatureCrop>::isNotEmpty)?.let { chosen ->
                     val patrolCandidates = rotate(

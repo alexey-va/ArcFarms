@@ -446,13 +446,13 @@ class FarmSpecialIncidentEngineTest : FunSpec({
     test("night shift spreads crop targets and patrol anchors across the available field") {
         val mature = (0 until 10).flatMap { x ->
             (0 until 10).map { z ->
-                FarmMatureCrop(FarmPlotPosition("world", x * 2, 64, z * 2), "WHEAT")
+                FarmMatureCrop(FarmPlotPosition("world", x * 3, 64, z * 3), "WHEAT")
             }
         }
-        val plan = FarmSpecialIncidentPlanner.plan(
+        fun planNight(sequence: Long, crops: List<FarmMatureCrop>) = FarmSpecialIncidentPlanner.plan(
             FarmIncidentType.NIGHT_SHIFT,
-            sequence = 7,
-            matureCrops = mature,
+            sequence = sequence,
+            matureCrops = crops,
             fallbackPlot = mature.first().plot,
             channelBlockages = 4,
             nightCropPlacements = 12,
@@ -463,10 +463,13 @@ class FarmSpecialIncidentEngineTest : FunSpec({
             marketCrops = 3,
         ) ?: error("Night shift plan is missing")
 
+        val plan = planNight(7, mature)
+        planNight(7, mature.reversed()) shouldBe plan
+        (planNight(8, mature).state.plots.toSet() == plan.state.plots.toSet()) shouldBe false
         plan.required shouldBe 8
         plan.state.plots.size shouldBe 12
         plan.state.points.size shouldBe 3
-        (minimumPlotDistance(plan.state.plots) >= 5.5) shouldBe true
+        (minimumPlotDistance(plan.state.plots) >= 6.0) shouldBe true
         (plan.state.plots.maxOf { it.x } - plan.state.plots.minOf { it.x } >= 16) shouldBe true
         (plan.state.plots.maxOf { it.z } - plan.state.plots.minOf { it.z } >= 16) shouldBe true
         (minimumPointDistance(plan.state.points) >= 10.0) shouldBe true
@@ -500,9 +503,9 @@ class FarmSpecialIncidentEngineTest : FunSpec({
         (minimumPointDistance(plan.state.points) >= 30.0) shouldBe true
     }
 
-    test("night shift keeps the configured patrol count when few unmarked beds remain") {
-        val mature = (0 until 7).map { x ->
-            FarmMatureCrop(FarmPlotPosition("world", x * 2, 64, 0), "WHEAT")
+    test("night shift marks one crop per crowded patch and keeps the quota reachable and the patrols present") {
+        val mature = listOf(0, 16, 32).flatMap { patch ->
+            (0..2).map { x -> FarmMatureCrop(FarmPlotPosition("world", patch + x, 64, 0), "WHEAT") }
         }
         val plan = FarmSpecialIncidentPlanner.plan(
             FarmIncidentType.NIGHT_SHIFT,
@@ -510,17 +513,19 @@ class FarmSpecialIncidentEngineTest : FunSpec({
             matureCrops = mature,
             fallbackPlot = mature.first().plot,
             channelBlockages = 4,
-            nightCropPlacements = 6,
-            nightCropTarget = 4,
-            nightCropMinSpacing = 3.0,
-            nightPatrols = 2,
-            nightPatrolMinSpacing = 6.0,
+            nightCropPlacements = 90,
+            nightCropTarget = 24,
+            nightCropMinSpacing = 6.0,
+            nightPatrols = 4,
+            nightPatrolMinSpacing = 12.0,
             marketCrops = 3,
         ) ?: error("Night shift plan is missing")
 
-        plan.state.plots.size shouldBe 6
-        plan.state.points.size shouldBe 2
-        (minimumPointDistance(plan.state.points) >= 6.0) shouldBe true
+        plan.state.plots.size shouldBe 3
+        plan.state.plots.map { it.x / 16 }.toSet() shouldBe setOf(0, 1, 2)
+        (minimumPlotDistance(plan.state.plots) >= 6.0) shouldBe true
+        plan.required shouldBe 3
+        plan.state.points.size shouldBe 4
     }
 })
 

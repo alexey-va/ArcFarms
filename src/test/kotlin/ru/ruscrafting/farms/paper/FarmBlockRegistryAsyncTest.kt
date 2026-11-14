@@ -2,6 +2,7 @@ package ru.ruscrafting.farms.paper
 
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
+import org.bukkit.Chunk
 import org.bukkit.Material
 import org.bukkit.NamespacedKey
 import org.bukkit.World
@@ -59,7 +60,59 @@ class FarmBlockRegistryAsyncTest : FunSpec({
         }
     }
 
-    test("worker snapshot scan and bounded apply preserve the exact legacy topology and chunk journal") {
+    test("chunk reconciliation accepts a distinct wrapper of the same loaded chunk") {
+        FarmAsyncHarness("FarmChunkWrapper").use { h ->
+            val world = h.paper.server.addSimpleWorld("farm_chunk_wrapper")
+            val soil = world.getBlockAt(2, 64, 2).also { it.type = Material.FARMLAND }
+            soil.getRelative(org.bukkit.block.BlockFace.UP).type = Material.WHEAT
+            val fixed = world.getBlockAt(3, 65, 3).also { it.type = Material.PUMPKIN }
+            val leaf = world.getBlockAt(4, 66, 4).also { it.type = Material.OAK_LEAVES }
+            val chunk = soil.chunk.also { it.load() }
+            FarmBlockLedger(h.plugin).replaceZoneIndex(chunk, "farm", listOf(soil), listOf(fixed), listOf(leaf))
+            val wrapper: Chunk = object : Chunk by chunk {}
+            (wrapper === world.getChunkAt(chunk.x, chunk.z)) shouldBe false
+            wrapper.isLoaded shouldBe true
+            val registry = FarmBlockRegistry(h.plugin, FarmBlockLedger(h.plugin), tasks = h.tasks)
+
+            val result = registry.reconcileChunkAsync(definition(world, 15), wrapper)
+            h.until { result.isDone }
+            result.join()
+
+            registry.beds("farm") shouldBe setOf(FarmPlotPosition(world.name, 2, 64, 2))
+            registry.fixedCrops("farm") shouldBe setOf(FarmPlotPosition(world.name, 3, 65, 3))
+            registry.orchardLeaves("farm") shouldBe setOf(FarmPlotPosition(world.name, 4, 66, 4))
+            registry.isReindexing("farm") shouldBe false
+            registry.close()
+        }
+    }
+
+    test("unloading a chunk during worker decode prevents reconciliation from publishing topology") {
+        FarmAsyncHarness("FarmChunkUnload").use { h ->
+            val world = h.paper.server.addSimpleWorld("farm_chunk_unload")
+            val soil = world.getBlockAt(2, 64, 2).also { it.type = Material.FARMLAND }
+            soil.getRelative(org.bukkit.block.BlockFace.UP).type = Material.WHEAT
+            val chunk = soil.chunk.also { it.load() }
+            FarmBlockLedger(h.plugin).replaceZoneIndex(chunk, "farm", listOf(soil), emptyList(), emptyList())
+            val registry = FarmBlockRegistry(h.plugin, FarmBlockLedger(h.plugin), tasks = h.tasks)
+            val accepted = FarmPlotPosition(world.name, 1, 64, 1)
+            registry.addBeds("farm", listOf(accepted))
+            h.gate = CompletableFuture()
+            val result = registry.reconcileChunkAsync(definition(world, 15), chunk)
+            h.until { h.totalNativeSteps >= 3 }
+
+            world.unloadChunk(chunk.x, chunk.z, true) shouldBe true
+            h.gate!!.complete(Unit)
+            h.until { result.isDone }
+
+            result.isCompletedExceptionally shouldBe true
+            world.isChunkLoaded(chunk.x, chunk.z) shouldBe false
+            registry.beds("farm") shouldBe setOf(accepted)
+            registry.isReindexing("farm") shouldBe false
+            registry.close()
+        }
+    }
+
+    test("fresh chunk wrappers preserve the exact legacy topology and chunk journal during async reindex") {
         FarmAsyncHarness("FarmIndexAsync").use { h ->
             val world = h.paper.server.addSimpleWorld("farm_index")
             for (x in 0..1) for (z in 0..1) world.getChunkAt(x, z).load()
@@ -97,9 +150,22 @@ class FarmBlockRegistryAsyncTest : FunSpec({
             var releases = 0
             val registry = FarmBlockRegistry(h.plugin, ledger, addChunkTicket = { true },
                 removeChunkTicket = { releases++ }, tasks = h.tasks)
+            // Preserve MockBukkit storage while reproducing CraftWorld's fresh Chunk wrappers.
+            val freshChunkWorld = object : World by world {
+                override fun getChunkAt(x: Int, z: Int): Chunk {
+                    val chunk = world.getChunkAt(x, z)
+                    return object : Chunk by chunk {
+                        override fun getChunkSnapshot(includeMaxblocky: Boolean, includeBiome: Boolean, includeBiomeTempRain: Boolean) =
+                            chunk.getChunkSnapshot(includeMaxblocky, includeBiome, includeBiomeTempRain)
+                    }
+                }
+            }
+            val asyncDefinition = definition.copy(region = object : ActivityRegion by definition.region {
+                override val world: World = freshChunkWorld
+            })
             var result: FarmBlockReindexResult? = null
             var failure: Throwable? = null
-            registry.startReindex(definition, {}, { result = it }, { failure = it })
+            registry.startReindex(asyncDefinition, {}, { result = it }, { failure = it })
             result shouldBe null
             h.until { result != null || failure != null }
             failure?.let { throw it }
