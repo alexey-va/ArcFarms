@@ -90,11 +90,6 @@ internal class WorksiteEventRouter(
         if (!registry.onEntityDamage(event)) fallback()
     }
 
-    fun updateVisuals(updateFarm: () -> Unit) {
-        updateFarm()
-        registry.updateVisuals()
-    }
-
     fun onDrop(event: PlayerDropItemEvent): Boolean {
         val guarded = serviceItems.guardDrop(event.itemDrop.itemStack)
         if (guarded) event.isCancelled = true

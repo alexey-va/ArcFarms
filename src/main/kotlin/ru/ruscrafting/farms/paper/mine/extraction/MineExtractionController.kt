@@ -51,12 +51,15 @@ internal class MineExtractionController(
     fun push(runtime: MineRuntime, player: Player, to: Location): Boolean {
         if (runtime.settings.miningOnly || runtime.state.phase != MinePhase.EXTRACTION || !access.hasAccess(player, runtime.settings.permission)) return false
         val route = route(runtime) ?: return false
-        if (runtime.state.routeIndex >= route.finalIndex) return false
-        val next = route.sample(runtime.state.routeIndex + 1)
+        val currentIndex = runtime.state.routeIndex
+        if (currentIndex > route.finalIndex) return false
+        val next = route.sample(minOf(currentIndex + 1, route.finalIndex))
         if (!near(to, next, runtime.settings.extractionCheckpointRadius)) return false
-        val advanced = MineShiftEngine.advanceRoute(runtime.state, route.finalIndex, player.uniqueId)
-        transitions.apply(runtime, advanced, player)
-        if (runtime.state.routeIndex >= route.finalIndex) {
+        if (currentIndex < route.finalIndex) {
+            val advanced = MineShiftEngine.advanceRoute(runtime.state, route.finalIndex, player.uniqueId)
+            transitions.apply(runtime, advanced, player)
+        }
+        if (runtime.state.routeIndex == route.finalIndex) {
             complete(runtime, player, route.finalIndex)
             scene.cleanup(runtime.settings.id)
         } else {
@@ -65,38 +68,40 @@ internal class MineExtractionController(
         return true
     }
 
-    fun completeMiningOrder(runtime: MineRuntime, player: Player) {
-        if (!runtime.settings.miningOnly || runtime.state.phase != MinePhase.EXTRACTION ||
-            runtime.state.incidentCursor < runtime.state.incidentSchedule.size) return
-        complete(runtime, player, 0)
+    fun completeMiningOrder(runtime: MineRuntime) {
+        if (runtime.settings.miningOnly && runtime.state.phase == MinePhase.EXTRACTION) {
+            complete(runtime, null, 0)
+        }
     }
 
-    private fun complete(runtime: MineRuntime, player: Player, routeLength: Int) {
-        val result = MineShiftEngine.extract(runtime.state, runtime.rules(), player.uniqueId, clock())
-        transitions.apply(runtime, result, player)
-        if (result.accepted) {
-            val contributors = result.state.contributors
-            if (contributors.isNotEmpty()) {
-                org.bukkit.Bukkit.getPluginManager().callEvent(
-                    WorkShiftCompletedEvent(
-                        eventId = "$serverId:mine:${runtime.settings.id}:${result.state.sequence}",
-                        kind = "mine",
-                        contributors = contributors.keys,
-                        zoneId = runtime.settings.id,
-                    ),
-                )
-            }
-            stats.recordCompletion(ActivityKind.MINE, result.state.contributors)
+    private fun complete(runtime: MineRuntime, player: Player?, routeLength: Int) {
+        val rules = runtime.rules()
+        val result = MineShiftEngine.extract(runtime.state, rules, player?.uniqueId, clock())
+        val contributors = result.state.contributors
+        transitions.apply(runtime, result, player) {
+            // Enqueue can write a snapshot immediately. Include the completed shift, stats and grants together.
+            stats.recordCompletion(ActivityKind.MINE, contributors)
             rewards?.queueCompletion(
                 ActivityKind.MINE, runtime.settings.rewards, runtime.settings.id, result.state.sequence,
-                result.state.contributors,
-                runtime.rules().let { if (it.miningOnly) it.miningQuota else it.prospectingQuota + it.miningQuota + it.loadingQuota + routeLength },
+                contributors,
+                if (rules.miningOnly) rules.miningQuota else rules.prospectingQuota + rules.miningQuota + rules.loadingQuota + routeLength,
                 result.state.incidentSchedule.size,
             )
-            network.complete(ActivityKind.MINE, player.name, emptySet())
-            audience.announceWinner(listOf(runtime.region), result.state.contributors)
-            audience.celebration(listOf(runtime.region))
         }
+        if (!result.accepted) return
+        if (contributors.isNotEmpty()) {
+            org.bukkit.Bukkit.getPluginManager().callEvent(
+                WorkShiftCompletedEvent(
+                    eventId = "$serverId:mine:${runtime.settings.id}:${result.state.sequence}",
+                    kind = "mine",
+                    contributors = contributors.keys,
+                    zoneId = runtime.settings.id,
+                ),
+            )
+        }
+        network.complete(ActivityKind.MINE, player?.name, emptySet())
+        audience.announceWinner(listOf(runtime.region), contributors)
+        audience.celebration(listOf(runtime.region))
     }
 
     fun reconcile(runtime: MineRuntime) {

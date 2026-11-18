@@ -93,11 +93,12 @@ class LumberDurabilityTest : FunSpec({
             frames.last().phaseAgeTicks shouldBe 0
             frames.last().chopHitAgeTicks shouldBe 0
             now += 2_999L
+            controller.tickFast()
             controller.updateVisuals()
             frames.last().state.phase shouldBe LumberPhase.FALLING
             frames.last().phaseAgeTicks shouldBe 59
             now += 1L
-            controller.updateVisuals()
+            controller.tickFast()
             controller.state.phase shouldBe LumberPhase.DELIMBING
         }
     }

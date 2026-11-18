@@ -20,7 +20,7 @@ ArcFarmsPlugin
       -> FarmComponentGraph (composition only)
       -> FarmModule (farm lifecycle coordinator)
       -> WorksiteEnterpriseService (one shared enterprise ledger and adapters)
-      -> WorksiteModuleRegistry (lumbermill and mine)
+      -> WorksiteModuleRegistry (farm, lumbermill and mine)
       -> ActivityTravelService
       -> state persistence lifecycle
 ```
@@ -93,6 +93,12 @@ Event routing stays capability-based (`BlockBreak`, `BlockInteract`, `Move`,
 `EntityInteract`, `EntityDamage`, `ChunkLoad`, player boundary, inventory). Do
 not introduce one untyped universal event bus or a `when` over every Bukkit
 event in every module.
+
+The registry guards recurring work separately for each module. Implement
+`WorksiteFastTickHandler` for gameplay that needs every server tick, such as
+Cedar's saw clock. Use `WorksiteFastVisualHandler` for frame updates. A module
+may implement both. Its gameplay runs before its frame update. A partial HUD
+refresh keeps the current bars until all modules have supplied their keys.
 
 Worksite infrastructure is split into narrow capability ports:
 

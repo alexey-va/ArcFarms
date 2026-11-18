@@ -17,6 +17,7 @@ import ru.ruscrafting.farms.paper.worksite.ServiceItemIdentity
 import ru.ruscrafting.farms.paper.worksite.WorksiteParticipantOwner
 import ru.ruscrafting.farms.paper.worksite.WorksitePlayerReleaseReason
 import ru.ruscrafting.farms.paper.worksite.WorksiteServiceItemOwner
+import ru.ruscrafting.farms.paper.worksite.WorksiteTaskPort
 import java.util.UUID
 
 data class ActivityStatus(
@@ -110,7 +111,12 @@ internal interface WorksiteEntityDamageHandler {
     fun onEntityDamage(event: EntityDamageEvent): Boolean
 }
 
-/** One-tick visual work only; gameplay state still advances through [WorksiteModule.tick]. */
+/** Gameplay that needs to advance at the server tick rate. */
+internal interface WorksiteFastTickHandler {
+    fun tickFast()
+}
+
+/** One-tick presentation updates run after the same module's fast gameplay. */
 internal interface WorksiteFastVisualHandler {
     fun updateVisuals()
 }
@@ -130,16 +136,42 @@ internal class WorksiteModuleRegistry(
         require(indexed.size == modules.size) { "Only one worksite module may own each activity kind" }
     }
     private val modulesInOrder = ActivityKind.entries.mapNotNull(modulesByKind::get)
+    private val fastUpdates: List<Pair<String, () -> Unit>> = buildList {
+        for (module in modulesInOrder) {
+            if (module is WorksiteFastTickHandler) add("fast_tick:${module.kind}" to module::tickFast)
+            if (module is WorksiteFastVisualHandler) add("carried_displays:${module.kind}" to module::updateVisuals)
+        }
+    }
 
     fun statuses(): List<ActivityStatus> = modulesInOrder.flatMap(WorksiteModule<*>::statuses)
 
-    fun tick(now: Long) = modulesInOrder.forEach { it.tick(now) }
-
-    fun updateGuidance(): MutableSet<ActivityBarKey> = linkedSetOf<ActivityBarKey>().also { expectedBars ->
-        modulesInOrder.filterIsInstance<WorksiteGuidanceHandler>().forEach { it.updateGuidance(expectedBars) }
+    fun tick(now: Long, tasks: WorksiteTaskPort) = modulesInOrder.forEach { module ->
+        tasks.guarded("tick:${module.kind}") { module.tick(now) }
     }
 
-    fun emitGuidance() = modulesInOrder.filterIsInstance<WorksiteGuidanceHandler>().forEach { it.emitGuidance() }
+    /** A guarded refresh can leave an incomplete key set. The caller must skip its global bar sweep in that case. */
+    fun updateGuidance(tasks: WorksiteTaskPort? = null): Set<ActivityBarKey>? {
+        val expectedBars = linkedSetOf<ActivityBarKey>()
+        var incomplete = false
+        for (module in modulesInOrder) {
+            if (module !is WorksiteGuidanceHandler) continue
+            if (tasks == null) {
+                module.updateGuidance(expectedBars)
+            } else {
+                var complete = false
+                tasks.guarded("player_guidance:${module.kind}") {
+                    module.updateGuidance(expectedBars)
+                    complete = true
+                }
+                if (!complete) incomplete = true
+            }
+        }
+        return expectedBars.takeUnless { incomplete }
+    }
+
+    fun emitGuidance(tasks: WorksiteTaskPort) = modulesInOrder.forEach { module ->
+        if (module is WorksiteGuidanceHandler) tasks.guarded("guidance_particles:${module.kind}", module::emitGuidance)
+    }
 
     fun activateLoadedState() = modulesInOrder.forEach(WorksiteModule<*>::activateLoadedState)
 
@@ -217,7 +249,9 @@ internal class WorksiteModuleRegistry(
     fun onEntityDamage(event: EntityDamageEvent): Boolean =
         modulesInOrder.filterIsInstance<WorksiteEntityDamageHandler>().any { it.onEntityDamage(event) }
 
-    fun updateVisuals() = modulesInOrder.filterIsInstance<WorksiteFastVisualHandler>().forEach { it.updateVisuals() }
+    fun updateEveryTick(tasks: WorksiteTaskPort) = fastUpdates.forEach { (scope, update) ->
+        tasks.guarded(scope, update)
+    }
 
     override fun isActive(identity: ServiceItemIdentity): Boolean =
         (modulesByKind[identity.activity] as? WorksiteServiceItemOwner)?.isActive(identity) == true

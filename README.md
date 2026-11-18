@@ -324,12 +324,12 @@ also flushed to `data/fixed-farm-crops.json`; this closes the hard-stop window
 before the chunk itself is saved. A solid obstruction is never overwritten;
 both durable records are retained and retried instead.
 
-### Lumber order
+### Cedar Sawmill
 
-The order names one requested wood species. Cutting that species fills a small
-raw-timber quota. The activity then moves to processing: players use a
-configured sawmill block inside the station region until the batch is complete.
-Logs still drop normally, and processing does not consume inventory items.
+Players in the closed beta share one tree. They fell it, cut three branches,
+haul the log to the mill and run two saw passes. The overhead crane delivers
+the boards to the warehouse and completes the local round. See the
+[closed lumber beta](#closed-lumber-beta) for access, incidents and recovery.
 
 ### Mine expedition
 
@@ -338,6 +338,13 @@ loading. Each order specifies the requested resources and their quotas;
 participants contribute to the same progress. Incidents interrupt the work,
 and resolving them resumes the same order. Runtime-owned ore uses the mine's
 configured material mix and a durable block journal for restoration.
+
+In mining-only zones, the shift completes once the shared ore quota and its
+incident slots are finished. Contributors can collect a pending reward on
+their next visit. If the quota is full and a scheduled expedition gate or
+workshop station is missing, the scheduler tries other incidents allowed by
+that order, one per retry. A replacement must start and be resolved to fill
+the slot. Procedural events keep their slot while their scene is being prepared.
 
 Mine incidents use the physical route. `TRACK_DAMAGE`, `TUNNEL_DRIVE` and
 `RAIL_EXTENSION` share a temporary side-working entered on foot from a mine
@@ -630,10 +637,10 @@ counts, spawn batching and display/hitbox height,
 block-reindex and backup batch/size limits, display
 scale/offset/view range, care timings, drought/pest tuning, UI toggles, sounds,
 particles, rewards, fixed-crop respawn delay, restoration batch size, and
-operation points are hot-reloadable. Reload mutates the existing farm,
-lumbermill, and mine runtime aggregates: an active incident, its participants,
-vehicles, service items, HUD, personal time and ordinary gameplay delays stay
-active while changed attributes and presentation are reconciled in place.
+operation points are hot-reloadable. Farm and mine reconcile their active
+runtime aggregates in place. Cedar rebuilds its scene from the saved round,
+releases hauling and crank operators, and stops a running saw. Players can
+restart the unfinished pass at the lever.
 
 Supplier-backed presentation, locale, navigation and enterprise policy changes
 apply in the same accepted generation; already open ArcFarms menus are redrawn.
@@ -645,10 +652,13 @@ rollback.
 
 A full restart remains required only for construction-time topology:
 `enabled`, `server-id`, `network.enabled`, Redis connection/identity settings,
-zone ids and region/bounds references, lumber station references, worksite
-`engine-version`, the plugin JAR itself, and server-wide living-entity tracking
+zone ids and region/bounds references, the lumbermill world and its forest and
+worksite bounds, worksite `engine-version`, the plugin JAR itself, and server-wide living-entity tracking
 in `spigot.yml`. The reload command rejects those changes before touching the
-active runtime and reports the restart requirement. An enterprise `company-id`
+active runtime and reports the restart requirement. New Cedar rounds select
+their tree inside both the forest and the worksite. A saved tree in the
+configured world and forest can resume across restarts, including older trees
+whose roots lie outside the worksite. An enterprise `company-id`
 additionally requires an explicit accounting migration; ordinary
 `/arcfarms reload` rejects it. A rare unconfirmed enterprise state-write failure
 stops the plugin, so gameplay never continues on an ambiguous accounting

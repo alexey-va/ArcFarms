@@ -72,6 +72,7 @@ import ru.ruscrafting.farms.paper.worksite.WorksiteEventRouter
 import ru.ruscrafting.farms.paper.worksite.WorksiteParticipantSafety
 import ru.ruscrafting.farms.paper.worksite.WorksitePlayerReleaseReason
 import ru.ruscrafting.farms.paper.worksite.WorksiteServiceItemController
+import ru.ruscrafting.farms.paper.worksite.WorksiteTaskPort
 import ru.ruscrafting.farms.paper.mine.incident.MineIncidentPlacementReport
 import ru.ruscrafting.farms.paper.worksite.WorksiteRewardGrantService
 import ru.ruscrafting.farms.paper.worksite.WorksiteAdminRegistry
@@ -611,11 +612,11 @@ class ArcFarmsService(
             farm.module.updateSeeder(tick)
         }
         periodicTaskSupervisor.runTimer(20L, 20L) { runGuarded("tick", ::tick) }
-        periodicTaskSupervisor.runTimer(10L, 10L) { runGuarded("guidance_particles", ::emitGuidanceParticles) }
+        periodicTaskSupervisor.runTimer(10L, 10L) { worksites.emitGuidance(worksitePorts.tasks) }
         periodicTaskSupervisor.runTimer(5L, 5L) { farm.module.updateAmbient() }
         periodicTaskSupervisor.runTimer(1L, 1L) { farm.module.updateRaidMotion() }
         periodicTaskSupervisor.runTimer(1L, 1L) { farm.module.updatePlayerTimes() }
-        periodicTaskSupervisor.runTimer(1L, 1L) { runGuarded("carried_displays") { worksiteEvents.updateVisuals(farm.module::updateCarriedDisplays) } }
+        periodicTaskSupervisor.runTimer(1L, 1L) { worksites.updateEveryTick(worksitePorts.tasks) }
         periodicTaskSupervisor.runTimer(
             settings.saveSeconds * 20L,
             settings.saveSeconds * 20L,
@@ -626,10 +627,12 @@ class ArcFarmsService(
 
     private fun tick() {
         val now = clock()
-        if (enterprise.tick()) persistAsync()
-        Bukkit.getOnlinePlayers().forEach { player -> farm.hud.syncMusic(player, farm.module.hudRuntime(player), now) }
-        worksites.tick(now)
-        runGuarded("player_guidance", ::updatePlayerGuidance)
+        runGuarded("enterprise_tick") { if (enterprise.tick()) persistAsync() }
+        runGuarded("farm_music") {
+            Bukkit.getOnlinePlayers().forEach { player -> farm.hud.syncMusic(player, farm.module.hudRuntime(player), now) }
+        }
+        worksites.tick(now, worksitePorts.tasks)
+        runGuarded("player_guidance") { updatePlayerGuidance(worksitePorts.tasks) }
     }
 
     private inline fun runGuarded(scope: String, action: () -> Unit) {
@@ -642,12 +645,11 @@ class ArcFarmsService(
         }
     }
 
-    private fun updatePlayerGuidance() {
-        val expectedBars = worksites.updateGuidance()
+    private fun updatePlayerGuidance(tasks: WorksiteTaskPort? = null) {
+        val expectedBars = worksites.updateGuidance(tasks) ?: return
         worksitePorts.audience.reconcileBars(expectedBars)
     }
 
-    private fun emitGuidanceParticles() = worksites.emitGuidance()
     private fun farmAt(location: Location): FarmRuntime? = farm.runtimes.at(location)
 
     private fun hasAccess(player: Player, permission: String): Boolean =

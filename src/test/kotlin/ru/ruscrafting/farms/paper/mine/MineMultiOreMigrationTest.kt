@@ -9,7 +9,9 @@ import ru.ruscrafting.farms.config.MineZoneSettings
 import ru.ruscrafting.farms.config.ZoneReference
 import ru.ruscrafting.farms.domain.MineIncidentType
 import ru.ruscrafting.farms.domain.MinePhase
+import ru.ruscrafting.farms.domain.MineShiftEngine
 import ru.ruscrafting.farms.domain.MineShiftState
+import java.util.UUID
 
 class MineMultiOreMigrationTest : FunSpec({
     test("active scalar progress is distributed into the ordered material quotas") {
@@ -52,6 +54,7 @@ class MineMultiOreMigrationTest : FunSpec({
         ))
 
         migrated.mined shouldBe 32
+        migrated.phase shouldBe MinePhase.MINING
         migrated.minedByMaterial shouldBe mapOf("COAL" to 25, "COPPER" to 7)
     }
 
@@ -98,6 +101,37 @@ class MineMultiOreMigrationTest : FunSpec({
         migrated.mined shouldBe 19
         migrated.cart shouldBe 19
         migrated.minedByMaterial shouldBe mapOf("COAL" to 18, "IRON" to 1)
+    }
+
+    test("a reduced mining quota advances the order without discarding an ongoing incident or player credit") {
+        val base = mineV2Settings().copy(miningOnly = true)
+        val order = base.orders.single().copy(
+            miningMaterials = emptySet(),
+            resourceRequirements = mapOf("COAL" to 4, "IRON" to 2),
+        )
+        val settings = base.copy(orders = listOf(order), materialWeights = linkedMapOf("COAL_ORE" to 1, "IRON_ORE" to 1))
+        val miner = UUID.randomUUID()
+        val saved = MineShiftState(
+            engineVersion = 2, phase = MinePhase.MINING, sequence = 4, orderId = order.id,
+            mined = 9, cart = 9, minedByMaterial = mapOf("COAL_ORE" to 7, "DEEPSLATE_IRON_ORE" to 2),
+            contributors = mapOf(miner to 9), incidentSchedule = listOf(MineIncidentType.GAS_LEAK),
+        )
+        val ready = MineRuntimeFactory.migrate(settings, saved)
+        ready shouldBe saved.copy(phase = MinePhase.EXTRACTION, mined = 6, cart = 6, minedByMaterial = order.resourceRequirements)
+        MineRuntimeFactory.migrate(settings, ready) shouldBe ready
+        MineRuntimeFactory.migrate(settings, saved.copy(minedByMaterial = emptyMap())) shouldBe ready
+
+        val suspended = MineShiftEngine.startIncident(saved, MineIncidentType.GAS_LEAK, 2, 100L).state
+        val worked = MineShiftEngine.workIncident(suspended, miner).state
+        val migrated = MineRuntimeFactory.migrate(settings, worked)
+        migrated shouldBe worked.copy(resumePhase = MinePhase.EXTRACTION, mined = 6, cart = 6, minedByMaterial = order.resourceRequirements)
+        val resolved = MineShiftEngine.resolveIncident(MineShiftEngine.workIncident(migrated, miner).state).state
+        resolved.phase shouldBe MinePhase.EXTRACTION
+        resolved.incidentCursor shouldBe 1
+
+        val scalar = saved.copy(minedByMaterial = emptyMap())
+        val scalarQuota = base.orders.single().miningRequired
+        MineRuntimeFactory.migrate(base, scalar) shouldBe scalar.copy(phase = MinePhase.EXTRACTION, mined = scalarQuota, cart = scalarQuota)
     }
 
     test("a full restart retires orphaned mine state only when no block recovery remains") {

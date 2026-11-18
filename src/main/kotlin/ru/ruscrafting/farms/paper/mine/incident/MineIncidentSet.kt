@@ -276,7 +276,14 @@ internal class MineIncidentSet(
         return journal.restoreOrphans(registry.snapshot(), chunk)
     }
 
-    fun beforeReload() { workings.beforeReload(); workshop.cleanup(); floorActivities?.cleanupAll(); crystalResonance.cleanupAll(); expeditions?.beforeReload() }
+    fun beforeReload() {
+        scheduler.cleanup()
+        workings.beforeReload()
+        workshop.cleanup()
+        floorActivities?.cleanupAll()
+        crystalResonance.cleanupAll()
+        expeditions?.beforeReload()
+    }
 
     fun cleanup(shutdown: Boolean = false) {
         registry.snapshot().forEach { runtime ->

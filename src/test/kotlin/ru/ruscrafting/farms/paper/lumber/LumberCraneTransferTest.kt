@@ -54,7 +54,7 @@ class LumberCraneTransferTest : FunSpec({
             f.writes.size shouldBe 1
             f.delayWrites = false
             f.writes.removeFirst().complete(Unit)
-            repeat(3) { f.controller.updateVisuals() }
+            repeat(3) { f.controller.tickFast() }
             f.controller.state.completedRounds shouldBe 1L
             f.controller.state.contributors shouldBe ready.contributors
         }
@@ -166,5 +166,9 @@ private class CraneFixture(paper: MockBukkitTestRuntime,
         }, initial, { now }, mockk(relaxed = true), masks, incidentTethers = mockk(relaxed = true),
     ).also { it.activate(); it.onMove(player) }
 
-    fun advance(millis: Long) { now += millis; controller.updateVisuals() }
+    fun advance(millis: Long) {
+        now += millis
+        controller.tickFast()
+        controller.updateVisuals()
+    }
 }

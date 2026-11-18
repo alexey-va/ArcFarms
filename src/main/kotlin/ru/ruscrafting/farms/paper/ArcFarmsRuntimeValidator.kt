@@ -20,6 +20,8 @@ import ru.ruscrafting.farms.domain.FarmPhase
 import ru.ruscrafting.farms.domain.FarmPointKind
 import ru.ruscrafting.farms.domain.FarmRules
 import ru.ruscrafting.farms.domain.FarmShiftState
+import ru.ruscrafting.farms.domain.lumber.LumberEngine
+import ru.ruscrafting.farms.domain.lumber.LumberPhase
 import ru.ruscrafting.farms.persistence.FixedFarmCropJournal
 import ru.ruscrafting.farms.persistence.MineRecoveryJournal
 
@@ -185,6 +187,15 @@ internal class ArcFarmsRuntimeValidator(
                 require(position.world == region.world.name && region.contains(location)) {
                     "Persisted farm delivery escaped region $id"
                 }
+            }
+        }
+        val lumberRound = persisted.lumbermills?.get(LumberEngine.ZONE_ID)
+        if (lumberRound != null && lumberRound.phase != LumberPhase.IDLE) {
+            val root = requireNotNull(lumberRound.tree) { "Persisted active lumber round ${LumberEngine.ZONE_ID} has no tree" }.root
+            val lumber = candidate.lumbermill
+            // Older rounds could select a tree just beyond the participant boundary.
+            require(root.world == lumber.world && lumber.forest.contains(root.x, root.y, root.z)) {
+                "Persisted active lumber tree ${LumberEngine.ZONE_ID} at $root is outside the configured forest in ${lumber.world}"
             }
         }
         MineController.validatePersisted(

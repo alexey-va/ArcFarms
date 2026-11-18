@@ -327,6 +327,64 @@ class MineBasicCycleMockBukkitTest : FunSpec({
         runtime.state.sequence shouldBe 0L
     }
 
+    test("an expedition with no gate can use another permitted incident and preserves its full quota and incident slot") {
+        val world = paper.server.addSimpleWorld("world")
+        val player = paper.server.addPlayer("ReserveMiner")
+        player.teleport(Location(world, 5.5, 64.0, 5.5))
+        player.inventory.setItemInMainHand(ItemStack(Material.IRON_PICKAXE))
+        val original = miningOnlySettings()
+        val settings = original.copy(orders = original.orders.map {
+            it.copy(incidentTypes = listOf(MineIncidentType.DEAD_FACTORY, MineIncidentType.CREATURE_NEST))
+        })
+        val graph = graph(paper, settings)
+        val runtime = graph.registry.byId("old_shafts")!!
+        indexMineables(graph, runtime, world)
+        graph.module.tick(1_000L)
+        runtime.state = runtime.state.copy(incidentSchedule = listOf(MineIncidentType.DEAD_FACTORY))
+        graph.breakManagedOre(world.getBlockAt(1, 64, 2), player)
+        graph.module.tick(2_000L)
+        runtime.state.incidentSchedule shouldBe listOf(MineIncidentType.DEAD_FACTORY)
+        graph.breakManagedOre(world.getBlockAt(2, 64, 2), player)
+        graph.module.tick(7_000L)
+        runtime.state.phase shouldBe MinePhase.EXTRACTION
+        runtime.state.incidentSchedule shouldBe listOf(MineIncidentType.DEAD_FACTORY)
+
+        prepareMineAndNests(graph, runtime, world)
+        graph.module.tick(12_000L)
+        runtime.state.incident?.type shouldBe MineIncidentType.CREATURE_NEST
+        runtime.state.incidentSchedule shouldBe listOf(MineIncidentType.DEAD_FACTORY)
+        runtime.state.incidentCursor shouldBe 0
+        val saved = graph.module.states()
+        graph.module.rebuild(listOf(settings), saved, 5_000L)
+        val resumed = graph.registry.byId("old_shafts")!!
+        resumed.state.incident?.type shouldBe MineIncidentType.CREATURE_NEST
+        resumed.state.resumePhase shouldBe MinePhase.EXTRACTION
+        resumed.state.mined shouldBe 2
+        val targets = resumed.state.objective!!.targets
+        targets.filter { it.role.value == "creature" }.forEach { graph.creatureNest.defeat(resumed, it.id, player) }
+        targets.filter { it.role.value == "creature_nest" }.forEach { graph.creatureNest.destroyNest(resumed, it.id, player) }
+        graph.module.tick(17_000L)
+        resumed.state.phase shouldBe MinePhase.COOLDOWN
+    }
+
+    test("a cold procedural reserve keeps its scheduled slot while another allowed incident is ready") {
+        val world = paper.server.addSimpleWorld("world")
+        val original = miningOnlySettings()
+        val settings = original.copy(orders = original.orders.map {
+            it.copy(incidentTypes = listOf(MineIncidentType.CAVE_IN, MineIncidentType.CREATURE_NEST))
+        })
+        val graph = graph(paper, settings)
+        val runtime = graph.registry.byId("old_shafts")!!
+        prepareMineAndNests(graph, runtime, world)
+        runtime.state = runtime.state.copy(phase = MinePhase.EXTRACTION, orderId = settings.orders.first().id,
+            mined = settings.orders.first().totalMiningRequired, incidentSchedule = listOf(MineIncidentType.CAVE_IN))
+        for (now in listOf(1_000L, 6_000L)) {
+            graph.incidentScheduler.tick(runtime, now, 1) shouldBe false
+            runtime.state.incidentSchedule shouldBe listOf(MineIncidentType.CAVE_IN)
+            runtime.state.incident shouldBe null
+        }
+    }
+
     test("scheduled incident starts inside the mine without creating or entering a room") {
         val world = paper.server.addSimpleWorld("world")
         val player = paper.server.addPlayer("IncidentMiner")
@@ -336,15 +394,7 @@ class MineBasicCycleMockBukkitTest : FunSpec({
         val settings = miningOnlySettings()
         val graph = graph(paper, settings, effects)
         val runtime = graph.registry.byId("old_shafts")!!
-        val mineable = (1..4).map { x -> world.getBlockAt(x, 64, 2).also { it.type = Material.STONE } }
-        val nests = (1..14).flatMap { x -> (4..14).map { z -> world.getBlockAt(x, 64, z).also { it.type = Material.STONE } } }
-        graph.index.replaceZone(
-            MineIndexDefinition(runtime.settings.id, runtime.region, setOf(Material.STONE)),
-            listOf(world.getChunkAt(0, 0)),
-            mineable.map { MineIndexedTarget(it.position(), setOf(MineAnchorRole.MINEABLE)) } +
-                nests.map { MineIndexedTarget(it.position(), setOf(MineAnchorRole.NEST)) },
-        )
-        graph.prewarmIncidentCandidates(runtime)
+        val mineable = prepareMineAndNests(graph, runtime, world)
 
         graph.module.tick(1_000L)
         runtime.state.phase shouldBe MinePhase.MINING
@@ -395,6 +445,23 @@ private fun graph(
 private fun miningOnlySettings() = mineV2Settings().let { original ->
     original.copy(miningOnly = true, guidanceRadius = 24.0, incidentCountMin = 1, incidentCountMax = 1,
         orders = original.orders.map { it.copy(incidentTypes = listOf(MineIncidentType.CREATURE_NEST), miningMaterials = setOf("STONE")) })
+}
+
+private fun prepareMineAndNests(
+    graph: MineComponentGraph,
+    runtime: MineRuntime,
+    world: org.bukkit.World,
+): List<org.bukkit.block.Block> {
+    val mineable = (1..4).map { x -> world.getBlockAt(x, 64, 2).also { it.type = Material.STONE } }
+    val nests = (1..14).flatMap { x -> (4..14).map { z -> world.getBlockAt(x, 64, z).also { it.type = Material.STONE } } }
+    graph.index.replaceZone(
+        MineIndexDefinition(runtime.settings.id, runtime.region, setOf(Material.STONE)),
+        listOf(world.getChunkAt(0, 0)),
+        mineable.map { MineIndexedTarget(it.position(), setOf(MineAnchorRole.MINEABLE)) } +
+            nests.map { MineIndexedTarget(it.position(), setOf(MineAnchorRole.NEST)) },
+    )
+    graph.prewarmIncidentCandidates(runtime)
+    return mineable
 }
 
 private fun indexMineables(graph: MineComponentGraph, runtime: MineRuntime, world: org.bukkit.World) {

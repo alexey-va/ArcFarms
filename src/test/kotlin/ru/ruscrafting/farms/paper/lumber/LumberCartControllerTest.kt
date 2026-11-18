@@ -43,7 +43,7 @@ class LumberCartControllerTest : FunSpec({
             f.world.getBlockAt(150, 73, 196).type = Material.STONE
             f.takeLog()
             val initial = requireNotNull(f.controller.state.cart)
-            f.controller.updateVisuals()
+            f.controller.tickFast()
             val moved = requireNotNull(f.controller.state.cart)
             (moved.z > initial.z) shouldBe true
             (moved.z < f.player.location.z - 5.0) shouldBe true
@@ -60,13 +60,13 @@ class LumberCartControllerTest : FunSpec({
             val f = HaulingFixture(paper, log = log,
                 playerAt = center.copy(x = center.x - 2.8, z = center.z + 2.8, yaw = -90f))
             f.takeLog()
-            f.controller.updateVisuals()
+            f.controller.tickFast()
             f.controller.state.phase shouldBe LumberPhase.LOADING_SAWMILL
             f.controller.state.cart shouldBe log
             f.controller.state.cartCarrier shouldBe null
             requireNotNull(f.player.getAttribute(Attribute.MOVEMENT_SPEED)).value shouldBe (.1 plusOrMinus .00001)
             val accepted = f.controller.state
-            f.controller.updateVisuals()
+            f.controller.tickFast()
             f.controller.state shouldBe accepted
         }
     }

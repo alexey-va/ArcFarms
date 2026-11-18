@@ -3,6 +3,7 @@ package ru.ruscrafting.farms.paper.mine
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
+import io.mockk.every
 import io.mockk.verify
 import org.bukkit.Location
 import org.bukkit.Material
@@ -16,12 +17,15 @@ import org.bukkit.inventory.ItemStack
 import ru.arc.paper.testing.MockBukkitTestRuntime
 import ru.ruscrafting.farms.domain.ActivityKind
 import ru.ruscrafting.farms.domain.FarmRewardLedgerSnapshot
+import ru.ruscrafting.farms.domain.MineIncidentType
 import ru.ruscrafting.farms.domain.MinePhase
+import ru.ruscrafting.farms.domain.MineShiftState
 import ru.ruscrafting.farms.domain.PendingFarmReward
 import ru.ruscrafting.farms.domain.worksite.WorksitePosition
 import ru.ruscrafting.farms.paper.CuboidRegionGateway
 import ru.ruscrafting.farms.paper.MineBlockEffects
 import ru.ruscrafting.farms.paper.mine.extraction.MineCartEffects
+import ru.ruscrafting.farms.paper.mine.extraction.MineExtractionRoute
 import ru.ruscrafting.farms.paper.mine.index.MineAnchorRole
 import ru.ruscrafting.farms.paper.mine.index.MineIndexDefinition
 import ru.ruscrafting.farms.paper.mine.index.MineIndexedTarget
@@ -29,6 +33,8 @@ import ru.ruscrafting.farms.paper.worksite.ServiceItemIdentity
 import ru.ruscrafting.farms.paper.worksite.WorksiteRewardGrantService
 import ru.ruscrafting.farms.paper.worksite.WorksiteRewardLedger
 import ru.ruscrafting.farms.paper.worksite.WorksiteServiceItems
+import java.util.UUID
+import java.util.concurrent.CompletableFuture
 
 class MineV2FullFlowMockBukkitIntegrationTest : FunSpec({
     lateinit var paper: MockBukkitTestRuntime
@@ -85,23 +91,111 @@ class MineV2FullFlowMockBukkitIntegrationTest : FunSpec({
         runtime.state.phase shouldBe MinePhase.EXTRACTION
 
         val route = requireNotNull(graph.extraction.routeFor(runtime))
+        val beforePush = runtime.state.contributors.getValue(player.uniqueId)
         for (index in 1..route.finalIndex) {
             graph.extraction.push(runtime, player, route.sample(index).location(world)) shouldBe true
         }
 
         runtime.state.phase shouldBe MinePhase.COOLDOWN
+        runtime.state.contributors.getValue(player.uniqueId) shouldBe beforePush + route.finalIndex + 1
         ledger.pending shouldHaveSize 1
         ledger.pending.single().zoneId shouldBe "mine_old_shafts"
         graph.extraction.push(runtime, player, route.sample(route.finalIndex).location(world)) shouldBe false
         ledger.pending shouldHaveSize 1
         verify(exactly = 1) { port.recordCompletion(ActivityKind.MINE, any()) }
     }
+
+    test("a restored mining-only order pays its offline contributors once all incidents are settled") {
+        paper.server.addSimpleWorld("world")
+        val miners = listOf(paper.server.addPlayer("FirstMiner"), paper.server.addPlayer("LastMiner"))
+        val contributors = mapOf(miners[0].uniqueId to 3, miners[1].uniqueId to 1)
+        miners.forEach { it.disconnect() }
+        val port = immediateMinePort()
+        every { port.guarded(any(), any()) } answers { secondArg<() -> Unit>().invoke() }
+        val ledger = FullFlowRewardLedger { port.persistAsync() }
+        val graph = testMineComponentGraph(
+            paper.createSimplePlugin("OfflineMineCompletion"), CuboidRegionGateway(), port,
+            clock = { 1_000L }, journal = ImmediateMineJournal(), rewardGrants = WorksiteRewardGrantService(ledger),
+        )
+        val settings = mineV2Settings().copy(miningOnly = true)
+        val completedSnapshots = mutableListOf<Pair<Map<UUID, Int>, Int>>()
+        var recordedCompletions = 0
+        every { port.recordCompletion(ActivityKind.MINE, any()) } answers { recordedCompletions++ }
+        every { port.persistAsync() } answers {
+            if (graph.module.states()[settings.id]?.phase == MinePhase.COOLDOWN) {
+                completedSnapshots += ledger.pending.associate { it.playerId to it.contribution } to recordedCompletions
+            }
+            CompletableFuture.completedFuture(Unit)
+        }
+        val saved = MineShiftState(
+            engineVersion = 2, phase = MinePhase.EXTRACTION, sequence = 3, orderId = settings.orders.single().id,
+            mined = 2, cart = 2, contributors = contributors, incidentSchedule = listOf(MineIncidentType.GAS_LEAK),
+        )
+        graph.module.rebuild(listOf(settings), mapOf(settings.id to saved), 5_000L)
+        graph.module.tick(1_000L)
+        graph.module.states().getValue(settings.id).phase shouldBe MinePhase.EXTRACTION
+        ledger.pending shouldHaveSize 0
+
+        graph.module.rebuild(listOf(settings), mapOf(settings.id to saved.copy(incidentCursor = 1)), 5_000L)
+        graph.module.tick(1_000L)
+        val completed = graph.module.states()
+        completed.getValue(settings.id).phase shouldBe MinePhase.COOLDOWN
+        completed.getValue(settings.id).contributors shouldBe contributors
+        ledger.pending.associate { it.playerId to it.contribution } shouldBe contributors
+        completedSnapshots.first() shouldBe (contributors to 1)
+
+        graph.module.rebuild(listOf(settings), completed, 5_000L)
+        graph.module.tick(1_001L)
+        ledger.pending shouldHaveSize contributors.size
+        verify(exactly = 1) { port.recordCompletion(ActivityKind.MINE, contributors) }
+        verify(exactly = 1) { port.complete(ActivityKind.MINE, null, emptySet()) }
+    }
+
+    test("a restored physical cart at the final checkpoint still needs its handoff and never repeats the last push") {
+        val world = paper.server.addSimpleWorld("world")
+        val player = paper.server.addPlayer("ReturningHauler")
+        val rail = (1..5).map { x -> world.getBlockAt(x, 63, 3).also { it.type = Material.STONE } }
+        val savedRoute = requireNotNull(MineExtractionRoute.fromAnchors(rail.map { it.position() }))
+        val settings = mineV2Settings()
+        val saved = MineShiftState(
+            engineVersion = 2, phase = MinePhase.EXTRACTION, sequence = 2, orderId = settings.orders.single().id,
+            mined = 2, cart = 2, loaded = 1, routeIndex = savedRoute.finalIndex, contributors = mapOf(player.uniqueId to 7),
+        )
+        val port = immediateMinePort()
+        val ledger = FullFlowRewardLedger()
+        val graph = testMineComponentGraph(
+            paper.createSimplePlugin("RestoredCartHandoff"), CuboidRegionGateway(), port,
+            clock = { 1_000L }, journal = ImmediateMineJournal(), cartEffects = FullFlowMineCartEffects(),
+            rewardGrants = WorksiteRewardGrantService(ledger),
+        )
+        graph.module.rebuild(listOf(settings), mapOf(settings.id to saved), 5_000L)
+        val runtime = graph.registry.byId(settings.id)!!
+        graph.index.replaceZone(
+            MineIndexDefinition(settings.id, runtime.region, setOf(Material.STONE)), listOf(world.getChunkAt(0, 0)),
+            rail.map { MineIndexedTarget(it.position(), setOf(MineAnchorRole.RAIL)) },
+        )
+        val route = requireNotNull(graph.extraction.routeFor(runtime))
+        route.finalIndex shouldBe saved.routeIndex
+        val start = route.sample(0).location(world)
+        val end = route.sample(route.finalIndex).location(world)
+        graph.extraction.onMove(start, start, player) shouldBe false
+        runtime.state.phase shouldBe MinePhase.EXTRACTION
+        graph.extraction.onMove(start, end, player) shouldBe true
+        runtime.state.phase shouldBe MinePhase.COOLDOWN
+        runtime.state.contributors.getValue(player.uniqueId) shouldBe 8
+        graph.extraction.onMove(start, end, player) shouldBe false
+        ledger.pending.single().contribution shouldBe 8
+        verify(exactly = 1) { port.recordCompletion(ActivityKind.MINE, mapOf(player.uniqueId to 8)) }
+    }
 })
 
-private class FullFlowRewardLedger : WorksiteRewardLedger {
+private class FullFlowRewardLedger(private val persist: () -> Unit = {}) : WorksiteRewardLedger {
     val pending = mutableListOf<PendingFarmReward>()
     override fun snapshot(): FarmRewardLedgerSnapshot = FarmRewardLedgerSnapshot(pending.toList(), emptyMap())
-    override fun enqueueRewards(rewards: List<PendingFarmReward>) { pending += rewards.filter { next -> pending.none { it.id == next.id } } }
+    override fun enqueueRewards(rewards: List<PendingFarmReward>) {
+        pending += rewards.filter { next -> pending.none { it.id == next.id } }
+        persist()
+    }
 }
 
 private class FullFlowMineItems : WorksiteServiceItems {

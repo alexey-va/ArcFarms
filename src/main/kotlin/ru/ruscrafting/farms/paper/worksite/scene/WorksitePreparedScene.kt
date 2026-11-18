@@ -422,12 +422,15 @@ internal class WorksitePreparedSceneOwner(
                             !chunks.hasNext()
                         }
                     }
-                }.thenApply { preparations[key] = ArrayDeque(plan.slices); Unit }
+                }.thenApply {
+                    check(current()) { "Scene preparation superseded" }
+                    preparations[key] = ArrayDeque(plan.slices)
+                }
             }.thenCompose { it }
         }.whenComplete { _, failure ->
             if (failure != null) work.callSync(token) {
                 receipt.completeExceptionally(failure)
-                if (scenes[key] === scene) {
+                if (preparationReceipts[key] === receipt && scenes[key] === scene) {
                     rejectedPreparations += key
                     beginRestore(scene.world, scene.zoneId, scene.sequence, scene.sceneId)
                     logger.log(Level.WARNING, "Prepared scene planning failed ${scene.zoneId}/${scene.sequence}", failure)
@@ -1034,10 +1037,20 @@ internal class WorksitePreparedSceneOwner(
         }
     }
 
-    fun clearQueues() {
+    /** Hot reload can keep finished baselines so reconciliation does not overwrite gameplay edits. */
+    fun clearQueues(keepCompletedScenes: Collection<WorksitePreparedScene> = emptyList()) {
+        val keptScenes = keepCompletedScenes.mapNotNullTo(hashSetOf()) { scene ->
+            val key = scene.key()
+            key.takeIf { scenes[it] === scene && it in completedBuilds && it !in preparations &&
+                it !in buildingSceneCounts && it !in buildingAdmissions }
+        }
+        val keptChunks = keptScenes.flatMapTo(hashSetOf()) { key ->
+            val chunks = sceneChunkPositions[key] ?: scenes.getValue(key).records.mapTo(hashSetOf()) { it.x shr 4 to (it.z shr 4) }
+            chunks.map { (x, z) -> Triple(key.world, x, z) }
+        }
         val pendingWarmups = worldWarmups.values.toList()
         val pendingRecoveries = sceneRecoveries.values.toList()
-        preparationReceipts.values.forEach { it.completeExceptionally(java.util.concurrent.CancellationException("Scene owner closed")) }
+        val pendingPreparations = preparationReceipts.values.toList()
         preparationReceipts.clear()
         mutationEpoch++
         cacheEpoch++
@@ -1050,7 +1063,7 @@ internal class WorksitePreparedSceneOwner(
         warmedWorlds.clear()
         worldDiscoveryRevisions.clear()
         sceneRecoveries.clear()
-        sceneChunkPositions.clear()
+        sceneChunkPositions.keys.retainAll(keptScenes)
         buildingAdmissions.clear()
         restoreAdmissions.clear()
         admittedRestores.clear()
@@ -1067,13 +1080,14 @@ internal class WorksitePreparedSceneOwner(
         queuedRestores.clear()
         buildingKeys.clear()
         buildingSceneCounts.clear()
-        completedBuilds.clear()
+        completedBuilds.retainAll(keptScenes)
         projectionChunks.clear()
-        scenePositions.clear()
-        scenes.clear()
+        scenePositions.keys.retainAll(keptScenes)
+        scenes.keys.retainAll(keptScenes)
+        pendingPreparations.forEach { it.cancel(false) }
         pendingWarmups.forEach { it.cancel(false) }
         pendingRecoveries.forEach { it.cancel(false) }
-        ticketedChunks.entries.toList().forEach { (key, _) -> releaseTicket(key) }
+        ticketedChunks.keys.filter { it !in keptChunks }.forEach(::releaseTicket)
     }
 
     private fun processPreparation() {
@@ -1086,8 +1100,9 @@ internal class WorksitePreparedSceneOwner(
             val token = tasks.lifecycleToken()
             val admission = CompletableFuture<Unit>()
             preparationAdmission = admission
+            fun current() = preparationAdmission === admission && scenes[key] === scene
             commitAsync(scene.copy(records = records)).thenCompose { committed ->
-                if (scenes[key] !== scene) return@thenCompose CompletableFuture.completedFuture(Unit)
+                if (!current()) return@thenCompose CompletableFuture.completedFuture(Unit)
                 if (!committed) {
                     preparations.remove(key)
                     rejectedPreparations += key
@@ -1096,11 +1111,11 @@ internal class WorksitePreparedSceneOwner(
                     CompletableFuture.completedFuture(Unit)
                 } else {
                     val iterator = records.iterator()
-                    tasks.capture(token, { scenes[key] === scene }) {
+                    tasks.capture(token, ::current) {
                         if (iterator.hasNext()) enqueueBuild(listOf(iterator.next()))
                         !iterator.hasNext()
                     }.thenApply {
-                        if (pending.isEmpty() && scenes[key] === scene) {
+                        if (pending.isEmpty() && current()) {
                             preparations.remove(key)
                             preparationReceipts[key]?.complete(true)
                         }
@@ -1108,11 +1123,11 @@ internal class WorksitePreparedSceneOwner(
                     }
                 }
             }.whenComplete { _, failure -> tasks.callSync(token) {
-                if (preparationAdmission === admission) preparationAdmission = null
-                if (failure == null) admission.complete(Unit) else {
-                    preparationReceipts[key]?.completeExceptionally(failure)
-                    admission.completeExceptionally(failure)
+                if (preparationAdmission === admission) {
+                    preparationAdmission = null
+                    if (failure != null && scenes[key] === scene) preparationReceipts[key]?.completeExceptionally(failure)
                 }
+                if (failure == null) admission.complete(Unit) else admission.completeExceptionally(failure)
             }.exceptionally { admission.completeExceptionally(it); null } }
             return
         }

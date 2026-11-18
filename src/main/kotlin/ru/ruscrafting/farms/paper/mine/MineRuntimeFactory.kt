@@ -4,6 +4,7 @@ import org.bukkit.Material
 import ru.ruscrafting.farms.config.MineOrderSettings
 import ru.ruscrafting.farms.config.MineZoneSettings
 import ru.ruscrafting.farms.domain.MineIncidentType
+import ru.ruscrafting.farms.domain.MinePhase
 import ru.ruscrafting.farms.domain.MineRules
 import ru.ruscrafting.farms.domain.MineResource
 import ru.ruscrafting.farms.domain.MineShiftState
@@ -104,7 +105,8 @@ internal object MineRuntimeFactory {
 
     /** Startup validation and runtime construction must apply the same compatibility migration. */
     fun migrate(settings: MineZoneSettings, persisted: MineShiftState): MineShiftState = MineStateMigration.migrate(persisted).let { original ->
-        val normalized = normalizeResourceProgress(settings, original)
+        val order = settings.orders.firstOrNull { it.id == original.orderId }
+        val normalized = normalizeResourceProgress(order, original)
         // Inventory cleanup precedes runtime reconfiguration, while its input
         // snapshot can predate that cleanup. Working supplies are reissued on
         // demand; restoring their leases would reserve cargo for absent items.
@@ -119,13 +121,19 @@ internal object MineRuntimeFactory {
         } == true
         if (incompatibleIncident) {
             MineShiftState(engineVersion = 2, sequence = saved.sequence)
-        } else if (settings.miningOnly && saved.phase !in setOf(ru.ruscrafting.farms.domain.MinePhase.IDLE,
-                ru.ruscrafting.farms.domain.MinePhase.COOLDOWN) &&
-            (saved.orderId !in settings.orders.map { it.id } ||
+        } else if (settings.miningOnly && saved.phase !in setOf(MinePhase.IDLE, MinePhase.COOLDOWN) &&
+            (order == null ||
                 saved.objective?.key?.objectiveId == "mining" || saved.resumeObjective?.key?.objectiveId == "mining" ||
-                saved.incidentSchedule.any { it !in allowed } || saved.phase in setOf(
-                ru.ruscrafting.farms.domain.MinePhase.PROSPECTING, ru.ruscrafting.farms.domain.MinePhase.LOADING))) {
+                saved.incidentSchedule.any { it !in allowed } || saved.phase in setOf(MinePhase.PROSPECTING, MinePhase.LOADING))) {
             MineShiftState(engineVersion = 2, sequence = saved.sequence)
+        } else if (settings.miningOnly && order != null && saved.mined >= order.totalMiningRequired) {
+            val quota = order.totalMiningRequired
+            when {
+                saved.phase == MinePhase.MINING -> saved.copy(phase = MinePhase.EXTRACTION, mined = quota, cart = quota, objective = null)
+                saved.phase == MinePhase.INCIDENT && saved.resumePhase == MinePhase.MINING ->
+                    saved.copy(resumePhase = MinePhase.EXTRACTION, mined = quota, cart = quota, resumeObjective = null)
+                else -> saved
+            }
         } else saved
     }
 
@@ -134,8 +142,7 @@ internal object MineRuntimeFactory {
      * names.  Merge ordinary/deepslate variants into the active order's
      * resource buckets before any phase or quota decision is made.
      */
-    private fun normalizeResourceProgress(settings: MineZoneSettings, state: MineShiftState): MineShiftState {
-        val order = state.orderId?.let { id -> settings.orders.firstOrNull { it.id == id } }
+    private fun normalizeResourceProgress(order: MineOrderSettings?, state: MineShiftState): MineShiftState {
         val requirements = order?.normalizedRequirements.orEmpty()
         val normalized = MineResource.normalizeProgress(state.minedByMaterial)
         if (requirements.isEmpty()) {

@@ -37,7 +37,7 @@ class LumberIncidentControllerTest : FunSpec({
             val f = IncidentFixture(paper, lumberIncidentBoundary(passes = 0))
             f.click(LumberAction.SAW_LEVER)
             f.now += 12_000L
-            f.controller.updateVisuals()
+            f.controller.tickFast()
             f.controller.state.sawPasses shouldBe 1
             f.controller.state.incident?.type shouldBe LumberIncidentType.FEED_JAM
             f.click(LumberAction.SAW_LEVER)
@@ -107,7 +107,7 @@ class LumberIncidentControllerTest : FunSpec({
             paused.incident?.crankOperator shouldBe null
             paused.incident?.crankTurns shouldBe 1
             f.now += 60_000L
-            repeat(3) { f.controller.updateVisuals() }
+            repeat(3) { f.controller.tickFast() }
             f.controller.state shouldBe paused
             f.move(0.0)
             f.controller.onMove(f.player)
@@ -250,7 +250,7 @@ private class IncidentFixture(paper: MockBukkitTestRuntime,
         val at = LumberSceneGeometry.incidentCrank()
         player.teleport(Location(world, at.x + radius * cos(angle), at.y, at.z + radius * sin(angle)))
         now += 50L
-        controller.updateVisuals()
+        controller.tickFast()
         guide()
     }
     fun walkLap() { repeat(49) { move(2.0 * PI * it / 48.0) } }

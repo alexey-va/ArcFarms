@@ -69,29 +69,28 @@ internal class MineWorkingController(
     }
 
     fun startAsync(runtime: MineRuntime, type: MineIncidentType, now: Long): CompletableFuture<Boolean> {
-        pendingStarts[runtime.settings.id]?.let { return it }
+        val zoneId = runtime.settings.id
+        pendingStarts[zoneId]?.let { return it }
         if (transitioning(runtime)) return CompletableFuture.completedFuture(false)
-        val chosen = preparedPlacements[runtime.settings.id to type] ?: return CompletableFuture.completedFuture(false)
+        val chosen = preparedPlacements[zoneId to type] ?: return CompletableFuture.completedFuture(false)
         val sequence = runtime.state.sequence
         val cursor = runtime.state.incidentCursor
         val nonce = cursor.toLong() + 1
         val token = tasks.lifecycleToken()
         val result = CompletableFuture<Boolean>()
-        pendingStarts[runtime.settings.id] = result
+        pendingStarts[zoneId] = result
         world.prepareAsync(runtime, type, chosen, nonce).thenCompose { prepared -> tasks.callSync(token) {
-            val current = pendingStarts[runtime.settings.id] === result && registry.byId(runtime.settings.id) === runtime &&
+            if (pendingStarts[zoneId] !== result || !prepared) return@callSync false
+            val scene = requireNotNull(world.retainedScene(zoneId, sequence))
+            val current = registry.byId(zoneId) === runtime &&
                 runtime.state.sequence == sequence && runtime.state.incidentCursor == cursor && runtime.state.incident == null
-            if (!prepared || !current) {
-                if (prepared) world.startRestore(runtime)
-                false
-            } else {
-                val plan = requireNotNull(world.retainedScene(runtime.settings.id, sequence)).plan
-                incidents.start(runtime, type, total(type, plan), now, working = MineWorkingEngine.initial(type, chosen))
-                    .also { if (!it) world.startRestore(runtime) }
+            val started = runCatching {
+                current && incidents.start(runtime, type, total(type, scene.plan), now, working = MineWorkingEngine.initial(type, chosen))
             }
+            if (started.getOrNull() != true) world.startRestore(scene)
+            started.getOrThrow()
         } }.whenComplete { started, failure -> tasks.callSync(token) {
-            pendingStarts.remove(runtime.settings.id, result)
-            if (failure != null && runtime.state.sequence == sequence) world.startRestore(runtime)
+            if (!pendingStarts.remove(zoneId, result)) return@callSync
             if (failure == null) result.complete(started) else result.completeExceptionally(failure)
         }.exceptionally { result.completeExceptionally(it); null } }
         return result
@@ -487,8 +486,10 @@ internal class MineWorkingController(
     fun blocksOreSupply(runtime: MineRuntime): Boolean = world.hasScene(runtime) || transitioning(runtime)
 
     fun cancelPending(zone: String) {
-        pendingStarts.remove(zone)?.completeExceptionally(java.util.concurrent.CancellationException("Working start cancelled"))
+        val start = pendingStarts.remove(zone)
+        registry.byId(zone)?.let(world::cancelPreparation)
         placement.cancel(zone)
+        start?.cancel(false)
     }
     fun retire(runtime: MineRuntime) {
         val grace = completionGrace.remove(runtime.settings.id)
@@ -541,10 +542,8 @@ internal class MineWorkingController(
     fun beforeReload() {
         drive.cleanup()
         railService?.cleanup()
-        // The lifecycle supervisor discards old save callbacks. Their locks must
-        // not survive and prevent progress in the reconfigured working.
-        pendingSaves.clear()
-        placement.clear(); preparedPlacements.clear()
+        resetPendingWork()
+        world.beforeReload()
     }
     fun cleanup() {
         drive.cleanup()
@@ -554,8 +553,7 @@ internal class MineWorkingController(
             presentation.cleanup(runtime.settings.id)
             travel.evacuate(runtime.settings.id)
         }
-        placement.clear(); preparedPlacements.clear()
-        pendingSaves.clear()
+        resetPendingWork()
         retiring.clear()
         completionGrace.clear()
         drillOperators.clear()
@@ -564,6 +562,15 @@ internal class MineWorkingController(
         // while the saved incident still expects the whole working.
         world.clearQueues()
         presentation.close()
+    }
+
+    private fun resetPendingWork() {
+        pendingSaves.clear()
+        placement.clear()
+        preparedPlacements.clear()
+        val starts = pendingStarts.values.toList()
+        pendingStarts.clear()
+        starts.forEach { it.cancel(false) }
     }
 
     private fun isDrive(runtime: MineRuntime): Boolean = runtime.state.incident?.let {

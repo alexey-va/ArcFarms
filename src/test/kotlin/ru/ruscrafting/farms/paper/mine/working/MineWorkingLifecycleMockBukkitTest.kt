@@ -200,6 +200,60 @@ class MineWorkingLifecycleMockBukkitTest : FunSpec({
         graph.workings.transitioning(runtime) shouldBe false
     }
 
+    test("reload releases a pending working start and its late receipt cannot remove the replacement scene") {
+        val world = paper.server.addSimpleWorld("world")
+        for (chunkX in -1..1) for (chunkZ in -1..2) world.getChunkAt(chunkX, chunkZ).load()
+        val runtime = lifecycleRuntime(world)
+        val type = MineIncidentType.TUNNEL_DRIVE
+        val placement = requireNotNull(runtime.state.incident?.working).placement
+        runtime.state = runtime.state.copy(phase = MinePhase.MINING, incident = null)
+        populateGeology(world, MineWorkingLayout.plan(type, placement), placement)
+        val registry = MineRuntimeRegistry().also { it.replace(listOf(runtime)) }
+        // Keep running callbacks inline to exercise the request identity even when an old receipt reaches Paper.
+        val port = immediateMinePort()
+        val placements = mockk<MineWorkingPlacementService>(relaxed = true)
+        every { placements.search(runtime, type, any(), any()) } answers {
+            arg<(MineWorkingPlacement) -> Unit>(3).invoke(placement)
+            true
+        }
+        val prepared = mockk<WorksitePreparedSceneOwner>(relaxed = true)
+        val oldReceipt = CompletableFuture<Boolean>()
+        val newReceipt = CompletableFuture<Boolean>()
+        every { prepared.prepareAllAsync(any()) } returnsMany listOf(oldReceipt, newReceipt)
+        val workings = MineWorkingWorld(registry, prepared, MockBukkitFarmBlockDataDecoder, tasks = port)
+        val incidents = mockk<MineIncidentCoordinator>()
+        every { incidents.start(runtime, type, any(), any(), any(), any()) } returns true
+        val controller = MineWorkingController(
+            registry, placements, workings, incidents, mockk(relaxed = true), mockk(relaxed = true),
+            mockk(relaxed = true), port, port, port, { 2_000L }, drive = mockk(relaxed = true),
+        )
+
+        repeat(3) { controller.prewarm(runtime, 1_000L) }
+        val oldStart = controller.startAsync(runtime, type, 1_000L)
+        oldStart.isDone shouldBe false
+        controller.transitioning(runtime) shouldBe true
+
+        controller.beforeReload()
+        controller.reconcileLoaded()
+        controller.process()
+        oldStart.isCancelled shouldBe true
+        controller.transitioning(runtime) shouldBe false
+        repeat(3) { controller.prewarm(runtime, 2_000L) }
+        val newStart = controller.startAsync(runtime, type, 2_000L)
+        newStart.isDone shouldBe false
+        val replacement = requireNotNull(workings.retainedScene(runtime.settings.id, runtime.state.sequence))
+
+        oldReceipt.completeExceptionally(IllegalStateException("Old preparation stopped"))
+        (workings.retainedScene(runtime.settings.id, runtime.state.sequence) === replacement) shouldBe true
+        controller.transitioning(runtime) shouldBe true
+        verify(exactly = 0) { prepared.beginRestore(any(), any(), any(), any()) }
+
+        newReceipt.complete(true)
+        newStart.join() shouldBe true
+        controller.transitioning(runtime) shouldBe false
+        verify(exactly = 1) { incidents.start(runtime, type, any(), 2_000L, any(), any()) }
+    }
+
     test("walking through a ready working entrance is not cancelled and records the destination") {
         val world = paper.server.addSimpleWorld("world")
         val player = paper.server.addPlayer("WalkingMiner")
@@ -494,7 +548,7 @@ class MineWorkingLifecycleMockBukkitTest : FunSpec({
         runtime.state.incident shouldBe null
     }
 
-    test("reconcileLoaded reapplies saved working projection and restores an orphaned scene") {
+    test("reload preserves a saved working and releases its scene leases when the order is removed") {
         val world = paper.server.addSimpleWorld("mine_working_lifecycle")
         for (chunkX in -1..1) for (chunkZ in -1..2) world.getChunkAt(chunkX, chunkZ).load()
         val plugin = paper.createSimplePlugin("MineWorkingReconcileTest")
@@ -502,14 +556,25 @@ class MineWorkingLifecycleMockBukkitTest : FunSpec({
             WorksitePosition(world.name, 0, 64, 0), direction = 0, floorId = "fixture-floor",
         )
         val plan = MineWorkingLayout.plan(MineIncidentType.TUNNEL_DRIVE, placement)
+        val base = mineV2Settings()
+        val settings = base.copy(
+            id = "mine_working_lifecycle",
+            miningOnly = true,
+            orders = base.orders.map { it.copy(incidentTypes = listOf(MineIncidentType.TUNNEL_DRIVE)) },
+            incidentCountMin = 1,
+            incidentCountMax = 1,
+        )
         val runtime = MineRuntime(
-            settings = mineV2Settings().copy(id = "mine_working_lifecycle"),
+            settings = settings,
             region = CuboidActivityRegion(world, "mine_working_lifecycle", CuboidBounds(-16, 50, -16, 32, 80, 40)),
             cooldownMillis = 0L,
             state = MineShiftState(
                 engineVersion = 2,
                 phase = MinePhase.INCIDENT,
                 sequence = 7,
+                orderId = settings.orders.single().id,
+                resumePhase = MinePhase.MINING,
+                incidentSchedule = listOf(MineIncidentType.TUNNEL_DRIVE),
                 incident = MineIncidentState(
                     type = MineIncidentType.TUNNEL_DRIVE,
                     required = 1,
@@ -536,16 +601,36 @@ class MineWorkingLifecycleMockBukkitTest : FunSpec({
             working = MineWorkingState(placement, MineWorkingStage.SUPPORT, completed = setOf(0)),
         ))
         first.clearQueues()
-        val restartedOwner = sceneOwner(plugin)
-        val restarted = MineWorkingWorld(registry, restartedOwner, MockBukkitFarmBlockDataDecoder)
+        val port = immediateMinePort()
+        val leasedChunks = mutableSetOf<Pair<Int, Int>>()
+        val restartedOwner = sceneOwner(plugin, port) { chunk ->
+            val key = chunk.x to chunk.z
+            check(leasedChunks.add(key))
+            AutoCloseable { check(leasedChunks.remove(key)) }
+        }
+        val restarted = MineWorkingWorld(registry, restartedOwner, MockBukkitFarmBlockDataDecoder, tasks = port)
         restarted.reconcileLoaded()
         drain(restartedOwner, restarted, runtime)
+        restarted.scene(runtime) // The first query submits recovery layout planning.
         restarted.isReady(runtime) shouldBe true
+        val keptScene = requireNotNull(restarted.scene(runtime)).blocks
+        val position = Location(world, excavation.x.toDouble(), excavation.y.toDouble(), excavation.z.toDouble())
+        restarted.protects(position) shouldBe true
+        leasedChunks.isNotEmpty() shouldBe true
         world.getBlockAt(excavation.x, excavation.y, excavation.z).blockData.asString shouldBe "minecraft:air"
         original shouldBe "minecraft:stone"
 
-        // Removing the durable incident makes the journal orphaned; reload must restore it and drop the scene.
-        runtime.state = runtime.state.copy(incident = null)
+        restarted.beforeReload()
+        restarted.reconcileLoaded()
+        restartedOwner.isBuilding(runtime.settings.id, runtime.state.sequence) shouldBe false
+        restarted.process()
+        world.getBlockAt(excavation.x, excavation.y, excavation.z).blockData.asString shouldBe "minecraft:air"
+
+        restarted.beforeReload()
+        runtime.settings = settings.copy(orders = settings.orders.map { it.copy(id = "replacement_order") })
+        runtime.state = MineRuntimeFactory.migrate(runtime.settings, runtime.state)
+        runtime.state.phase shouldBe MinePhase.IDLE
+        runtime.state.sequence shouldBe keptScene.sequence
         restarted.reconcileLoaded()
         restarted.isRestoring(runtime) shouldBe true
         restarted.hasScene(runtime) shouldBe true
@@ -558,6 +643,10 @@ class MineWorkingLifecycleMockBukkitTest : FunSpec({
         restarted.isRestoring(runtime) shouldBe false
         restarted.hasScene(runtime) shouldBe false
         restarted.scene(runtime) shouldBe null
+        restarted.protects(position) shouldBe false
+        restartedOwner.scene(world, keptScene.zoneId, keptScene.sequence, keptScene.sceneId,
+            keptScene.surface, keptScene.start, keptScene.end) shouldBe null
+        leasedChunks.shouldBeEmpty()
         world.getBlockAt(excavation.x, excavation.y, excavation.z).blockData.asString shouldBe original
     }
 })
@@ -584,12 +673,17 @@ private fun lifecycleRuntime(world: WorldMock): MineRuntime {
     )
 }
 
-private fun sceneOwner(plugin: Plugin): WorksitePreparedSceneOwner = WorksitePreparedSceneOwner(
+private fun sceneOwner(
+    plugin: Plugin,
+    tasks: WorksiteTaskPort? = null,
+    retention: WorksitePreparedSceneChunkRetention = WorksitePreparedSceneChunkRetention { AutoCloseable {} },
+): WorksitePreparedSceneOwner = WorksitePreparedSceneOwner(
     plugin = plugin,
     namespace = "mine_working",
     codec = FarmMoleBurrowWorksiteSceneCodec(plugin, "mine_working"),
-    chunkRetention = WorksitePreparedSceneChunkRetention { AutoCloseable {} },
+    chunkRetention = retention,
     blockDataDecoder = WorksitePreparedSceneBlockDataDecoder { raw -> MockBukkitFarmBlockDataDecoder.decode(raw) },
+    tasks = tasks,
 )
 
 private fun populateGeology(world: WorldMock, plan: MineWorkingPlan, placement: MineWorkingPlacement) {

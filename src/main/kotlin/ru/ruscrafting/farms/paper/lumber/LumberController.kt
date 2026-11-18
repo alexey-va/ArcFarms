@@ -69,6 +69,7 @@ internal class LumberController(
     private var lastAcceptedChopAt: Long? = null
     private val participantIds = linkedSetOf<UUID>()
     private val lastActions = mutableMapOf<UUID, Long>()
+    private val waitingForToolSlot = mutableSetOf<UUID>()
     private var cartHome = initial.tree?.cartHome ?: initial.cart ?: rules.cart
     private var slowedCarrier: UUID? = null
     private var ownedBlocks = state.tree?.blocks.orEmpty().mapTo(hashSetOf()) { it.position }
@@ -88,13 +89,17 @@ internal class LumberController(
     fun tick(now: Long) {
         if (!active) return
         synchronizeParticipants()
+        waitingForToolSlot.toList().forEach { id ->
+            val player = Bukkit.getPlayer(id)
+            if (player == null || id !in participantIds) waitingForToolSlot.remove(id) else ensureTool(player)
+        }
         updateOutputClock(now)
         if (participantIds.isEmpty() || pending || planning) return
         if (!index.ready && now >= retryIndexAt) beginIndex()
         if (committed.phase == LumberPhase.IDLE && index.ready && now >= retryIndexAt) beginRound()
     }
 
-    fun updateVisuals() {
+    fun tickFast() {
         if (!active) return
         val now = clock()
         synchronizeParticipants()
@@ -110,6 +115,11 @@ internal class LumberController(
             }
             if (next != committed) stage(next)
         }
+    }
+
+    fun updateVisuals() {
+        if (!active) return
+        val now = clock()
         val hidden = LumberSceneGeometry.maskedTreeBlocks(committed).map { it.position }
         val refreshMask = ++visualTick % 20L == 0L
         participants().forEach { masks.apply(it, hidden, refreshMask) }
@@ -198,8 +208,12 @@ internal class LumberController(
             else presentation.target(player)
         if (input == null) return false
         if (axeOnly && !axeAction(input)) return false
-        if (axeAction(input) && !hasAxe(player)) { taskHint(player, MessageKey.LUMBER_NEED_AXE); return true }
+        val needsAxe = axeAction(input) && !hasAxe(player)
         admit(player)
+        if (needsAxe) {
+            if (ensureTool(player)) taskHint(player, MessageKey.LUMBER_NEED_AXE)
+            return true
+        }
         if (pending) return true
         val now = clock()
         if (now - (lastActions[player.uniqueId] ?: Long.MIN_VALUE / 2) < rules.actionCooldownMillis) return true
@@ -338,17 +352,25 @@ internal class LumberController(
         }
     }
 
-    private fun ensureTool(player: Player) {
-        if (!eligible(player)) return
-        val expected = incidents.hoseIdentity(committed) ?: axeIdentity()
+    private fun ensureTool(player: Player): Boolean {
+        if (!eligible(player)) return false
+        val hose = incidents.hoseIdentity(committed)
+        val expected = if (committed.phase == LumberPhase.IDLE) null else hose ?: axeIdentity()
         serviceItems.identities(player).filter { it.activity == ActivityKind.LUMBER && it != expected }
             .forEach { while (serviceItems.consume(player, it)) Unit }
-        if (incidents.hoseIdentity(committed) != null) { incidents.ensureHose(committed, player); return }
-        if (committed.phase != LumberPhase.IDLE && !serviceItems.has(player, expected))
-            serviceItems.issueTool(player, expected, Material.IRON_AXE, locale.render(MessageKey.LUMBER_AXE_NAME, player))
+        val equipped = when {
+            expected == null -> true
+            hose != null -> incidents.ensureHose(committed, player)
+            else -> serviceItems.has(player, expected) ||
+                serviceItems.issueTool(player, expected, Material.IRON_AXE, locale.render(MessageKey.LUMBER_AXE_NAME, player)) != null
+        }
+        if (equipped) waitingForToolSlot.remove(player.uniqueId)
+        else if (waitingForToolSlot.add(player.uniqueId)) audience.sendChat(player, MessageKey.FARM_ACTION_INVENTORY_FULL)
+        return equipped
     }
 
     fun releasePlayer(player: Player) {
+        waitingForToolSlot.remove(player.uniqueId)
         val owned = participantIds.remove(player.uniqueId)
         updateOutputClock(clock())
         if (!owned && state.cartCarrier != player.uniqueId && state.boardsCarrier != player.uniqueId &&
@@ -467,6 +489,7 @@ internal class LumberController(
         slowedCarrier = null
         outputPausedAt = null
         participantIds.clear()
+        waitingForToolSlot.clear()
         lastActions.clear()
         lastAcceptedChopAt = null
         committed = state

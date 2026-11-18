@@ -99,7 +99,7 @@ internal class LumberTreeIndex(private val tasks: WorksiteTaskPort) {
         for (x in b.minX..b.maxX) for (z in b.minZ..b.maxZ) for (y in b.minY..b.maxY) {
             val root = WorksitePosition(settings.world, x, y, z)
             if (root in covered || !isLog(snapshot.type(root))) continue
-            if (snapshot.type(root.copy(y = y - 1)) !in GROUND) continue
+            if (snapshot.type(root.copy(y = y - 1)) !in GROUND || !settings.worksite.contains(x, y, z)) continue
             val trunk = (0..39).map { root.copy(y = y + it) }.takeWhile { isLog(snapshot.type(it)) }
             if (trunk.size < 10) continue // Two untouched stump blocks plus the machine's full-length stock.
             tallTrunks++

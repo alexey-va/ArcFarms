@@ -12,6 +12,8 @@ import org.bukkit.entity.Player
 import org.bukkit.event.block.BlockBreakEvent
 import org.bukkit.event.player.PlayerInteractEvent
 import ru.ruscrafting.farms.domain.ActivityKind
+import ru.ruscrafting.farms.paper.worksite.WorksiteTaskPort
+import java.util.UUID
 
 class WorksiteModuleRegistryTest : FunSpec({
     test("registry routes status tick availability and access by activity kind") {
@@ -26,9 +28,49 @@ class WorksiteModuleRegistryTest : FunSpec({
         registry.canAccess(player, ActivityKind.MINE) shouldBe false
         registry.isAvailable(ActivityKind.FARM) shouldBe false
 
-        registry.tick(42L)
+        registry.tick(42L, guardedTasks())
         verify(exactly = 1) { lumber.tick(42L) }
         verify(exactly = 1) { mine.tick(42L) }
+    }
+
+    test("recurring callbacks continue in activity order when one module throws") {
+        val calls = mutableListOf<String>()
+        val failures = mutableListOf<String>()
+        val tasks = guardedTasks(failures)
+        val registry = WorksiteModuleRegistry(listOf(
+            RecurringModule(ActivityKind.MINE, calls),
+            RecurringModule(ActivityKind.LUMBER, calls, failing = true),
+            RecurringModule(ActivityKind.FARM, calls),
+        ))
+
+        registry.tick(42L, tasks)
+        registry.emitGuidance(tasks)
+        registry.updateEveryTick(tasks)
+
+        calls shouldBe listOf(
+            "FARM:tick:42", "LUMBER:tick:42", "MINE:tick:42",
+            "FARM:particles", "LUMBER:particles", "MINE:particles",
+            "FARM:fast", "FARM:visuals", "LUMBER:fast", "LUMBER:visuals", "MINE:fast", "MINE:visuals",
+        )
+        failures shouldBe listOf("tick:LUMBER", "guidance_particles:LUMBER", "fast_tick:LUMBER", "carried_displays:LUMBER")
+    }
+
+    test("periodic guidance skips the bar sweep after failure and an explicit refresh still propagates it") {
+        val calls = mutableListOf<String>()
+        val failures = mutableListOf<String>()
+        val tasks = guardedTasks(failures)
+        val farm = RecurringModule(ActivityKind.FARM, calls)
+        val lumber = RecurringModule(ActivityKind.LUMBER, calls, failing = true)
+        val mine = RecurringModule(ActivityKind.MINE, calls)
+        val registry = WorksiteModuleRegistry(listOf(farm, lumber, mine))
+
+        registry.updateGuidance(tasks) shouldBe null
+        calls shouldBe listOf("FARM:guidance", "LUMBER:guidance", "MINE:guidance")
+        failures shouldBe listOf("player_guidance:LUMBER")
+
+        shouldThrow<IllegalStateException> { registry.updateGuidance() }
+        lumber.failing = false
+        registry.updateGuidance(tasks) shouldBe setOf(farm.bar, lumber.bar, mine.bar)
     }
 
     test("registry rejects two modules that claim the same activity") {
@@ -65,6 +107,42 @@ class WorksiteModuleRegistryTest : FunSpec({
         mine.moves shouldBe 1
     }
 })
+
+private fun guardedTasks(failures: MutableList<String> = mutableListOf()): WorksiteTaskPort = mockk {
+    every { guarded(any(), any()) } answers {
+        try {
+            secondArg<() -> Unit>().invoke()
+        } catch (_: Exception) {
+            failures += firstArg<String>()
+        }
+    }
+}
+
+private class RecurringModule(
+    override val kind: ActivityKind,
+    private val calls: MutableList<String>,
+    var failing: Boolean = false,
+) : WorksiteModule<Any>, WorksiteFastTickHandler, WorksiteFastVisualHandler, WorksiteGuidanceHandler {
+    val bar = ActivityBarKey(UUID(0L, kind.ordinal.toLong()), kind.name)
+    override val zoneCount = 1
+    override fun states(): Map<String, Any> = emptyMap()
+    override fun statuses(): List<ActivityStatus> = emptyList()
+    override fun canAccess(player: Player) = true
+    override fun tick(now: Long) = record("tick:$now")
+    override fun tickFast() = record("fast")
+    override fun updateVisuals() = record("visuals")
+    override fun emitGuidance() = record("particles")
+
+    override fun updateGuidance(expectedBars: MutableSet<ActivityBarKey>) {
+        record("guidance")
+        expectedBars += bar
+    }
+
+    private fun record(operation: String) {
+        calls += "$kind:$operation"
+        check(!failing) { "$kind failed during $operation" }
+    }
+}
 
 private fun module(kind: ActivityKind, id: String, accessible: Boolean): WorksiteModule<Any> = mockk {
     every { this@mockk.kind } returns kind

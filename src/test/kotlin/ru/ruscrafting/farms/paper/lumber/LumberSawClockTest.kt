@@ -88,6 +88,7 @@ class LumberSawClockTest : FunSpec({
             controller.updateGuidance(mutableSetOf())
             controller.view(player.uniqueId)?.subtitle shouldBe Component.text("lumber.hints.sawing-running")
             now += 11_999L
+            controller.tickFast()
             controller.updateVisuals()
             controller.updateGuidance(mutableSetOf())
             controller.state.sawPasses shouldBe 0
@@ -95,6 +96,8 @@ class LumberSawClockTest : FunSpec({
             titles shouldBe listOf(Component.text("lumber.hints.sawing"), Component.text("lumber.hints.sawing-running"))
             now += 1L
             controller.updateVisuals()
+            controller.state.sawPasses shouldBe 0
+            controller.tickFast()
             controller.state.sawPasses shouldBe 1
             writes.removeFirst().complete(Unit)
             controller.updateGuidance(mutableSetOf())

@@ -20,7 +20,12 @@ internal class MineTransitionCoordinator(
     private val locale: ArcFarmsLocale?,
     private val incidentJournal: ru.ruscrafting.farms.paper.mine.recovery.MineIncidentBlockJournal? = null,
 ) {
-    fun apply(runtime: MineRuntime, result: EngineResult<MineShiftState, MineShiftEvent>, actor: Player?) {
+    fun apply(
+        runtime: MineRuntime,
+        result: EngineResult<MineShiftState, MineShiftEvent>,
+        actor: Player?,
+        onCompleted: () -> Unit = {},
+    ) {
         if (!result.accepted && result.events.isEmpty()) return
         val previous = runtime.state
         runtime.state = result.state
@@ -47,6 +52,7 @@ internal class MineTransitionCoordinator(
             when (event) {
                 MineShiftEvent.INCIDENT_STARTED -> announceIncident(runtime)
                 MineShiftEvent.INCIDENT_RESOLVED -> audience.successBurst(runtime.region)
+                MineShiftEvent.COMPLETED -> onCompleted()
                 else -> Unit
             }
         }

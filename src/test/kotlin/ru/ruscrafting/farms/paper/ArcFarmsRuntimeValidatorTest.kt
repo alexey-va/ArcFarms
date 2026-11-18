@@ -22,12 +22,41 @@ import ru.ruscrafting.farms.domain.FarmShiftState
 import ru.ruscrafting.farms.domain.FarmSpecialIncidentState
 import ru.ruscrafting.farms.domain.enterprise.WorksiteEnterpriseReservation
 import ru.ruscrafting.farms.domain.enterprise.WorksiteEnterpriseSnapshot
+import ru.ruscrafting.farms.domain.lumber.LumberEngine
+import ru.ruscrafting.farms.domain.lumber.lumberIncidentBoundary
 import ru.ruscrafting.farms.persistence.FixedFarmCropJournal
 import ru.ruscrafting.farms.persistence.MineRecoveryJournal
 import java.nio.file.Files
 import java.lang.reflect.InvocationTargetException
 
 class ArcFarmsRuntimeValidatorTest : FunSpec({
+    test("lumber reload protects the world and bounds and startup protects the active tree") {
+        val configured = candidateWith("chop-hits: 5", "chop-hits: 5")
+        val round = lumberIncidentBoundary()
+        val checkpoint = ArcFarmsState(lumbermills = mapOf(LumberEngine.ZONE_ID to round))
+        val validator = validator()
+        val tuned = candidateWith("chop-hits: 5", "chop-hits: 6")
+        ArcFarmsHotReloadPolicy.validate(configured, tuned)
+        validator.validatePersisted(tuned, checkpoint)
+
+        val movedWorld = candidateWith("world: rc_atelier_cedar_sawmill", "world: different_lumber_world")
+        val movedForest = candidateWith("forest: {min-x: 94", "forest: {min-x: 145")
+        val edgeWorksite = candidateWith("worksite: {min-x: 90", "worksite: {min-x: 140")
+        for (candidate in listOf(movedWorld, movedForest, edgeWorksite)) {
+            shouldThrow<IllegalArgumentException> { ArcFarmsHotReloadPolicy.validate(configured, candidate) }
+                .message shouldContain "lumbermill world, forest or worksite bounds"
+            validator.validatePersisted(candidate, ArcFarmsState())
+        }
+        for (candidate in listOf(movedWorld, movedForest)) {
+            shouldThrow<IllegalArgumentException> { validator.validatePersisted(candidate, checkpoint) }
+                .message shouldContain "Persisted active lumber tree cedar_sawmill"
+        }
+        // A pre-upgrade round could select x=139 while participants stood at x=140.
+        validator.validatePersisted(edgeWorksite, checkpoint)
+        validator.validateReload(edgeWorksite, checkpoint)
+        validator.validatePersisted(movedWorld, ArcFarmsState(lumbermills = mapOf("retired_forest" to round)))
+    }
+
     test("worker payment requires Vault before startup even when ordinary rewards and commercial funding are off") {
         MockBukkitTestRuntime.open().use { paper ->
             val plugin = paper.server.pluginManager.loadPlugin(ArcFarmsPlugin::class.java) as ArcFarmsPlugin

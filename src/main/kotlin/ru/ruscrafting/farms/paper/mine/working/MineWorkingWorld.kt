@@ -127,33 +127,40 @@ internal class MineWorkingWorld(
         val work = tasks ?: return CompletableFuture.completedFuture(prepare(runtime, type, placement, nonce))
         val sceneKey = key(runtime)
         pendingPreparations[sceneKey]?.let { return it }
-        if (owner.restoring(runtime.settings.id) || sceneKey in retiring) return CompletableFuture.completedFuture(false)
+        if (owner.restoring(runtime.settings.id) || sceneKey in retiring || sceneKey in scenes) return CompletableFuture.completedFuture(false)
         val key = runtime.settings.id to type
         val reserve = captured.remove(key)?.takeIf { it.first == placement && it.second.sequence == runtime.state.sequence }
             ?: return CompletableFuture.completedFuture(false)
         val plan = capturedPlans.remove(key) ?: return CompletableFuture.completedFuture(false)
         val old = reserve.second
-        val source = epoch
         val token = work.lifecycleToken()
         val result = CompletableFuture<Boolean>()
         pendingPreparations[sceneKey] = result
+        var admitted: MineWorkingScene? = null
         work.compute {
             Triple(old.records.map { it.copy(sceneId = sceneId(nonce)) }, plan.blocks.keys.maxOf(WorksitePosition::y),
                 plan.blocks.keys.mapTo(linkedSetOf()) { it.x shr 4 to (it.z shr 4) })
         }.thenCompose { (records, ceiling, chunks) -> work.callSync(token) {
-            check(epoch == source && runtime.state.sequence == old.sequence && sceneKey !in retiring)
+            check(pendingPreparations[sceneKey] === result && registry.byId(old.zoneId) === runtime &&
+                runtime.state.sequence == old.sequence && sceneKey !in retiring && sceneKey !in scenes)
             val prepared = WorksitePreparedScene(old.world, old.zoneId, old.sequence, sceneId(nonce), old.surface, old.start, old.end, records)
-            scenes[sceneKey] = MineWorkingScene(plan, prepared, ceiling, chunks)
+            val scene = MineWorkingScene(plan, prepared, ceiling, chunks)
+            admitted = scene
+            scenes[sceneKey] = scene
             owner.prepareAllAsync(listOf(prepared))
         }.thenCompose { it } }.whenComplete { success, failure -> work.callSync(token) {
-            pendingPreparations.remove(sceneKey, result)
-            if (failure != null || success != true) {
+            if (!pendingPreparations.remove(sceneKey, result)) return@callSync
+            if (admitted != null && scenes[sceneKey] === admitted && (failure != null || success != true)) {
                 scenes.remove(sceneKey)
                 owner.beginRestore(old.world, old.zoneId, old.sequence, sceneId(nonce))
             }
             if (failure == null) result.complete(success) else result.completeExceptionally(failure)
         }.exceptionally { result.completeExceptionally(it); null } }
         return result
+    }
+
+    fun cancelPreparation(runtime: MineRuntime) {
+        pendingPreparations.remove(key(runtime))?.cancel(false)
     }
 
     private fun captureSlice() {
@@ -214,7 +221,8 @@ internal class MineWorkingWorld(
                 val token = work.lifecycleToken()
                 val source = epoch
                 work.compute { MineWorkingLayout.plan(incident.type, placement) }.thenCompose { value -> work.callSync(token) {
-                    if (epoch == source && runtime.state.incident?.objectiveNonce == incident.objectiveNonce) recoveryPlans[sceneKey] = value
+                    if (epoch != source) return@callSync
+                    if (runtime.state.incident?.objectiveNonce == incident.objectiveNonce) recoveryPlans[sceneKey] = value
                     planRequests.remove(sceneKey)
                 } }
             }
@@ -381,7 +389,7 @@ internal class MineWorkingWorld(
                 !entries.hasNext()
             }
         }.thenCompose { it } }.whenComplete { _, failure -> work.callSync(token) {
-            if (projecting[sceneKey] === request) projecting.remove(sceneKey)
+            if (!projecting.remove(sceneKey, request)) return@callSync
             if (failure == null) { request.working.drive?.let { projectedDrive[sceneKey] = it }; request.completion.complete(Unit) }
             else request.completion.completeExceptionally(failure)
             pendingProjection.remove(sceneKey)?.let { next ->
@@ -443,9 +451,10 @@ internal class MineWorkingWorld(
     /** Restores only a retained scene when the runtime has already advanced to another sequence. */
     fun startRestore(scene: MineWorkingScene) {
         val sceneKey = scenes.entries.firstOrNull { it.value === scene }?.key ?: return
+        projectedDrive.remove(sceneKey)
         ready.remove(sceneKey)
         retiring += sceneKey
-        owner.beginRestore(scene.blocks.world, scene.blocks.zoneId, scene.blocks.sequence)
+        owner.beginRestore(scene.blocks.world, scene.blocks.zoneId, scene.blocks.sequence, scene.blocks.sceneId)
     }
 
     fun hasScene(runtime: MineRuntime): Boolean = scenes.values.any { it.blocks.zoneId == runtime.settings.id }
@@ -496,10 +505,11 @@ internal class MineWorkingWorld(
     fun reconcileLoaded() {
         ready.clear()
         projectedDrive.clear()
-        scenes.forEach { (key, scene) ->
-            if (!active(scene.blocks.zoneId, scene.blocks.sequence)) retiring += key
-        }
+        val orphans = scenes.filterValues { !active(it.blocks.zoneId, it.blocks.sequence) }
+        retiring += orphans.keys
         owner.reconcileLoaded(::active, ::activeScene, maintenance = true)
+        // A completed scene kept across reload still owns its index and chunk leases.
+        orphans.values.filter { owner.isComplete(it.blocks) }.forEach(::startRestore)
     }
     fun onChunkLoad(chunk: Chunk) {
         registry.snapshot().filter { it.region.world === chunk.world && it.state.incident?.working != null }.forEach {
@@ -513,12 +523,42 @@ internal class MineWorkingWorld(
         "${record.zoneId}:${record.sequence}" in retained ||
             it.state.incident?.let { incident -> incident.working != null && sceneId(incident.objectiveNonce) == record.sceneId } == true
     } == true
+
+    fun beforeReload() {
+        val activeScenes = scenes.filterValues { active(it.blocks.zoneId, it.blocks.sequence) }
+        resetQueues(activeScenes.values.map(MineWorkingScene::blocks))
+        // Recover an interrupted active build from its journal. Keep orphan geometry for safe evacuation and restore.
+        scenes.entries.removeIf { (key, scene) ->
+            key in activeScenes && key !in retained && !owner.isComplete(scene.blocks)
+        }
+    }
+
     fun clearQueues() {
+        resetQueues(emptyList())
+        scenes.clear()
+        retiring.clear()
+        retained.clear()
+    }
+
+    private fun resetQueues(keepCompletedScenes: Collection<WorksitePreparedScene>) {
         epoch++
-        projecting.values.forEach { it.completion.completeExceptionally(java.util.concurrent.CancellationException("Working owner closed")) }
-        pendingProjection.values.forEach { it.completion.completeExceptionally(java.util.concurrent.CancellationException("Working owner closed")) }
-        projecting.clear(); pendingProjection.clear(); pendingPreparations.clear(); recoveryPlans.clear(); planRequests.clear(); captureRequests.clear()
-        projectedDrive.clear(); captures.clear(); captured.clear(); capturedPlans.clear(); captureData.clear(); owner.clearQueues(); scenes.clear(); ready.clear(); retiring.clear(); retained.clear() }
+        val pending: List<CompletableFuture<*>> =
+            pendingPreparations.values.toList() + projecting.values.map { it.completion } + pendingProjection.values.map { it.completion }
+        pendingPreparations.clear()
+        projecting.clear()
+        pendingProjection.clear()
+        recoveryPlans.clear()
+        planRequests.clear()
+        captureRequests.clear()
+        projectedDrive.clear()
+        captures.clear()
+        captured.clear()
+        capturedPlans.clear()
+        captureData.clear()
+        ready.clear()
+        owner.clearQueues(keepCompletedScenes)
+        pending.forEach { it.cancel(false) }
+    }
 
     private fun active(zoneId: String, sequence: Long): Boolean = registry.byId(zoneId)?.let {
         ("$zoneId:$sequence" in retained ||

@@ -23,6 +23,11 @@ internal object ArcFarmsHotReloadPolicy {
             current.mines.associate { it.id to (it.reference to it.engineVersion) } ==
                 candidate.mines.associate { it.id to (it.reference to it.engineVersion) },
         ) { "Changing mine zone topology or engine-version requires a full plugin restart" }
+        val lumber = current.lumbermill
+        val nextLumber = candidate.lumbermill
+        require(lumber.world == nextLumber.world && lumber.forest == nextLumber.forest && lumber.worksite == nextLumber.worksite) {
+            "Changing the lumbermill world, forest or worksite bounds requires a full plugin restart"
+        }
 
         ActivityKind.entries.forEach { activity ->
             val currentCompany = current.enterprises[activity]?.companyId ?: return@forEach

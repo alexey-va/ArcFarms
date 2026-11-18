@@ -326,24 +326,27 @@ object MineShiftEngine {
     fun extract(
         current: MineShiftState,
         rules: MineRules,
-        playerId: UUID,
+        playerId: UUID?,
         now: Long,
     ): EngineResult<MineShiftState, MineShiftEvent> {
         val advanced = tick(current, rules, now)
         val state = advanced.state
         val events = advanced.events.toMutableList()
         if (state.phase != MinePhase.EXTRACTION) return EngineResult(state, false, events = events)
+        if (rules.miningOnly && state.incidentCursor < state.incidentSchedule.size) return EngineResult(state, false)
+        if (!rules.miningOnly && playerId == null) return EngineResult(state, false)
+        val hauler = playerId?.takeUnless { rules.miningOnly }
         events += MineShiftEvent.COMPLETED
         return EngineResult(
             state.copy(
                 phase = MinePhase.COOLDOWN,
                 cooldownEndsAt = now + rules.cooldownMillis,
                 outcome = ShiftOutcome.COMPLETED,
-                contributors = incrementContribution(state.contributors, playerId, 1),
+                contributors = hauler?.let { incrementContribution(state.contributors, it, 1) } ?: state.contributors,
                 objective = null,
             ),
             true,
-            contribution = 1,
+            contribution = if (hauler == null) 0 else 1,
             events = events,
         )
     }

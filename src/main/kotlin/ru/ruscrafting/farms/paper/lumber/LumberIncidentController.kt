@@ -70,11 +70,11 @@ internal class LumberIncidentController(
                 ObjectiveTargetRole("hose"), "lumber_hose")
         }
 
-    fun ensureHose(current: LumberState, player: Player) {
-        if (!eligible(player)) return
-        val identity = hoseIdentity(current) ?: return
-        if (!items.has(player, identity)) items.issueTool(player, identity, Material.BLAZE_ROD,
-            locale.render(MessageKey.LUMBER_HOSE_NAME, player))
+    fun ensureHose(current: LumberState, player: Player): Boolean {
+        if (!eligible(player)) return false
+        val identity = hoseIdentity(current) ?: return false
+        return items.has(player, identity) || items.issueTool(player, identity, Material.BLAZE_ROD,
+            locale.render(MessageKey.LUMBER_HOSE_NAME, player)) != null
     }
 
     fun ownsHose(player: Player): Boolean = eligible(player) && items.identity(player.inventory.itemInMainHand)?.let {

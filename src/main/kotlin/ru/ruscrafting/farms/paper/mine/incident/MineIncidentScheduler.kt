@@ -36,9 +36,14 @@ internal class MineIncidentScheduler(
     private val tasks: WorksiteTaskPort? = null,
     private val floorActivities: ru.ruscrafting.farms.paper.mine.floorwork.MineFloorActivities? = null,
 ) {
-    private val retryAfter = mutableMapOf<String, Long>()
+    private class ScheduledAttempt(val sequence: Long, val cursor: Int) {
+        var retryAt = 0L
+        var pending = false
+        var nextAlternative = 0
+    }
+
+    private val attempts = mutableMapOf<String, ScheduledAttempt>()
     private val diagnosed = mutableSetOf<String>()
-    private val pending = mutableSetOf<String>()
 
     fun tick(runtime: MineRuntime, now: Long, onlineParticipants: Int): Boolean {
         if (onlineParticipants <= 0 || runtime.state.phase == MinePhase.INCIDENT) return false
@@ -53,20 +58,48 @@ internal class MineIncidentScheduler(
                 runtime.state.mined < threshold(runtime.rules().miningQuota, runtime.state.incidentCursor,
                     runtime.state.incidentSchedule.size)) return false
         } else if ((PHASE_RANK[runtime.state.phase] ?: return false) < (INCIDENT_RANK[type] ?: 0)) return false
-        val key = "${runtime.settings.id}:${runtime.state.sequence}:${runtime.state.incidentCursor}"
-        if (now < (retryAfter[key] ?: 0L)) return false
-        if (!pending.add(key)) return false
+        val zone = runtime.settings.id
+        val current = runtime.state
+        val attempt = attempts[zone]?.takeIf { it.sequence == current.sequence && it.cursor == current.incidentCursor }
+            ?: ScheduledAttempt(current.sequence, current.incidentCursor).also { attempts[zone] = it }
+        if (attempt.pending || now < attempt.retryAt) return false
         val token = tasks?.lifecycleToken()
-        forceAsync(runtime, type, now).whenComplete { started, failure ->
+        attempt.retryAt = now + RETRY_MILLIS
+        val selected = if (runtime.settings.miningOnly && current.phase == MinePhase.EXTRACTION &&
+            missingRequiredLocation(runtime, type)) {
+            val alternatives = runtime.currentOrder()?.incidentTypes.orEmpty().filter { candidate ->
+                candidate in SUPPORTED_TYPES && candidate !in current.incidentSchedule && !missingRequiredLocation(runtime, candidate)
+            }
+            if (alternatives.isEmpty()) type else {
+                val index = attempt.nextAlternative % alternatives.size
+                attempt.nextAlternative = (index + 1) % alternatives.size
+                alternatives[index]
+            }
+        } else type
+        val preparation = forceAsync(runtime, selected, now)
+        attempt.pending = true
+        preparation.whenComplete { started, failure ->
             val finish = {
-                pending.remove(key)
-                if (failure == null && started == true) retryAfter.remove(key)
-                else retryAfter[key] = now + RETRY_MILLIS
-                Unit
+                if (attempts[zone] === attempt) {
+                    attempt.pending = false
+                    if (failure != null) {
+                        state.log(Level.WARNING, "Mine incident preparation failed zone=$zone type=$selected", failure)
+                    } else if (started == true && selected != type) {
+                        state.log(Level.INFO, "Mine incident replaced zone=$zone sequence=${current.sequence} " +
+                            "slot=${current.incidentCursor} planned=$type started=$selected")
+                    }
+                }
             }
             if (token != null) tasks?.runSync(token, finish) else finish()
         }
-        return runtime.state.incident?.type == type
+        return runtime.state.incident?.type == selected
+    }
+
+    /** Missing authored stations are definitive. Searching for terrain or preparing a reserve is retryable. */
+    private fun missingRequiredLocation(runtime: MineRuntime, type: MineIncidentType): Boolean = when {
+        MineExpeditionEngine.supports(type) -> expeditions?.configured(runtime) != true
+        type == MineIncidentType.ORE_WORKSHOP -> !workshop.configured(runtime)
+        else -> false
     }
 
     fun force(runtime: MineRuntime, type: MineIncidentType, now: Long): Boolean {
@@ -138,9 +171,8 @@ internal class MineIncidentScheduler(
     }
 
     fun cleanup() {
-        retryAfter.clear()
+        attempts.clear()
         diagnosed.clear()
-        pending.clear()
     }
 
     fun reportPreparationFailure(runtime: MineRuntime, type: MineIncidentType) {

@@ -36,7 +36,7 @@ internal class LumbermillVersionedModule(
     private val tasks: WorksiteTaskPort,
     private val serviceItems: WorksiteServiceItems,
     private val clock: () -> Long,
-) : WorksiteModule<LumberState>, WorksiteFastVisualHandler, WorksiteGuidanceHandler,
+) : WorksiteModule<LumberState>, WorksiteFastTickHandler, WorksiteFastVisualHandler, WorksiteGuidanceHandler,
     WorksiteBlockBreakGuard, WorksiteBlockBreakHandler, WorksiteBlockDamageHandler,
     WorksitePlayerInteractHandler, WorksiteArmSwingHandler, WorksiteMoveHandler,
     WorksiteParticipantOwner, WorksiteServiceItemOwner, WorksiteAdminHandler {
@@ -69,6 +69,7 @@ internal class LumbermillVersionedModule(
         if (retired) { controller = create(controller.state); retired = false }
         controller.activate()
     }
+    override fun tickFast() = controller.tickFast()
     override fun updateVisuals() = controller.updateVisuals()
     override fun reconcileChunk(chunk: Chunk) { if (chunk.world.name == rules.world) controller.onChunkChanged() }
     override fun beforeChunkUnload(chunk: Chunk) { if (chunk.world.name == rules.world) controller.onChunkChanged() }

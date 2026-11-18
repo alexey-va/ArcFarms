@@ -134,9 +134,7 @@ internal class MineModule(
                     participants.firstOrNull()?.let { prospecting.autoStart(runtime, it) }
                 }
                 incidents.tick(runtime, now, participants)
-                participants.firstOrNull { it.uniqueId in runtime.state.contributors }?.let {
-                    extraction.completeMiningOrder(runtime, it)
-                }
+                extraction.completeMiningOrder(runtime)
                 extraction.reconcile(runtime)
             }
         }

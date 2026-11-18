@@ -124,6 +124,10 @@ class LumberTreeIndexTest : FunSpec({
             index.select(world, 3) { tree = it.getOrThrow() }
             tree!!.cartHome shouldBe cart
             world.getBlockAt(110, 75, 184).type shouldBe Material.OAK_LEAVES
+            val outsideWorksite = rules.copy(worksite = rules.worksite.copy(minX = 111))
+            val restricted = LumberTreeIndex(tasks)
+            restricted.rebuild(world, outsideWorksite) { count = it.getOrThrow() }
+            count shouldBe 0
             world.getBlockAt(110, 77, 180).type = Material.STONE
             index.select(world, 2) { tree = it.getOrThrow() }
             tree shouldBe null

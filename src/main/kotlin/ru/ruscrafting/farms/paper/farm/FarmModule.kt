@@ -35,6 +35,7 @@ import ru.ruscrafting.farms.paper.worksite.WorksiteTaskPort
 import ru.ruscrafting.farms.paper.worksite.captureLoadedChunks
 import ru.ruscrafting.farms.paper.WorksiteModule
 import ru.ruscrafting.farms.paper.WorksiteBlockBreakHandler
+import ru.ruscrafting.farms.paper.WorksiteFastVisualHandler
 import ru.ruscrafting.farms.paper.WorksitePlayerInteractHandler
 import ru.ruscrafting.farms.paper.WorksiteMoveHandler
 import ru.ruscrafting.farms.paper.WorksiteTeleportRetention
@@ -116,7 +117,7 @@ internal class FarmModule(
     private val guidance: FarmGuidanceController,
     private val events: FarmEventRouter,
 ) : WorksiteModule<FarmShiftState>, WorksiteBlockBreakHandler, WorksitePlayerInteractHandler, WorksiteMoveHandler,
-    WorksiteGuidanceHandler, WorksiteParticipantOwner, WorksiteTeleportRetention, WorksiteServiceItemOwner {
+    WorksiteGuidanceHandler, WorksiteFastVisualHandler, WorksiteParticipantOwner, WorksiteTeleportRetention, WorksiteServiceItemOwner {
     override val kind: ActivityKind = ActivityKind.FARM
     override val zoneCount: Int get() = registry.size
 
@@ -286,7 +287,7 @@ internal class FarmModule(
 
     fun updatePlayerTimes() = tasks.guarded("farm_night_time") { special.updatePlayerTimes() }
 
-    fun updateCarriedDisplays() {
+    override fun updateVisuals() {
         val runtimes = registry.snapshot()
         runtimes.forEach { runtime -> tasks.guarded("farm_tornado:${runtime.settings.id}") { tornado.update(runtime) } }
         runtimes.forEach { runtime -> tasks.guarded("farm_greenhouse:${runtime.settings.id}") { greenhouse.update(runtime) } }

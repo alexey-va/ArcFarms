@@ -5,16 +5,17 @@ import io.kotest.matchers.shouldBe
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
+import net.kyori.adventure.text.Component
 import org.bukkit.Location
 import org.bukkit.Material
 import org.bukkit.event.block.BlockBreakEvent
 import org.bukkit.event.block.BlockDamageEvent
+import org.bukkit.inventory.ItemStack
 import ru.arc.paper.testing.MockBukkitTestRuntime
+import ru.ruscrafting.farms.config.ArcFarmsLocale
 import ru.ruscrafting.farms.config.LumbermillSettings
 import ru.ruscrafting.farms.config.MessageKey
-import ru.ruscrafting.farms.domain.ActivityKind
 import ru.ruscrafting.farms.domain.lumber.*
-import ru.ruscrafting.farms.domain.worksite.ObjectiveTargetRole
 import ru.ruscrafting.farms.domain.worksite.WorksitePosition
 import ru.ruscrafting.farms.paper.RuntimeTaskSupervisor
 import ru.ruscrafting.farms.paper.lumber.scene.LumberPresentation
@@ -22,6 +23,38 @@ import ru.ruscrafting.farms.paper.worksite.*
 import java.util.concurrent.CompletableFuture
 
 class LumberTreeInteractionTest : FunSpec({
+    test("a solo worker with a full inventory gets one working axe after freeing a slot") {
+        MockBukkitTestRuntime.open().use { paper ->
+            val f = TreeInteractionFixture(paper, fullInventory = true)
+            val selected = f.player.inventory.heldItemSlot
+            f.controller.tick(1_000L)
+            f.controller.onBreakHigh(BlockBreakEvent(f.world.getBlockAt(139, 76, 202), f.player)) shouldBe true
+            f.player.inventory.itemInMainHand.type shouldBe Material.STONE
+            f.controller.state.chopHits shouldBe 0
+            verify(exactly = 1) { f.audience.sendChat(f.player, MessageKey.FARM_ACTION_INVENTORY_FULL, any()) }
+
+            f.player.inventory.setItem(selected, null)
+            f.controller.tick(2_000L)
+            f.player.inventory.itemInMainHand.type shouldBe Material.IRON_AXE
+            f.controller.onBreakHigh(BlockBreakEvent(f.world.getBlockAt(139, 76, 202), f.player)) shouldBe true
+            f.controller.state.chopHits shouldBe 1
+            f.player.inventory.storageContents.count { it?.type == Material.IRON_AXE } shouldBe 1
+        }
+    }
+
+    test("a trunk hit can reclaim a missing axe before the next tick and counts only once it is held") {
+        MockBukkitTestRuntime.open().use { paper ->
+            val f = TreeInteractionFixture(paper, fullInventory = true)
+            val block = f.world.getBlockAt(139, 76, 202)
+            f.player.inventory.setItem(f.player.inventory.heldItemSlot, null)
+            f.controller.onBreakHigh(BlockBreakEvent(block, f.player)) shouldBe true
+            f.player.inventory.itemInMainHand.type shouldBe Material.IRON_AXE
+            f.controller.state.chopHits shouldBe 0
+            f.controller.onBreakHigh(BlockBreakEvent(block, f.player)) shouldBe true
+            f.controller.state.chopHits shouldBe 1
+        }
+    }
+
     test("a native selected-trunk hit outside the small root ray counts once and preserves the block") {
         MockBukkitTestRuntime.open().use { paper ->
             val f = TreeInteractionFixture(paper)
@@ -74,12 +107,13 @@ class LumberTreeInteractionTest : FunSpec({
     }
 })
 
-private class TreeInteractionFixture(paper: MockBukkitTestRuntime) {
+private class TreeInteractionFixture(paper: MockBukkitTestRuntime, fullInventory: Boolean = false) {
     private val rules = LumbermillSettings()
     val world = paper.server.addSimpleWorld(rules.world)
+    private val plugin = paper.createSimplePlugin("LumberTreeInput")
     val player = paper.server.addPlayer().apply {
         teleport(Location(world, 139.5, 73.0, 204.5))
-        addAttachment(paper.createSimplePlugin("LumberTreeInput"), LumbermillSettings.BETA_PERMISSION, true)
+        addAttachment(plugin, LumbermillSettings.BETA_PERMISSION, true)
     }
     private val root = WorksitePosition(rules.world, 139, 73, 202)
     private val tree = LumberTreeSnapshot(root,
@@ -94,16 +128,25 @@ private class TreeInteractionFixture(paper: MockBukkitTestRuntime) {
         every { allowInteraction(any(), any()) } returns true
     }
     val audience = mockk<WorksiteAudiencePort>(relaxed = true)
-    private val axe = ServiceItemIdentity(ActivityKind.LUMBER, LumberEngine.ZONE_ID, 1, 1,
-        ObjectiveTargetRole("axe"), "lumber_axe")
-    private val items = mockk<WorksiteServiceItems>(relaxed = true) { every { identity(any()) } returns axe }
-    val controller = LumberController(rules, "spawn", mockk(relaxed = true), access, audience,
+    private val locale = mockk<ArcFarmsLocale> {
+        every { render(any<MessageKey>(), any(), any()) } answers { Component.text(firstArg<MessageKey>().path) }
+    }
+    private val itemOwner = mockk<WorksiteServiceItemOwner>()
+    private val items = WorksiteServiceItemController(plugin, itemOwner)
+    val controller = LumberController(rules, "spawn", locale, access, audience,
         mockk<WorksiteStatePort>(relaxed = true) { every { persistAsync() } returns CompletableFuture.completedFuture(Unit) },
         tasks, items, mockk<LumberPresentation>(relaxed = true) { every { target(any()) } returns null },
         LumberEngine.start(LumberState(), tree, rules.cart, 0), { 1_000L }, mockk(relaxed = true), mockk(relaxed = true),
         incidentTethers = mockk(relaxed = true),
-    ).also { controller ->
+    )
+
+    init {
+        every { itemOwner.isActive(any()) } answers { controller.isActive(firstArg()) }
+        if (fullInventory) {
+            player.inventory.storageContents.indices.forEach { player.inventory.setItem(it, ItemStack(Material.STONE, 64)) }
+        }
         tree.logs.forEach { world.getBlockAt(it.position.x, it.position.y, it.position.z).type = Material.OAK_LOG }
         controller.activate()
+        controller.onMove(player)
     }
 }
