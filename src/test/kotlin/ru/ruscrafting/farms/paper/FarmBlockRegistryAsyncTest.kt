@@ -6,6 +6,7 @@ import org.bukkit.Chunk
 import org.bukkit.Material
 import org.bukkit.NamespacedKey
 import org.bukkit.World
+import org.bukkit.persistence.PersistentDataType
 import ru.arc.core.Tasks
 import ru.arc.core.TestTaskScheduler
 import ru.ruscrafting.farms.config.CuboidBounds
@@ -15,6 +16,39 @@ import ru.ruscrafting.farms.paper.fixtures.FarmAsyncHarness
 import java.util.concurrent.CompletableFuture
 
 class FarmBlockRegistryAsyncTest : FunSpec({
+    test("a late legacy journal is reconciled and retained topology is removed after the journal clears") {
+        FarmAsyncHarness("FarmEmptyChunkLedger").use { h ->
+            val world = h.paper.server.addSimpleWorld("farm_empty_chunk")
+            val leaf = world.getBlockAt(4, 66, 4).also { it.type = Material.OAK_LEAVES }
+            world.getBlockAt(4, 65, 4).type = Material.AIR
+            val chunk = leaf.chunk.also { it.load() }
+            val definition = definition(world, 15)
+            val ledger = FarmBlockLedger(h.plugin)
+            FarmBlockRegistry(h.plugin, ledger, tasks = h.tasks).use { registry ->
+                registry.reconcileChunkAsync(definition, chunk).isDone shouldBe true
+
+                // A later write to the same chunk must be considered even if only a legacy key exists.
+                val orchardKey = NamespacedKey(h.plugin, "farm_orchard_leaves_v1")
+                val container = chunk.persistentDataContainer
+                container.set(orchardKey, PersistentDataType.STRING, """[{"zoneId":"farm","x":4,"y":66,"z":4}]""")
+                val indexed = registry.reconcileChunkAsync(definition, chunk)
+                (registry.reconcileChunkAsync(definition, chunk) === indexed) shouldBe true
+                h.until { indexed.isDone }
+                indexed.join()
+                registry.orchardLeaves("farm") shouldBe setOf(FarmPlotPosition(world.name, 4, 66, 4))
+
+                ledger.replaceZoneIndex(chunk, "farm", emptyList(), emptyList(), emptyList())
+                val cleared = registry.reconcileChunkAsync(definition, chunk)
+                registry.isReindexing("farm") shouldBe true
+                h.until { cleared.isDone }
+                cleared.join()
+
+                registry.orchardLeaves("farm") shouldBe emptySet()
+                registry.isReindexing("farm") shouldBe false
+            }
+        }
+    }
+
     listOf(false, true).forEach { async ->
         test("${if (async) "async" else "sync"} chunk reconciliation recovers unindexed raid journals outside the home region only") {
             FarmAsyncHarness("FarmRaidOrphanRecovery").use { h ->

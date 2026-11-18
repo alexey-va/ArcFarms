@@ -199,7 +199,14 @@ internal class FarmBlockRegistry(
             .getOrElse { CompletableFuture.failedFuture(it) }
         if (chunk.world !== definition.region.world || closed) return CompletableFuture.completedFuture(Unit)
         val key = Triple(definition.zoneId, chunk.world.uid, chunk.chunkKey)
+        // A pending reconcile may already have cleared its journal while still publishing topology.
         pendingReconcile[key]?.let { return it }
+        val coordinates = Triple(chunk.world.name, chunk.x, chunk.z)
+        if (chunk.isLoaded && !ledger.hasPersistedRecords(chunk) &&
+            bedsByZone[definition.zoneId]?.containsChunk(coordinates) != true &&
+            fixedCropsByZone[definition.zoneId]?.containsChunk(coordinates) != true &&
+            orchardLeavesByZone[definition.zoneId]?.containsChunk(coordinates) != true
+        ) return CompletableFuture.completedFuture(Unit)
         val token = work.lifecycleToken()
         val expectedEpoch = epoch
         val result = CompletableFuture<Unit>()
@@ -243,7 +250,6 @@ internal class FarmBlockRegistry(
                         }
                         !beds.hasNext() && !fixed.hasNext() && !leaves.hasNext()
                     }.thenCompose {
-                        val coordinates = Triple(chunk.world.name, chunk.x, chunk.z)
                         fun publish(): CompletableFuture<Unit> {
                             val previousBeds = bedsByZone[definition.zoneId]
                             val previousFixed = fixedCropsByZone[definition.zoneId]
@@ -925,8 +931,10 @@ internal class FarmBlockRegistry(
 /** Stable ordered roots let delayed capture traverse one exact topology revision without copying a whole zone. */
 private data class FarmTopologyIndex(
     val positions: PersistentSet<FarmPlotPosition> = persistentSetOf(),
-    val chunks: PersistentMap<Triple<String, Int, Int>, PersistentSet<FarmPlotPosition>> = persistentMapOf(),
+    private val chunks: PersistentMap<Triple<String, Int, Int>, PersistentSet<FarmPlotPosition>> = persistentMapOf(),
 ) {
+    fun containsChunk(key: Triple<String, Int, Int>): Boolean = key in chunks
+
     fun add(values: Collection<FarmPlotPosition>): FarmTopologyIndex {
         var nextPositions = positions
         var nextChunks = chunks

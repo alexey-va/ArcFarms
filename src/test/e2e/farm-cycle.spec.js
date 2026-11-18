@@ -35,7 +35,7 @@ async function command(server, player, commands) {
 test('ordinary farm work reaches mounted delivery, rewards once and survives rejoin', async ({ player, server, signal }) => {
   const playerId = player.bot.player.uuid;
   await command(server, player, [
-    'minecraft:gamerule randomTickSpeed 0',
+    'minecraft:gamerule minecraft:random_tick_speed 0',
     'minecraft:forceload add 96 -16 144 16',
     'minecraft:setblock 100 -61 0 minecraft:farmland[moisture=7]',
     `minecraft:experience set ${player.username} 0 levels`,

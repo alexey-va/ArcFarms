@@ -86,6 +86,7 @@ internal class FarmBlockLedger(plugin: Plugin) {
     private val key = NamespacedKey(plugin, "farm_managed_blocks_v1")
     private val fixedCropKey = NamespacedKey(plugin, "farm_fixed_crops_v1")
     private val orchardLeafKey = NamespacedKey(plugin, "farm_orchard_leaves_v1")
+    private val recordKeys = arrayOf(key, fixedCropKey, orchardLeafKey)
     private val logger = plugin.logger
     private val blockCache = boundedBlockChunkCache()
     private val fixedCropCache = boundedChunkCache<ManagedFarmFixedCropRecord>()
@@ -101,6 +102,11 @@ internal class FarmBlockLedger(plugin: Plugin) {
 
     fun isCurrent(chunk: Chunk, loaded: LoadedChunk): Boolean =
         chunk.isLoaded && chunk.cacheKey() == loaded.cacheKey && (revisions[loaded.cacheKey] ?: 0L) == loaded.revision
+
+    fun hasPersistedRecords(chunk: Chunk): Boolean {
+        val container = chunk.persistentDataContainer
+        return recordKeys.any { container.has(it) }
+    }
 
     /** Worker encoding followed by one revision-fenced native journal write. */
     fun commitBlocksAsync(
@@ -135,19 +141,18 @@ internal class FarmBlockLedger(plugin: Plugin) {
         val z = chunk.z
         val minimum = chunk.world.minHeight
         val maximum = chunk.world.maxHeight
-        val raw = arrayOfNulls<Any>(3)
-        val keys = arrayOf(key, fixedCropKey, orchardLeafKey)
+        val raw = arrayOfNulls<Any>(recordKeys.size)
         var index = 0
         fun current() = isCurrent() && (revisions[cacheKey] ?: 0L) == revision && chunk.isLoaded
         return tasks.capture(token, ::current) {
             val container = chunk.persistentDataContainer
-            val field = keys[index]
+            val field = recordKeys[index]
             raw[index] = when {
                 container.has(field, PersistentDataType.BYTE_ARRAY) -> container.get(field, PersistentDataType.BYTE_ARRAY)
                 container.has(field, PersistentDataType.STRING) -> container.get(field, PersistentDataType.STRING)
                 else -> null
             }
-            ++index == keys.size
+            ++index == recordKeys.size
         }.thenCompose { tasks.compute {
             val contents = FarmBlockLedgerCodec.decode(raw[0], raw[1], raw[2], x, z, minimum, maximum)
             LoadedChunk(cacheKey, revision, contents, ManagedFarmBlockSnapshot(contents.blocks))

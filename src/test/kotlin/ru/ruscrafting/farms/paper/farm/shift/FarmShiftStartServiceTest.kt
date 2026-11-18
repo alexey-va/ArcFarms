@@ -8,6 +8,8 @@ import io.mockk.mockk
 import io.mockk.verify
 import org.bukkit.Location
 import org.bukkit.entity.Player
+import ru.ruscrafting.farms.config.CuboidBounds
+import ru.ruscrafting.farms.config.FarmCropLayoutSettings
 import ru.ruscrafting.farms.config.FarmZoneSettings
 import ru.ruscrafting.farms.config.ShiftStartPersistenceSettings
 import ru.ruscrafting.farms.domain.FarmOrder
@@ -17,6 +19,9 @@ import ru.ruscrafting.farms.domain.FarmRules
 import ru.ruscrafting.farms.domain.FarmShiftState
 import ru.ruscrafting.farms.paper.ActivityRegion
 import ru.ruscrafting.farms.paper.ArcFarmsDebug
+import ru.ruscrafting.farms.paper.CuboidActivityRegion
+import ru.ruscrafting.farms.paper.FarmBlockIndexDefinition
+import ru.ruscrafting.farms.paper.FarmBlockLedger
 import ru.ruscrafting.farms.paper.FarmBlockRegistry
 import ru.ruscrafting.farms.paper.FarmRuntime
 import ru.ruscrafting.farms.paper.RuntimeTaskSupervisor
@@ -26,11 +31,36 @@ import ru.ruscrafting.farms.paper.farm.admin.FarmWorldAdminService
 import ru.ruscrafting.farms.paper.farm.care.FarmCarePlanService
 import ru.ruscrafting.farms.paper.farm.enterprise.FarmEnterprisePort
 import ru.ruscrafting.farms.paper.farm.field.FarmFieldController
+import ru.ruscrafting.farms.paper.fixtures.FarmAsyncHarness
 import java.util.UUID
 import java.util.concurrent.CompletableFuture
 import java.util.random.RandomGenerator
 
 class FarmShiftStartServiceTest : FunSpec({
+    test("empty loaded chunks do not stall a shift before or during patch planning") {
+        FarmAsyncHarness("FarmEmptyChunkStart").use { h ->
+            val world = h.paper.server.addSimpleWorld("farm")
+            val definition = FarmBlockIndexDefinition(
+                "farm", CuboidActivityRegion(world, "farm", CuboidBounds(0, 64, 0, 15, 66, 15)),
+                setOf("WHEAT"), 16, 1_024, 8, FarmCropLayoutSettings(false, mapOf("WHEAT" to 1), 0, 0),
+            )
+            FarmBlockRegistry(h.plugin, FarmBlockLedger(h.plugin), tasks = h.tasks).use { registry ->
+                val planning = CompletableFuture<List<FarmPlotPosition>>()
+                val fixture = fixture(CompletableFuture.completedFuture(Unit), planning = planning, registry = registry)
+                for (x in 0..7) registry.reconcileChunk(definition, world.getChunkAt(x, 0).also { it.load() })
+
+                fixture.service.start(fixture.runtime, fixture.player, 1_000L, fixture.order).shouldBeTrue()
+                registry.reconcileChunk(definition, world.getChunkAt(8, 0).also { it.load() })
+                planning.complete(listOf(FarmPlotPosition(world.name, 1, 64, 1)))
+
+                fixture.runtime.state.phase shouldBe FarmPhase.PREPARATION
+                fixture.service.isPending("farm") shouldBe false
+                registry.isReindexing("farm") shouldBe false
+                verify(exactly = 1) { fixture.transitions.apply(fixture.runtime, any(), fixture.player) }
+            }
+        }
+    }
+
     test("planning admission does not reserve or persist a shift until the actual patch is ready") {
         val planning = CompletableFuture<List<FarmPlotPosition>>()
         val persistence = CompletableFuture<Unit>()
@@ -170,6 +200,7 @@ private fun fixture(
     vararg persistenceAttempts: CompletableFuture<Unit>,
     retrySettings: () -> ShiftStartPersistenceSettings = { ShiftStartPersistenceSettings(1, 4, 5) },
     planning: CompletableFuture<List<FarmPlotPosition>>? = null,
+    registry: FarmBlockRegistry = mockk(relaxed = true) { every { isReindexing(any()) } returns false },
 ): ShiftStartFixture {
     val retryTasks = mutableListOf<() -> Unit>()
     val retryDelays = mutableListOf<Long>()
@@ -188,7 +219,6 @@ private fun fixture(
     }
     val orderCycle = mockk<FarmOrderCycleController> { every { isPaused(any()) } returns false }
     val worldAdmin = mockk<FarmWorldAdminService> { every { anyEditing() } returns false }
-    val registry = mockk<FarmBlockRegistry>(relaxed = true) { every { isReindexing(any()) } returns false }
     val patch = listOf(FarmPlotPosition("farm", 1, 64, 1), FarmPlotPosition("farm", 2, 64, 1))
     val field = mockk<FarmFieldController> {
         every { selectPatchAsync(any(), any(), any(), any(), any(), any()) } returns
