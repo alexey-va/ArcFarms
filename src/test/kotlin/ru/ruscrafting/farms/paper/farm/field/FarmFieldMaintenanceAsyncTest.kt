@@ -21,9 +21,11 @@ import ru.ruscrafting.farms.paper.ArcFarmsDebug
 import ru.ruscrafting.farms.paper.FarmBlockLedger
 import ru.ruscrafting.farms.paper.FarmBlockRegistry
 import ru.ruscrafting.farms.paper.FarmRuntime
+import ru.ruscrafting.farms.paper.RuntimeTaskSupervisor
 import ru.ruscrafting.farms.paper.fixtures.FarmAsyncHarness
 import ru.ruscrafting.farms.paper.farm.care.FarmDitchLayout
 import ru.ruscrafting.farms.paper.farm.care.FarmDitchRescueWorld
+import ru.ruscrafting.farms.paper.worksite.WorksiteTaskPort
 import java.util.concurrent.CompletableFuture
 
 class FarmFieldMaintenanceAsyncTest : FunSpec({
@@ -148,7 +150,16 @@ class FarmFieldMaintenanceAsyncTest : FunSpec({
             affected.forEach { it.type = Material.AIR; it.getRelative(BlockFace.UP).type = Material.AIR }
             val registry = FarmBlockRegistry(h.plugin, fixture.ledger, tasks = h.tasks)
             registry.addBeds("farm", fixture.positions)
-            val owner = FarmFieldMaintenance(fixture.ledger, registry, h.tasks, mockk(relaxed = true), mockk(relaxed = true))
+            // Execute the operation on Paper and deliver its result from a worker after the caller can chain it.
+            val tasks = object : WorksiteTaskPort by h.tasks {
+                override fun <T> callSync(token: RuntimeTaskSupervisor.Token, task: () -> T): CompletableFuture<T> =
+                    h.tasks.callSync(token, task).thenCompose { value ->
+                        val delivered = CompletableFuture<T>()
+                        check(h.tasks.runLater(token, 1L) { h.tasks.compute { delivered.complete(value) } })
+                        delivered
+                    }
+            }
+            val owner = FarmFieldMaintenance(fixture.ledger, registry, tasks, mockk(relaxed = true), mockk(relaxed = true))
             val pending = owner.maintainAsync(fixture.runtime, false, emptySet()) { true }
             h.until { pending.isDone }
             pending.join()

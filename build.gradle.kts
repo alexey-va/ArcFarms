@@ -7,7 +7,7 @@ plugins {
     jacoco
 }
 group = "ru.ruscrafting"
-version = "0.47.9"
+version = "0.47.10"
 description = "Shared farm, lumbermill, and mine activities for RusCrafting"
 
 val integrationTestSourceSet = sourceSets.create("integrationTest") {
@@ -112,7 +112,7 @@ tasks {
         // The full MockBukkit suite constructs several complete 64x64 worlds.
         // Keep the heap above the JVM default and recycle the worker before
         // retained server fixtures accumulate across the whole 200+ class suite.
-        maxHeapSize = "1g"
+        maxHeapSize = "1536m"
         // An exhausted worker cannot continue reliably; fail instead of hanging
         // until the CI timeout while unrelated tests cascade with OOM errors.
         jvmArgs("-XX:+ExitOnOutOfMemoryError")

@@ -83,10 +83,14 @@ internal class FarmFieldMaintenance(
         pending[rules.id] = result
         fun current() = epoch == expectedEpoch && pending[rules.id] === result && isCurrent() && runtime.state === source &&
             runtime.region === region && runtime.settings === rules
+        // Future continuations may run on a worker even when the operation completed on Paper.
+        fun <T> onPaper(operation: () -> CompletableFuture<T>): CompletableFuture<T> =
+            tasks.callSync(token, operation).thenCompose { it }
+
         tasks.compute {
             View(source) to (indexed.asSequence() + source.preparationPatch.asSequence()).distinct()
                 .filter { it.world == worldName }.groupBy { it.x shr 4 to (it.z shr 4) }.entries.iterator()
-        }.thenCompose { (view, groups) -> tasks.callSync(token) {
+        }.thenCompose { (view, groups) -> onPaper {
             val removed = arrayListOf<FarmPlotPosition>()
             fun next(): CompletableFuture<Unit> {
                 if (!current()) return CompletableFuture.failedFuture(CancellationException("Farm maintenance source changed"))
@@ -98,18 +102,18 @@ internal class FarmFieldMaintenance(
                     true
                 }.thenCompose {
                     val chunk = loaded ?: return@thenCompose CompletableFuture.completedFuture(Unit)
-                    ledger.loadAsync(chunk, tasks, ::current).thenCompose { records ->
+                    ledger.loadAsync(chunk, tasks, ::current).thenCompose { records -> onPaper {
                         val time = world.gameTime
                         tasks.compute {
                             val expired = positions.filter { position -> position !in view.ditches && records.blocks.record(position.x, position.y, position.z)
                                 ?.temporaryRestoreAt?.let { it <= time } == true }
                             expired to expired.toHashSet()
                         }
-                    }.thenCompose { (expired, restored) -> tasks.callSync(token) {
+                    } }.thenCompose { (expired, restored) -> onPaper {
                         val restore = if (expired.isEmpty()) CompletableFuture.completedFuture(Unit)
                         else ledger.restoreTemporaryBlocksAsync(chunk, expired, tasks, ::current).thenApply { Unit }
-                        restore.thenCompose { ledger.loadAsync(chunk, tasks, ::current) }.thenApply { it to restored }
-                    }.thenCompose { it } }.thenCompose { (records, restored) ->
+                        restore.thenCompose { onPaper { ledger.loadAsync(chunk, tasks, ::current) } }.thenApply { it to restored }
+                    } }.thenCompose { (records, restored) -> onPaper {
                         val iterator = positions.iterator()
                         tasks.capture(token, { current() && chunk.isLoaded }) {
                             if (!iterator.hasNext()) return@capture true
@@ -121,11 +125,11 @@ internal class FarmFieldMaintenance(
                                     rules.crops, crop, activeWater, irrigationDry, restoreExpired = false)) removed += position
                             !iterator.hasNext()
                         }
-                    }
-                }.thenCompose { next() }
+                    } }
+                }.thenCompose { onPaper(::next) }
             }
             next()
-        }.thenCompose { it } }.whenComplete { _, failure ->
+        } }.whenComplete { _, failure ->
             val delivered = tasks.runSync(token) {
                 val wasCurrent = current()
                 pending.remove(rules.id, result)
